@@ -1,0 +1,19 @@
+/* Small custom styles on top of Bootstrap */
+
+body {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.container.my-4 {
+    flex: 1;
+}
+
+.stat-card {
+    border-left: 4px solid #198754;
+}
+
+.chart-row .progress {
+    height: 22px;
+}

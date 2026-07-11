@@ -1,0 +1,84 @@
+{% extends 'base.html' %}
+{% block title %}My Dashboard{% endblock %}
+{% block content %}
+<h2 class="mb-4">Welcome, {{ user.name }}!</h2>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card stat-card shadow-sm">
+            <div class="card-body">
+                <h6 class="text-muted">My Active Bookings</h6>
+                <h3>{{ bookings | length }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card stat-card shadow-sm">
+            <div class="card-body">
+                <h6 class="text-muted">Available Treks</h6>
+                <h3>{{ available_treks | length }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card stat-card shadow-sm">
+            <div class="card-body">
+                <h6 class="text-muted">Account Status</h6>
+                <h3><span class="badge {% if user.status == 'active' %}bg-success{% else %}bg-danger{% endif %}">{{ user.status }}</span></h3>
+            </div>
+        </div>
+    </div>
+</div>
+
+<h4 class="mb-3">My Booked Treks</h4>
+{% if bookings %}
+<div class="table-responsive mb-4">
+<table class="table table-hover bg-white shadow-sm align-middle">
+    <thead class="table-success">
+        <tr><th>Trek</th><th>Location</th><th>Start Date</th><th>Trek Status</th><th>Action</th></tr>
+    </thead>
+    <tbody>
+        {% for b in bookings %}
+        <tr>
+            <td>{{ b.trek.name }}</td>
+            <td>{{ b.trek.location }}</td>
+            <td>{{ b.trek.start_date }}</td>
+            <td><span class="badge bg-info text-dark">{{ b.trek.status }}</span></td>
+            <td>
+                <form method="POST" action="{{ url_for('user.gunjan_cancel_booking', booking_id=b.booking_id) }}">
+                    <button type="submit" class="btn btn-sm btn-outline-danger">Cancel</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% else %}
+<p class="text-muted mb-4">You have no active bookings. Browse treks below!</p>
+{% endif %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0">Available Treks</h4>
+    <a href="{{ url_for('user.gunjan_browse_treks') }}" class="btn btn-outline-success btn-sm">Browse All</a>
+</div>
+{% if available_treks %}
+<div class="row g-3">
+    {% for trek in available_treks[:6] %}
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h5 class="card-title">{{ trek.name }}</h5>
+                <p class="card-text text-muted mb-1">&#128205; {{ trek.location }}</p>
+                <p class="card-text mb-1"><span class="badge bg-secondary">{{ trek.difficulty }}</span> {{ trek.duration }} days</p>
+                <p class="card-text"><small>{{ trek.available_slots }} slots left</small></p>
+                <a href="{{ url_for('user.gunjan_trek_details', trek_id=trek.trek_id) }}" class="btn btn-sm btn-success">View Details</a>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<p class="text-muted">No open treks available right now.</p>
+{% endif %}
+{% endblock %}

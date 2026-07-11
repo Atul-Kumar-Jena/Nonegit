@@ -1,0 +1,53 @@
+{% extends 'base.html' %}
+{% block title %}Browse Treks{% endblock %}
+{% block content %}
+<h2 class="mb-4">Browse Open Treks</h2>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('user.gunjan_search_treks') }}" class="row g-2">
+            <div class="col-md-4">
+                <select name="difficulty" class="form-select">
+                    <option value="">Any Difficulty</option>
+                    <option value="Easy">Easy</option>
+                    <option value="Moderate">Moderate</option>
+                    <option value="Hard">Hard</option>
+                </select>
+            </div>
+            <div class="col-md-6">
+                <input type="text" name="location" class="form-control" placeholder="Search by location...">
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-success w-100">Filter</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if treks %}
+<div class="row g-3">
+    {% for trek in treks %}
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h5 class="card-title">{{ trek.name }}</h5>
+                <p class="card-text text-muted mb-1">&#128205; {{ trek.location }}</p>
+                <p class="card-text mb-1">
+                    <span class="badge
+                        {% if trek.difficulty == 'Easy' %}bg-success
+                        {% elif trek.difficulty == 'Moderate' %}bg-warning text-dark
+                        {% else %}bg-danger{% endif %}">{{ trek.difficulty }}</span>
+                    {{ trek.duration }} days
+                </p>
+                <p class="card-text mb-1"><small>{{ trek.start_date }} to {{ trek.end_date }}</small></p>
+                <p class="card-text"><small><strong>{{ trek.available_slots }}</strong> slots left</small></p>
+                <a href="{{ url_for('user.gunjan_trek_details', trek_id=trek.trek_id) }}" class="btn btn-sm btn-success">View Details</a>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<p class="text-muted">No open treks available right now. Check back later!</p>
+{% endif %}
+{% endblock %}

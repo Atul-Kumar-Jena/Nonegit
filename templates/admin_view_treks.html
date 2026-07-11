@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+{% block title %}All Treks{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>All Treks</h2>
+    <a href="{{ url_for('admin.gunjan_create_trek') }}" class="btn btn-success">+ Create Trek</a>
+</div>
+
+{% if treks %}
+<div class="table-responsive">
+<table class="table table-hover bg-white shadow-sm align-middle">
+    <thead class="table-success">
+        <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Location</th>
+            <th>Difficulty</th>
+            <th>Duration</th>
+            <th>Slots</th>
+            <th>Staff</th>
+            <th>Status</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for trek in treks %}
+        <tr>
+            <td>{{ trek.trek_id }}</td>
+            <td>{{ trek.name }}</td>
+            <td>{{ trek.location }}</td>
+            <td>{{ trek.difficulty }}</td>
+            <td>{{ trek.duration }} days</td>
+            <td>{{ trek.available_slots }} / {{ trek.total_slots }}</td>
+            <td>{{ trek.assigned_staff.name if trek.assigned_staff else 'Not assigned' }}</td>
+            <td>
+                <span class="badge
+                    {% if trek.status == 'open' %}bg-success
+                    {% elif trek.status == 'pending' %}bg-warning text-dark
+                    {% elif trek.status == 'approved' %}bg-info text-dark
+                    {% elif trek.status == 'closed' %}bg-secondary
+                    {% else %}bg-dark{% endif %}">{{ trek.status }}</span>
+            </td>
+            <td>
+                <div class="d-flex gap-1 flex-wrap">
+                    {% if trek.status == 'pending' %}
+                    <form method="POST" action="{{ url_for('admin.gunjan_approve_trek', trek_id=trek.trek_id) }}">
+                        <button type="submit" class="btn btn-sm btn-success">Approve</button>
+                    </form>
+                    {% endif %}
+                    {% if trek.status in ['approved', 'open'] %}
+                    <a href="{{ url_for('admin.gunjan_assign_staff', trek_id=trek.trek_id) }}" class="btn btn-sm btn-primary">Assign Staff</a>
+                    {% endif %}
+                    <a href="{{ url_for('admin.gunjan_edit_trek', trek_id=trek.trek_id) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
+                    {% if trek.status == 'open' %}
+                    <form method="POST" action="{{ url_for('admin.gunjan_close_trek', trek_id=trek.trek_id) }}">
+                        <button type="submit" class="btn btn-sm btn-outline-warning">Close</button>
+                    </form>
+                    {% endif %}
+                    <form method="POST" action="{{ url_for('admin.gunjan_delete_trek', trek_id=trek.trek_id) }}">
+                        <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                    </form>
+                </div>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% else %}
+<p class="text-muted">No treks created yet.</p>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+{% block title %}Staff Dashboard{% endblock %}
+{% block content %}
+<h2 class="mb-4">Staff Dashboard - {{ staff.name }}</h2>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card stat-card shadow-sm">
+            <div class="card-body">
+                <h6 class="text-muted">Assigned Treks</h6>
+                <h3>{{ total_treks }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card stat-card shadow-sm">
+            <div class="card-body">
+                <h6 class="text-muted">Total Registered Participants</h6>
+                <h3>{{ total_participants }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card stat-card shadow-sm">
+            <div class="card-body">
+                <h6 class="text-muted">Status</h6>
+                <h3><span class="badge bg-success">{{ staff.status }}</span></h3>
+            </div>
+        </div>
+    </div>
+</div>
+
+<h4 class="mb-3">My Assigned Treks</h4>
+{% if assigned_treks %}
+<div class="row g-3">
+    {% for trek in assigned_treks %}
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h5 class="card-title">{{ trek.name }}</h5>
+                <p class="card-text text-muted mb-1">&#128205; {{ trek.location }}</p>
+                <p class="card-text mb-1">
+                    <span class="badge bg-secondary">{{ trek.difficulty }}</span>
+                    <span class="badge bg-info text-dark">{{ trek.status }}</span>
+                </p>
+                <p class="card-text mb-1"><small>{{ trek.gunjan_get_participants_count() }} participants registered</small></p>
+                <p class="card-text"><small>{{ trek.available_slots }} / {{ trek.total_slots }} slots free</small></p>
+                <a href="{{ url_for('staff.gunjan_view_participants', trek_id=trek.trek_id) }}" class="btn btn-sm btn-primary">Participants</a>
+                <a href="{{ url_for('staff.gunjan_update_slots', trek_id=trek.trek_id) }}" class="btn btn-sm btn-outline-secondary">Slots</a>
+                <a href="{{ url_for('staff.gunjan_update_trek_status', trek_id=trek.trek_id) }}" class="btn btn-sm btn-outline-secondary">Status</a>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<p class="text-muted">No treks assigned to you yet. The admin will assign treks to you.</p>
+{% endif %}
+{% endblock %}

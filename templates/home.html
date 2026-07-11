@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+{% block title %}Home - Trekking Management{% endblock %}
+{% block content %}
+<div class="text-center py-5">
+    <h1 class="display-4">&#9968; Trekking Management Application</h1>
+    <p class="lead text-muted">Book treks, manage adventures, explore the mountains.</p>
+</div>
+
+<div class="row g-4 justify-content-center">
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body text-center">
+                <h4 class="card-title">User (Trekker)</h4>
+                <p class="card-text">Browse open treks, book your spot and track your trekking history.</p>
+                <a href="{{ url_for('auth.gunjan_login_user') }}" class="btn btn-success">Login</a>
+                <a href="{{ url_for('auth.gunjan_register_user') }}" class="btn btn-outline-success">Register</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body text-center">
+                <h4 class="card-title">Trek Staff</h4>
+                <p class="card-text">Guide treks, manage slots and participants for your assigned treks.</p>
+                <a href="{{ url_for('auth.gunjan_login_staff') }}" class="btn btn-primary">Login</a>
+                <a href="{{ url_for('auth.gunjan_register_staff') }}" class="btn btn-outline-primary">Register</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body text-center">
+                <h4 class="card-title">Admin</h4>
+                <p class="card-text">Manage treks, approve staff, assign guides and view all bookings.</p>
+                <a href="{{ url_for('auth.gunjan_login_admin') }}" class="btn btn-dark">Admin Login</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

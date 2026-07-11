@@ -1,0 +1,48 @@
+{% extends 'base.html' %}
+{% block title %}Pending Staff{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Pending Staff Approvals</h2>
+    <a href="{{ url_for('admin.gunjan_view_staff') }}" class="btn btn-outline-primary">All Staff</a>
+</div>
+
+{% if staff %}
+<div class="table-responsive">
+<table class="table table-hover bg-white shadow-sm align-middle">
+    <thead class="table-warning">
+        <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Phone</th>
+            <th>Registered On</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for s in staff %}
+        <tr>
+            <td>{{ s.staff_id }}</td>
+            <td>{{ s.name }}</td>
+            <td>{{ s.email }}</td>
+            <td>{{ s.phone }}</td>
+            <td>{{ s.created_at.strftime('%d %b %Y') if s.created_at else '-' }}</td>
+            <td>
+                <div class="d-flex gap-1">
+                    <form method="POST" action="{{ url_for('admin.gunjan_approve_staff', staff_id=s.staff_id) }}">
+                        <button type="submit" class="btn btn-sm btn-success">Approve</button>
+                    </form>
+                    <form method="POST" action="{{ url_for('admin.gunjan_blacklist_staff', staff_id=s.staff_id) }}">
+                        <button type="submit" class="btn btn-sm btn-outline-danger">Reject / Blacklist</button>
+                    </form>
+                </div>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% else %}
+<p class="text-muted">No pending staff registrations.</p>
+{% endif %}
+{% endblock %}

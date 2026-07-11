@@ -1,0 +1,9 @@
+# Database is created programmatically at runtime - never committed
+instance/
+*.db
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.env

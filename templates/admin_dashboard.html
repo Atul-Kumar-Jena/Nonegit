@@ -1,0 +1,114 @@
+{% extends 'base.html' %}
+{% block title %}Admin Dashboard{% endblock %}
+{% block content %}
+<h2 class="mb-4">Admin Dashboard</h2>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-2 col-6">
+        <div class="card stat-card shadow-sm">
+            <div class="card-body">
+                <h6 class="text-muted">Total Treks</h6>
+                <h3>{{ stats.total_treks }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2 col-6">
+        <div class="card stat-card shadow-sm">
+            <div class="card-body">
+                <h6 class="text-muted">Total Users</h6>
+                <h3>{{ stats.total_users }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2 col-6">
+        <div class="card stat-card shadow-sm">
+            <div class="card-body">
+                <h6 class="text-muted">Total Staff</h6>
+                <h3>{{ stats.total_staff }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2 col-6">
+        <div class="card stat-card shadow-sm">
+            <div class="card-body">
+                <h6 class="text-muted">Bookings</h6>
+                <h3>{{ stats.total_bookings }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2 col-6">
+        <div class="card stat-card shadow-sm">
+            <div class="card-body">
+                <h6 class="text-muted">Pending Staff</h6>
+                <h3>{{ stats.pending_staff }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2 col-6">
+        <div class="card stat-card shadow-sm">
+            <div class="card-body">
+                <h6 class="text-muted">Open Treks</h6>
+                <h3>{{ stats.open_treks }}</h3>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-8">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white"><strong>Popular Treks (Bookings per Trek)</strong></div>
+            <div class="card-body chart-row">
+                {% if chart_data %}
+                    {% for row in chart_data %}
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between">
+                            <span>{{ row.name }}</span>
+                            <span class="text-muted">{{ row.count }} / {{ row.total }} booked</span>
+                        </div>
+                        <div class="progress">
+                            {% if row.total > 0 %}
+                            <div class="progress-bar bg-success" style="width: {{ (row.count * 100 / row.total) | round }}%"></div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <p class="text-muted mb-0">No treks yet. Create one to see statistics.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white"><strong>Quick Actions</strong></div>
+            <div class="card-body d-grid gap-2">
+                <a href="{{ url_for('admin.gunjan_create_trek') }}" class="btn btn-success">+ Create Trek</a>
+                <a href="{{ url_for('admin.gunjan_pending_staff') }}" class="btn btn-outline-primary">Pending Staff Approvals</a>
+                <a href="{{ url_for('admin.gunjan_view_bookings') }}" class="btn btn-outline-secondary">View All Bookings</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header bg-white"><strong>Search</strong></div>
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('admin.gunjan_search') }}" class="row g-2">
+            <div class="col-md-3">
+                <select name="type" class="form-select">
+                    <option value="trek">Trek</option>
+                    <option value="user">User</option>
+                    <option value="staff">Staff</option>
+                </select>
+            </div>
+            <div class="col-md-7">
+                <input type="text" name="query" class="form-control" placeholder="Search by name or ID..." required>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-success w-100">Search</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

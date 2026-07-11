@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block title %}Update Slots{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-5">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h3 class="card-title mb-3">Update Slots: {{ trek.name }}</h3>
+                <p class="text-muted">Total slots: {{ trek.total_slots }} | Currently available: {{ trek.available_slots }}</p>
+                <form method="POST" action="{{ url_for('staff.gunjan_update_slots', trek_id=trek.trek_id) }}">
+                    <div class="mb-3">
+                        <label class="form-label">Available Slots</label>
+                        <input type="number" name="available_slots" class="form-control"
+                               value="{{ trek.available_slots }}" min="0" max="{{ trek.total_slots }}" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Update</button>
+                    <a href="{{ url_for('staff.gunjan_view_assigned_treks') }}" class="btn btn-outline-secondary">Cancel</a>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

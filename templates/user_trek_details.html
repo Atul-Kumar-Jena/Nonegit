@@ -1,0 +1,69 @@
+{% extends 'base.html' %}
+{% block title %}{{ trek.name }}{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h2 class="card-title">{{ trek.name }}</h2>
+                <p class="text-muted">&#128205; {{ trek.location }}</p>
+
+                <div class="row mb-3">
+                    <div class="col-6 col-md-3">
+                        <small class="text-muted">Difficulty</small>
+                        <p><span class="badge
+                            {% if trek.difficulty == 'Easy' %}bg-success
+                            {% elif trek.difficulty == 'Moderate' %}bg-warning text-dark
+                            {% else %}bg-danger{% endif %}">{{ trek.difficulty }}</span></p>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <small class="text-muted">Duration</small>
+                        <p>{{ trek.duration }} days</p>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <small class="text-muted">Available Slots</small>
+                        <p>{{ trek.available_slots }} / {{ trek.total_slots }}</p>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <small class="text-muted">Status</small>
+                        <p><span class="badge bg-info text-dark">{{ trek.status }}</span></p>
+                    </div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <small class="text-muted">Start Date</small>
+                        <p>{{ trek.start_date }}</p>
+                    </div>
+                    <div class="col-md-4">
+                        <small class="text-muted">End Date</small>
+                        <p>{{ trek.end_date }}</p>
+                    </div>
+                    <div class="col-md-4">
+                        <small class="text-muted">Trek Guide</small>
+                        <p>{{ trek.assigned_staff.name if trek.assigned_staff else 'To be assigned' }}</p>
+                    </div>
+                </div>
+
+                {% if trek.description %}
+                <p><small class="text-muted">Description</small><br>{{ trek.description }}</p>
+                {% endif %}
+
+                {% if already_booked %}
+                <div class="alert alert-info">You have already booked this trek.</div>
+                {% elif trek.status == 'open' and trek.available_slots > 0 %}
+                <form method="POST" action="{{ url_for('user.gunjan_book_trek', trek_id=trek.trek_id) }}">
+                    <button type="submit" class="btn btn-success">Book This Trek</button>
+                </form>
+                {% elif trek.available_slots <= 0 %}
+                <div class="alert alert-warning">This trek is fully booked.</div>
+                {% else %}
+                <div class="alert alert-secondary">This trek is not open for booking.</div>
+                {% endif %}
+
+                <a href="{{ url_for('user.gunjan_browse_treks') }}" class="btn btn-outline-secondary mt-2">Back to Browse</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

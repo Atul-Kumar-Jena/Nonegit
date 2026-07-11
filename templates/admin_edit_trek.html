@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% block title %}Edit Trek{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-7">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h3 class="card-title mb-4">Edit Trek: {{ trek.name }}</h3>
+                <form method="POST" action="{{ url_for('admin.gunjan_edit_trek', trek_id=trek.trek_id) }}">
+                    <div class="mb-3">
+                        <label class="form-label">Trek Name</label>
+                        <input type="text" name="name" class="form-control" value="{{ trek.name }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Location</label>
+                        <input type="text" name="location" class="form-control" value="{{ trek.location }}" required>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Difficulty</label>
+                            <select name="difficulty" class="form-select" required>
+                                <option value="Easy" {% if trek.difficulty == 'Easy' %}selected{% endif %}>Easy</option>
+                                <option value="Moderate" {% if trek.difficulty == 'Moderate' %}selected{% endif %}>Moderate</option>
+                                <option value="Hard" {% if trek.difficulty == 'Hard' %}selected{% endif %}>Hard</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Duration (days)</label>
+                            <input type="number" name="duration" class="form-control" value="{{ trek.duration }}" min="1" required>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        <textarea name="description" class="form-control" rows="3">{{ trek.description or '' }}</textarea>
+                    </div>
+                    <button type="submit" class="btn btn-success">Save Changes</button>
+                    <a href="{{ url_for('admin.gunjan_view_all_treks') }}" class="btn btn-outline-secondary">Cancel</a>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% block title %}Edit Profile{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-5">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h3 class="card-title text-center mb-4">Edit Profile</h3>
+                <form method="POST" action="{{ url_for('user.gunjan_edit_profile') }}">
+                    <div class="mb-3">
+                        <label class="form-label">Full Name</label>
+                        <input type="text" name="name" class="form-control" value="{{ user.name }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Email</label>
+                        <input type="email" name="email" class="form-control" value="{{ user.email }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">New Password <small class="text-muted">(leave blank to keep current)</small></label>
+                        <input type="password" name="new_password" class="form-control" minlength="6">
+                    </div>
+                    <button type="submit" class="btn btn-success w-100">Save Changes</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

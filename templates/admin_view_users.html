@@ -1,0 +1,48 @@
+{% extends 'base.html' %}
+{% block title %}All Users{% endblock %}
+{% block content %}
+<h2 class="mb-4">All Users (Trekkers)</h2>
+
+{% if users %}
+<div class="table-responsive">
+<table class="table table-hover bg-white shadow-sm align-middle">
+    <thead class="table-success">
+        <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Bookings</th>
+            <th>Status</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for u in users %}
+        <tr>
+            <td>{{ u.user_id }}</td>
+            <td>{{ u.name }}</td>
+            <td>{{ u.email }}</td>
+            <td>{{ u.bookings | length }}</td>
+            <td>
+                <span class="badge {% if u.status == 'active' %}bg-success{% else %}bg-danger{% endif %}">{{ u.status }}</span>
+            </td>
+            <td>
+                {% if u.status != 'blacklisted' %}
+                <form method="POST" action="{{ url_for('admin.gunjan_blacklist_user', user_id=u.user_id) }}">
+                    <button type="submit" class="btn btn-sm btn-outline-danger">Blacklist</button>
+                </form>
+                {% else %}
+                <form method="POST" action="{{ url_for('admin.gunjan_activate_user', user_id=u.user_id) }}">
+                    <button type="submit" class="btn btn-sm btn-outline-success">Reactivate</button>
+                </form>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% else %}
+<p class="text-muted">No users registered yet.</p>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,57 @@
+{% extends 'base.html' %}
+{% block title %}My Assigned Treks{% endblock %}
+{% block content %}
+<h2 class="mb-4">My Assigned Treks</h2>
+
+{% if treks %}
+<div class="table-responsive">
+<table class="table table-hover bg-white shadow-sm align-middle">
+    <thead class="table-primary">
+        <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Location</th>
+            <th>Dates</th>
+            <th>Slots</th>
+            <th>Participants</th>
+            <th>Status</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for trek in treks %}
+        <tr>
+            <td>{{ trek.trek_id }}</td>
+            <td>{{ trek.name }}</td>
+            <td>{{ trek.location }}</td>
+            <td>{{ trek.start_date }} to {{ trek.end_date }}</td>
+            <td>{{ trek.available_slots }} / {{ trek.total_slots }}</td>
+            <td>{{ trek.gunjan_get_participants_count() }}</td>
+            <td>
+                <span class="badge
+                    {% if trek.status == 'open' %}bg-success
+                    {% elif trek.status == 'closed' %}bg-secondary
+                    {% elif trek.status == 'completed' %}bg-dark
+                    {% else %}bg-info text-dark{% endif %}">{{ trek.status }}</span>
+            </td>
+            <td>
+                <div class="d-flex gap-1 flex-wrap">
+                    <a href="{{ url_for('staff.gunjan_view_participants', trek_id=trek.trek_id) }}" class="btn btn-sm btn-primary">Participants</a>
+                    <a href="{{ url_for('staff.gunjan_update_slots', trek_id=trek.trek_id) }}" class="btn btn-sm btn-outline-secondary">Slots</a>
+                    <a href="{{ url_for('staff.gunjan_update_trek_status', trek_id=trek.trek_id) }}" class="btn btn-sm btn-outline-secondary">Status</a>
+                    {% if trek.status != 'completed' %}
+                    <form method="POST" action="{{ url_for('staff.gunjan_complete_trek', trek_id=trek.trek_id) }}">
+                        <button type="submit" class="btn btn-sm btn-outline-dark">Mark Completed</button>
+                    </form>
+                    {% endif %}
+                </div>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% else %}
+<p class="text-muted">No treks assigned to you yet.</p>
+{% endif %}
+{% endblock %}
