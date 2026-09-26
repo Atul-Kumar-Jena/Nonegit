@@ -278,13 +278,21 @@ export const PRESENT_PAGE = `<!doctype html>
   p { margin: 0; color: #8b93a7; font-size: clamp(15px, 1.6vw, 22px); max-width: 60ch; }
   .code { font: 700 clamp(48px, 11vw, 160px)/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: .08em; color: #fff; padding: 2vh 3vw; border: 2px solid rgba(34,211,238,.35); border-radius: 24px; background: rgba(34,211,238,.06); }
   ol { text-align: left; color: #c5cbe0; font-size: clamp(15px, 1.6vw, 22px); margin: 0; padding-left: 1.4em; }
-  .qr { background: #fff; border-radius: 22px; padding: 1.2vh; width: min(78vh, 90vw); aspect-ratio: 1; }
+  .qr { background: #fff; border-radius: 22px; padding: 1.2vh; width: min(84vh, 56vw); aspect-ratio: 1; flex: none; }
   .qr svg { width: 100%; height: 100%; display: block; }
-  .row { display: flex; gap: 3vw; align-items: baseline; justify-content: center; flex-wrap: wrap; }
+  #live { flex-direction: row; gap: 4vw; text-align: left; padding-top: 7vh; }
+  .side { display: flex; flex-direction: column; gap: 2.4vh; max-width: 36vw; }
+  .side h1 { font-size: clamp(22px, 3vw, 46px); }
+  @media (max-aspect-ratio: 1/1) {
+    #live { flex-direction: column; text-align: center; }
+    .qr { width: min(62vh, 90vw); }
+    .side { max-width: 90vw; align-items: center; }
+  }
+  .row { display: flex; gap: 2vw; align-items: baseline; flex-wrap: wrap; }
   .seq { font: 600 clamp(18px, 2vw, 28px) ui-monospace, Menlo, Consolas, monospace; }
-  .count { font-weight: 800; font-size: clamp(26px, 3.4vw, 52px); color: #34d399; }
+  .count { font-weight: 800; font-size: clamp(28px, 4vw, 64px); color: #34d399; line-height: 1; }
   .muted { color: #8b93a7; }
-  .bar { width: min(78vh, 90vw); height: 6px; border-radius: 3px; background: #1a2238; overflow: hidden; }
+  .bar { width: 100%; height: 6px; border-radius: 3px; background: #1a2238; overflow: hidden; }
   .bar i { display: block; height: 100%; background: #22d3ee; width: 100%; transition: width .25s linear; }
   button { font: 600 16px system-ui, sans-serif; color: #04141c; background: #22d3ee; border: 0; border-radius: 12px; padding: 12px 20px; cursor: pointer; }
   button.ghost { background: transparent; color: #8b93a7; border: 1px solid #28314a; }
@@ -302,12 +310,15 @@ export const PRESENT_PAGE = `<!doctype html>
   <p class="muted">Only the teacher’s approved phone can connect this screen. The code works once.</p>
 </main>
 <main id="live" class="hidden">
-  <h1 id="title"></h1>
   <div class="qr" id="qr" aria-label="Attendance QR code"></div>
-  <div class="bar"><i id="bar"></i></div>
-  <div class="row"><span class="seq" id="seq"></span><span class="count" id="count"></span></div>
-  <p>Scan with the <b>Attendly</b> app. The code changes every few seconds — photos of it stop working.</p>
-  <div class="row"><button class="ghost" id="fs">Full screen</button></div>
+  <div class="side">
+    <h1 id="title"></h1>
+    <div class="count" id="count"></div>
+    <div class="bar"><i id="bar"></i></div>
+    <div class="row"><span class="seq" id="seq"></span><span class="muted" id="left"></span></div>
+    <p>Open the <b>Attendly</b> app and scan. The code changes every few seconds — photos of it stop working.</p>
+    <div class="row"><button class="ghost" id="fs">Full screen</button></div>
+  </div>
 </main>
 <main id="done" class="hidden">
   <h1 id="doneTitle">Class ended</h1>
@@ -356,7 +367,9 @@ export const PRESENT_JS = `(function () {
           $('qr').innerHTML = j.qr.svg;
           $('seq').textContent = j.qr.seq;
           $('count').textContent = j.counts.marked + ' / ' + j.counts.enrolled + ' present';
+          document.title = j.class.courseCode + ' · Attendly';
           $('bar').style.width = Math.round((j.qr.msLeft / (j.qr.rotationS * 1000)) * 100) + '%';
+          $('left').textContent = 'changes in ' + Math.ceil(j.qr.msLeft / 1000) + ' s';
           return schedule(Math.min(1000, j.qr.msLeft + 60));
         }
         if (j.status === 'expired') return state && !state.approved ? pair() : done('Session expired', 'Connect again from the app to keep showing the code.');

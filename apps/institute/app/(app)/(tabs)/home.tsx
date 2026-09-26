@@ -85,7 +85,7 @@ export default function Today() {
         <CloudDownload color={pack.data ? colors.green : colors.textDim} size={15} />
         <Text variant="small" style={{ flex: 1 }}>
           {pack.data
-            ? `Ready offline · ${pack.data.sessions.length} of your ${pack.data.sessions.length === 1 ? 'class' : 'classes'} (today & tomorrow) saved · ${timeAgo(new Date(pack.data.generatedAt).toISOString())}`
+            ? `Ready offline · ${pack.data.sessions.length} ${pack.data.sessions.length === 1 ? 'class' : 'classes'} of yours (today & tomorrow) saved · ${timeAgo(new Date(pack.data.generatedAt).toISOString())}`
             : pack.isFetching
               ? 'Downloading today’s classes for offline use…'
               : 'Not ready offline yet — tap to download.'}
