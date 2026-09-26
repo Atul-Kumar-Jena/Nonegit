@@ -149,12 +149,12 @@ describe('one-off adjustments by a teacher', () => {
   it('a substitute must be free; once assigned they can run the class and are told', async () => {
     const s = await scheduled(seed.courseId, 5, '10:00', r1);
     await scheduled(seed.otherCourseId, 5, '10:30', r2); // Rao is busy 10:30–11:30
-    const busy = ok(await t1.call('POST', `/v1/staff/sessions/${s.id}/adjust`, { change: { op: 'substitute', sessionId: s.id, teacherId: t2Id } }));
+    const busy = ok(await admin.call('POST', `/v1/staff/sessions/${s.id}/adjust`, { change: { op: 'substitute', sessionId: s.id, teacherId: t2Id } }));
     expect(busy).toMatchObject({ published: false, conflicts: [{ kind: 'teacher', severity: 'error' }] });
 
     const free = await scheduled(seed.courseId, 6, '10:00', r1);
     // Handing it over is a request: nothing changes until Rao accepts.
-    expect(ok(await t1.call('POST', `/v1/staff/sessions/${free.id}/adjust`, { change: { op: 'substitute', sessionId: free.id, teacherId: t2Id } }))).toMatchObject({ published: true, requested: 1, applied: 0 });
+    expect(ok(await admin.call('POST', `/v1/staff/sessions/${free.id}/adjust`, { change: { op: 'substitute', sessionId: free.id, teacherId: t2Id } }))).toMatchObject({ published: true, requested: 1, applied: 0 });
     const n = await notificationsOf(t2);
     expect(n.items[0]!.title).toBe('Can you take CS-301?');
     expect(ok(await t1.call("GET", `/v1/staff/sessions/${free.id}`)).session.substitute).toBeNull();

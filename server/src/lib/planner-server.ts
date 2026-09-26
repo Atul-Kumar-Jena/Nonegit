@@ -237,6 +237,7 @@ export async function publishOps(
       try {
         const s = await loadSessionFor(tx, auth, o.sessionId, true);
         if (!isOwnerOf(auth, s)) errors.push({ index, message: 'Only the course’s own teacher or an admin can change this class.' });
+        else if (o.op === 'substitute' && !admin) errors.push({ index, message: 'Only an admin (principal or HOD) can give a class to another teacher.' });
         if (o.op === 'cancel') {
           const marks = await tx.query('select 1 from attendance_records where session_id = $1 limit 1', [s.id]);
           if (marks.rowCount) errors.push({ index, message: 'This class already has attendance, so it can’t be cancelled.' });

@@ -24,10 +24,11 @@ import {
 import type { Deps } from '../deps';
 import type { Queryable } from '../db';
 import { loadInstitution, staffAudit } from '../routes/staff-admin';
-import { isAdmin, isOwnerOf, loadSessionFor } from './access';
+import { isAdmin, loadSessionFor } from './access';
 import type { AuthContext } from './auth';
 import { appendAudit } from './audit';
 import { ApiError } from './errors';
+import { tenantFlag } from './flags';
 import { fmtWhen, insertNotifications } from './notify';
 import { publishOps } from './planner-server';
 
@@ -140,8 +141,9 @@ async function whenText(db: Queryable, tenantId: string, start: Date, end: Date)
  * own teacher) needs nobody's approval and is applied at once.
  */
 export async function createCoverRequest(tx: PoolClient, deps: Deps, auth: AuthContext, body: CoverRequestBody): Promise<CoverResponse> {
+  // Hierarchy: only admins (principal / HOD) hand classes out; teachers answer.
+  if (!isAdmin(auth)) throw new ApiError(403, 'FORBIDDEN', 'Only an admin (principal or HOD) can give a class to another teacher. Teachers accept or decline requests.');
   const s = await loadSessionFor(tx, auth, body.sessionId, true);
-  if (!isOwnerOf(auth, s)) throw new ApiError(403, 'FORBIDDEN', 'Only the course’s own teacher or an admin can hand this class to someone else.');
   assertOpen(s, deps.clock());
   const target = (
     await tx.query<{ id: string; full_name: string; role: string; status: string }>(
@@ -295,6 +297,7 @@ const MAX_OPEN_STUDENT_REQUESTS = 5;
 
 /** A student asks the teacher of one of their classes. */
 export async function createStudentRequest(tx: PoolClient, deps: Deps, auth: AuthContext, body: StudentRequestBody): Promise<ChangeRequest> {
+  if (!(await tenantFlag(tx, auth.tenantId, 'student_requests'))) throw new ApiError(403, 'FORBIDDEN', 'Your institution has turned off requests to teachers.');
   const { rows } = await tx.query<{ id: string; status: string; scheduled_start: Date; scheduled_end: Date; teacher: string | null; code: string; title: string }>(
     `select s.id, s.status, s.scheduled_start, s.scheduled_end, coalesce(s.substitute_id, c.instructor_id) as teacher, c.code, c.title
        from class_sessions s join courses c on c.id = s.course_id

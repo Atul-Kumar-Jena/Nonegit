@@ -115,27 +115,34 @@ describe('cover requests (admin drags a free teacher onto a class)', () => {
 
   it('a decline tells the requester and changes nothing; a new request replaces the old one', async () => {
     const s = await scheduled(seed.courseId, 4, '09:00');
-    // The course's own teacher can ask too (for their own class only).
-    const first = ok(await t1.call('POST', '/v1/staff/cover-requests', { sessionId: s.id, teacherId: t3Id, noteToTeacher: 'Doctor’s appointment' }));
+    const first = ok(await admin.call('POST', '/v1/staff/cover-requests', { sessionId: s.id, teacherId: t3Id, noteToTeacher: 'Kumar has a doctor’s appointment' }));
     expect(first.status).toBe('sent');
     const t3Before = await lastNoteId(t3);
-    const second = ok(await t1.call('POST', '/v1/staff/cover-requests', { sessionId: s.id, teacherId: t2Id }));
+    const second = ok(await admin.call('POST', '/v1/staff/cover-requests', { sessionId: s.id, teacherId: t2Id }));
     expect(second.status).toBe('sent');
     const withdrawn = (await newNotes(t3, t3Before))[0]!;
     expect(withdrawn.title).toBe('Request withdrawn · CS-301');
     expect((await t3.call('POST', `/v1/staff/requests/${first.request.id}/accept`, {})).statusCode).toBe(409);
 
-    const t1Before = await lastNoteId(t1);
+    const adminBefore = await lastNoteId(admin);
     ok(await t2.call('POST', `/v1/staff/requests/${second.request.id}/decline`, { reply: 'I have a lab then' }));
     expect((await substituteOf(s.id)).substitute_id).toBeNull();
-    const told = (await newNotes(t1, t1Before))[0]!;
+    const told = (await newNotes(admin, adminBefore))[0]!;
     expect(told.title).toBe('Dr. Rao can’t take CS-301');
     expect(told.body).toContain('“I have a lab then”');
   });
 
-  it('only the class’s own teacher or an admin can hand it over; the requester can withdraw', async () => {
+  it('only admins hand classes out — teachers, even for their own class, can only answer', async () => {
     const s = await scheduled(seed.courseId, 5, '09:00');
-    expect((await t2.call('POST', '/v1/staff/cover-requests', { sessionId: s.id, teacherId: t3Id })).statusCode).toBe(404);
+    for (const d of [t1, t2]) {
+      const r = await d.call('POST', '/v1/staff/cover-requests', { sessionId: s.id, teacherId: t3Id });
+      expect(r.statusCode).toBe(403);
+      expect(r.json().error.message).toContain('Only an admin');
+    }
+    // …not through "adjust" either.
+    const adj = ok(await t1.call('POST', `/v1/staff/sessions/${s.id}/adjust`, { change: { op: 'substitute', sessionId: s.id, teacherId: t3Id } }));
+    expect(adj.published).toBe(false);
+    expect(adj.errors[0].message).toContain('Only an admin');
     const r = ok(await admin.call('POST', '/v1/staff/cover-requests', { sessionId: s.id, teacherId: t3Id }));
     expect((await t3.call('POST', `/v1/staff/requests/${r.request.id}/cancel`)).statusCode).toBe(403);
     const t3Before = await lastNoteId(t3);

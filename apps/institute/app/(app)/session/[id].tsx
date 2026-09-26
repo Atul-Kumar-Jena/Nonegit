@@ -273,11 +273,12 @@ export default function SessionScreen() {
               <SectionLabel>Adjustment</SectionLabel>
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 <Button title="Move" kind="secondary" compact onPress={() => setAdjust('reschedule')} icon={<ArrowRightLeft color={colors.text} size={15} />} style={{ flex: 1 }} />
-                <Button title="Substitute" kind="secondary" compact onPress={() => setAdjust('substitute')} icon={<UserRound color={colors.text} size={15} />} style={{ flex: 1 }} />
+                {isAdmin ? <Button title="Give to a teacher" kind="secondary" compact onPress={() => setAdjust('substitute')} icon={<UserRound color={colors.text} size={15} />} style={{ flex: 1 }} /> : null}
               </View>
               <Button title="Cancel this class" kind="danger" onPress={() => setAdjust('cancel')} icon={<XCircle color={colors.red} size={16} />} style={{ marginTop: 10 }} />
               <Text variant="small" style={{ marginTop: 8 }}>
                 Students of {s.courseCode} are notified immediately. Changes are checked for clashes with other classes, teachers and rooms.
+                {isAdmin ? '' : ' Can’t take this class? Ask your admin (principal / HOD) — only they can give it to another teacher.'}
               </Text>
             </>
           ) : (

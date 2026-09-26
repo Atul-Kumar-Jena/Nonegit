@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
-import { ChevronRight, CloudDownload, Plus, Radio, ShieldAlert, Smartphone, UserCheck, UserPlus, Wand2 } from 'lucide-react-native';
+import { ChevronRight, CloudDownload, Inbox, Plus, Radio, ShieldAlert, Smartphone, UserCheck, UserPlus, Wand2 } from 'lucide-react-native';
 import { NotificationBell } from '@kit/components/NotificationBell';
 import { Screen } from '@kit/components/Screen';
 import { usePermissionsOnboarding } from '@kit/lib/notifications';
@@ -67,7 +67,7 @@ export default function Today() {
             {user?.fullName ?? '…'}
           </Text>
         </View>
-        {user ? <Badge label={admin ? 'Admin' : 'Teacher'} tone={admin ? 'violet' : 'cyan'} dot={false} /> : null}
+        {user ? <Badge label={admin ? 'Admin · Principal / HOD' : 'Teacher'} tone={admin ? 'violet' : 'cyan'} dot={false} /> : null}
         <NotificationBell />
       </View>
 
@@ -118,7 +118,11 @@ export default function Today() {
       )}
       <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
         <Button title="Extra class" kind="secondary" onPress={() => router.push('/extra-class')} icon={<Plus color={colors.text} size={16} />} style={{ flex: 1 }} />
-        <Button title="Cover a class" kind="secondary" onPress={() => router.push('/cover')} icon={<UserPlus color={colors.text} size={16} />} style={{ flex: 1 }} />
+        {admin ? (
+          <Button title="Cover a class" kind="secondary" onPress={() => router.push('/cover')} icon={<UserPlus color={colors.text} size={16} />} style={{ flex: 1 }} />
+        ) : (
+          <Button title="Requests" kind="secondary" onPress={() => router.push('/inbox')} icon={<Inbox color={colors.text} size={16} />} style={{ flex: 1 }} />
+        )}
       </View>
     </Screen>
   );

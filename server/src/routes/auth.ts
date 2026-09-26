@@ -24,6 +24,7 @@ import { isUniqueViolation, withTx } from '../db';
 import { appendAudit } from '../lib/audit';
 import { issueTokens, requireDevice, rotateRefreshToken } from '../lib/auth';
 import { isDemoEmail } from '../lib/demo';
+import { switchOn } from '../lib/flags';
 import { ApiError } from '../lib/errors';
 import { generateOtpCode, maskEmail, maskPhone, randomToken } from '../lib/secrets';
 import { revokeActiveDevice } from './staff-admin';
@@ -88,14 +89,16 @@ export async function authRoutes(app: FastifyInstance, deps: Deps) {
     // Only people an admin has registered can receive a code — whatever their email domain.
     // The response is identical either way, so it never reveals who is registered.
     const col = body.channel === 'email' ? 'email' : 'phone';
-    const u = await deps.db.query<{ id: string; status: string; tenant_status: string; tenant_name: string }>(
-      `select u.id, u.status, t.status as tenant_status, t.name as tenant_name from users u join tenants t on t.id = u.tenant_id where u.${col} = $1`,
+    const u = await deps.db.query<{ id: string; role: string; status: string; tenant_status: string; tenant_name: string }>(
+      `select u.id, u.role, u.status, t.status as tenant_status, t.name as tenant_name from users u join tenants t on t.id = u.tenant_id where u.${col} = $1`,
       [body.identifier],
     );
     const user = u.rows[0];
     const institution = user?.tenant_name ?? 'your institution';
+    // Platform maintenance switch (developers can still get in to turn it off).
+    if (user?.role !== 'developer' && (await switchOn(deps.db, 'sign_ins_paused'))) throw new ApiError(403, 'FORBIDDEN', 'Sign-ins are paused for maintenance. Please try again a little later.');
     // Demo mode skips the code only for the seeded demo accounts; real accounts always get one.
-    const instant = deps.config.demoInstantLogin && body.channel === 'email' && isDemoEmail(body.identifier);
+    const instant = deps.config.demoInstantLogin && body.channel === 'email' && isDemoEmail(body.identifier) && !(await switchOn(deps.db, 'demo_login_off'));
     if (instant && !user) throw new ApiError(404, 'NOT_FOUND', 'That demo account does not exist on this server. Tap one of the listed demo accounts.');
 
     // Throttle per identifier (in addition to the per-IP limiter).
@@ -170,7 +173,7 @@ export async function authRoutes(app: FastifyInstance, deps: Deps) {
     return withTx(deps.db, async (tx): Promise<OtpVerifyResponse> => {
       let bound = await loadActiveDevice(tx, user.id);
       // Demo accounts hop between test phones: the new phone simply takes over.
-      if (bound && !bound.public_key.equals(pk) && deps.config.demoInstantLogin && isDemoEmail(user.email)) {
+      if (bound && !bound.public_key.equals(pk) && deps.config.demoInstantLogin && isDemoEmail(user.email) && !(await switchOn(tx, 'demo_login_off'))) {
         await revokeActiveDevice(tx, user.id, 'demo: signed in on another phone', new Date(deps.clock()));
         await appendAudit(tx, { tenantId: user.tenant_id, actorType: 'user', actorId: user.id, action: 'device.demo_handover', subject: `device:${bound.id}` });
         bound = undefined;
@@ -216,6 +219,7 @@ export async function authRoutes(app: FastifyInstance, deps: Deps) {
     const body = BindBody.parse(req.body);
     try {
       return await withTx(deps.db, async (tx) => {
+        if (await switchOn(tx, 'new_bindings_blocked')) throw new ApiError(403, 'FORBIDDEN', 'New phone registrations are paused for now. Please try again later.');
         const t = await consumeTicket(tx, deps, body.ticket, 'bind', body.proof);
         const user = await loadUser(tx, t.user_id);
         if (!user || user.status !== 'active' || user.tenant_status !== 'active') throw new ApiError(403, 'ACCOUNT_SUSPENDED');

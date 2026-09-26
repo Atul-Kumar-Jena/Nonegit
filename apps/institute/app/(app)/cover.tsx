@@ -50,7 +50,7 @@ export default function Cover() {
   const classes = useMemo(
     () =>
       (sessionsQ.data ?? [])
-        .filter((s) => s.status === 'scheduled' && Date.parse(s.scheduledEnd) > nowMs && (admin || s.teacher?.id === meId))
+        .filter((s) => s.status === 'scheduled' && Date.parse(s.scheduledEnd) > nowMs)
         .sort((a, b) => a.scheduledStart.localeCompare(b.scheduledStart)),
     [sessionsQ.data, admin, meId, nowMs],
   );
@@ -189,6 +189,13 @@ export default function Cover() {
     setOver(null);
   }, []);
 
+  if (me.data && !admin)
+    return (
+      <Screen>
+        <Header title="Cover a class" />
+        <Empty title="For admins only" message="Only the principal or an HOD hands classes to other teachers. When they ask you to take one, it appears in Requests — accept or decline it there." />
+      </Screen>
+    );
   if (sessionsQ.isPending || avail.isPending)
     return (
       <Screen scroll={false}>
@@ -211,7 +218,7 @@ export default function Cover() {
   return (
     <Screen scroll={false}>
       <View ref={rootRef} style={{ flex: 1 }} collapsable={false}>
-        <Header title="Cover a class" subtitle={admin ? 'Any class · any teacher' : 'Your classes'} />
+        <Header title="Cover a class" subtitle="Admin · any class, any teacher" />
         <Chips
           value={offset}
           onChange={(v) => {

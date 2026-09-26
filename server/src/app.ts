@@ -15,6 +15,8 @@ import { authRoutes } from './routes/auth';
 import { presentRoutes } from './routes/present';
 import { staffPlannerRoutes } from './routes/staff-planner';
 import { requestRoutes } from './routes/requests';
+import { rootRoutes } from './routes/root';
+import { recordRequest } from './lib/metrics';
 import { devRoutes } from './routes/dev';
 import { metaRoutes } from './routes/meta';
 import { studentRoutes } from './routes/student';
@@ -95,6 +97,10 @@ export async function buildApp(opts: BuildOptions): Promise<{ app: FastifyInstan
     });
   }
 
+  app.addHook('onResponse', async (_req, reply) => {
+    recordRequest(reply.elapsedTime, reply.statusCode);
+  });
+
   app.addHook('onSend', async (_req, reply, payload) => {
     reply.header('x-server-time', String(deps.clock()));
     reply.header('x-content-type-options', 'nosniff');
@@ -130,6 +136,7 @@ export async function buildApp(opts: BuildOptions): Promise<{ app: FastifyInstan
   await app.register(async (s) => staffPlannerRoutes(s, deps));
   await app.register(async (s) => presentRoutes(s, deps));
   await app.register(async (s) => requestRoutes(s, deps));
+  await app.register(async (s) => rootRoutes(s, deps));
   await app.register(async (s) => devRoutes(s, deps));
 
   return { app, deps };

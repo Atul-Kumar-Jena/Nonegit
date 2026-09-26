@@ -26,6 +26,7 @@ import {
 } from '@attendly/protocol';
 import type { PoolClient } from 'pg';
 import type { Deps } from '../deps';
+import { tenantFlag } from '../lib/flags';
 import { withTx, type Queryable } from '../db';
 import { STAFF, instructorFilter, isAdmin, loadCourseFor, loadSessionFor, requireAdmin, type SessionAccessRow } from '../lib/access';
 import { requireDevice, type AuthContext } from '../lib/auth';
@@ -327,6 +328,9 @@ export async function staffSessionRoutes(app: FastifyInstance, deps: Deps) {
       const s = await loadSessionFor(tx, auth, id, true);
       const { result, duplicate } = await idempotent(tx, auth, b.clientRef, 'register', async () => {
         if (s.status === 'cancelled') throw new ApiError(409, 'CONFLICT', 'This class was cancelled.');
+        // Corrections to a QR class are always allowed; paper-style classes can be switched off per institution.
+        if (s.mode === 'manual' && !(await tenantFlag(tx, auth.tenantId, 'manual_registers')))
+          throw new ApiError(403, 'FORBIDDEN', 'Paper-style registers are turned off for your institution. Run this class with the QR code instead.');
         if (s.scheduled_start.getTime() > t + 30 * 60_000) throw new ApiError(400, 'BAD_REQUEST', 'You can’t take a register for a class that hasn’t happened yet.');
         if (!isAdmin(auth) && t - s.scheduled_end.getTime() > TEACHER_EDIT_WINDOW_MS)
           throw new ApiError(403, 'FORBIDDEN', 'Registers older than 14 days can only be changed by an admin.');

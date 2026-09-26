@@ -14,6 +14,7 @@ import {
   type MarkResponse,
 } from '@attendly/protocol';
 import type { Deps } from '../deps';
+import { tenantFlag } from '../lib/flags';
 import { isUniqueViolation, withTx } from '../db';
 import { appendAudit } from '../lib/audit';
 import { perDeviceKey, requireDevice, type AuthContext } from '../lib/auth';
@@ -198,7 +199,8 @@ export async function attendanceRoutes(app: FastifyInstance, deps: Deps) {
       const loc = body.location;
       if (loc.mocked) throw new ScanRejection('E-MOCK', 'The operating system flagged this location as coming from a mock-location provider.', { signal: 'os_mock_flag' });
       if (Math.abs(scannedAt - loc.capturedAt) > MAX_LOCATION_AGE_MS) throw new ScanRejection('E-GPS-STALE', undefined, { ageMs: scannedAt - loc.capturedAt });
-      const geo = evaluateGeofence({ centerLat: session.lat, centerLng: session.lng, radiusM: session.radius_m, lat: loc.lat, lng: loc.lng, accuracyM: loc.accuracyM });
+      const strict = await tenantFlag(deps.db, auth.tenantId, 'strict_geo');
+      const geo = evaluateGeofence({ centerLat: session.lat, centerLng: session.lng, radiusM: session.radius_m, lat: loc.lat, lng: loc.lng, accuracyM: loc.accuracyM, strict });
       const where = session.room ?? 'the classroom';
       if (!geo.ok) {
         const distance = Math.round(geo.distanceM);

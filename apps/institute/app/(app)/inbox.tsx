@@ -7,13 +7,14 @@ import { Button, ErrorState, Loading, Segmented, Text } from '@kit/components/ui
 import { colors } from '@kit/theme';
 import { Empty, Header } from '@/components/forms';
 import { RequestCard } from '@/components/Requests';
-import { useChangeRequests, useOverview } from '@/queries';
+import { useChangeRequests, useIsAdmin, useOverview } from '@/queries';
 
 /** Requests: teachers asking me to cover, students' questions, and what I sent. */
 export default function InboxScreen() {
   const q = useChangeRequests();
   const tz = useOverview().data?.timezone;
-  const [tab, setTab] = useState<'in' | 'out'>('in');
+  const admin = useIsAdmin();
+  const [tab, setTab] = useState<'in' | 'out'>(admin ? 'out' : 'in');
   if (q.isPending)
     return (
       <Screen scroll={false}>
@@ -34,7 +35,7 @@ export default function InboxScreen() {
   const list = tab === 'in' ? incoming : outgoing;
   return (
     <Screen onRefresh={() => void q.refetch()} refreshing={q.isRefetching}>
-      <Header title="Requests" subtitle="Cover classes · students’ questions" right={<Button title="Cover" kind="ghost" compact onPress={() => router.push('/cover')} icon={<UserPlus color={colors.text} size={14} />} />} />
+      <Header title="Requests" subtitle="Cover classes · students’ questions" right={admin ? <Button title="Cover" kind="ghost" compact onPress={() => router.push('/cover')} icon={<UserPlus color={colors.text} size={14} />} /> : undefined} />
       <Segmented
         value={tab}
         onChange={setTab}
@@ -47,7 +48,13 @@ export default function InboxScreen() {
         {list.length === 0 ? (
           <Empty
             title={tab === 'in' ? 'Nothing for you' : 'You haven’t asked anyone'}
-            message={tab === 'in' ? 'When a colleague asks you to take a class, or a student asks about one, it shows up here (with a notification).' : 'Use “Cover a class” to hand a class to a free teacher.'}
+            message={
+              tab === 'in'
+                ? 'When your admin asks you to take a class, or a student asks about one, it shows up here (with a notification).'
+                : admin
+                  ? 'Use “Cover a class” to hand a class to a free teacher.'
+                  : 'Teachers answer requests; only admins hand classes out.'
+            }
           />
         ) : (
           list.map((r) => <RequestCard key={r.id} r={r} incoming={tab === 'in'} tz={tz} />)

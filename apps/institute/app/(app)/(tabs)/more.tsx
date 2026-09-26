@@ -46,6 +46,19 @@ export default function More() {
         </View>
         {u ? <Badge label={admin ? 'Admin' : 'Teacher'} tone={admin ? 'violet' : 'cyan'} dot={false} /> : null}
       </Card>
+      {u ? (
+        <Card tone={admin ? 'violet' : undefined} style={{ marginTop: 10, gap: 4 }}>
+          <Text variant="label">{admin ? 'Your role · Admin (principal / HOD)' : 'Your role · Teacher'}</Text>
+          {(admin
+            ? ['Set up the institution: rooms, people, courses, batches, timetable', 'Plan and publish timetable changes for any batch', 'Hand any class to a free teacher (they accept first)', 'Approve phone changes and review suspicious scans']
+            : ['Run your classes: QR code, big screen or register', 'Move or cancel your own classes (students are told)', 'Accept or decline classes your admin asks you to take', 'Answer your students’ requests']
+          ).map((line) => (
+            <Text key={line} variant="small">
+              • {line}
+            </Text>
+          ))}
+        </Card>
+      ) : null}
 
       <SyncBanner />
 
@@ -54,8 +67,8 @@ export default function More() {
         {admin ? <Item icon={<Wand2 color={colors.violet} size={18} />} label="Setup checklist" href="/setup" /> : null}
         {admin ? <Item icon={<CalendarRange color={colors.cyan} size={18} />} label="Timetable planner" sub="Drag & drop changes, then publish" href="/planner" /> : null}
         <Item icon={<Clock4 color={colors.green} size={18} />} label="Who’s busy where" sub="Teachers and rooms, hour by hour" href="/busy" />
-        <Item icon={<UserPlus color={colors.violet} size={18} />} label="Cover a class" sub="Drag a free teacher onto a class; they accept, students are told" href="/cover" />
-        <Item icon={<Inbox color={colors.amber} size={18} />} label="Requests" sub="Cover requests and students’ questions" href="/inbox" />
+        {admin ? <Item icon={<UserPlus color={colors.violet} size={18} />} label="Cover a class" sub="Drag a free teacher onto a class; they accept, students are told" href="/cover" /> : null}
+        <Item icon={<Inbox color={colors.amber} size={18} />} label="Requests" sub={admin ? 'Cover requests you sent, and replies' : 'Classes you’re asked to take · students’ questions'} href="/inbox" />
         <Item icon={<Bell color={colors.amber} size={18} />} label="Notifications" href="/notifications" />
         <Item icon={<Lock color={colors.textMuted} size={18} />} label="Permissions" sub="Location and notifications" href="/permissions" />
         {admin ? <Item icon={<Users color={colors.cyan} size={18} />} label="People" sub="Students, teachers, admins" href="/people" /> : null}

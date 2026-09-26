@@ -42,12 +42,14 @@ export function evaluateGeofence(p: {
   lat: number;
   lng: number;
   accuracyM: number;
+  /** No ±accuracy allowance: the reported position itself must be inside the radius. */
+  strict?: boolean;
 }): GeofenceVerdict {
   const distanceM = distanceMeters(p.centerLat, p.centerLng, p.lat, p.lng);
   // Real GNSS never reports perfect accuracy; 0 is the classic fake-GPS signature.
   if (!(p.accuracyM > 0)) return { ok: false, reason: 'suspicious', distanceM };
   if (p.accuracyM > MAX_ACCEPTED_ACCURACY_M) return { ok: false, reason: 'imprecise', distanceM };
-  const allowance = Math.min(p.accuracyM, GEOFENCE_JITTER_ALLOWANCE_M);
+  const allowance = p.strict ? 0 : Math.min(p.accuracyM, GEOFENCE_JITTER_ALLOWANCE_M);
   if (distanceM > p.radiusM + allowance) return { ok: false, reason: 'outside', distanceM };
   return { ok: true, distanceM };
 }
