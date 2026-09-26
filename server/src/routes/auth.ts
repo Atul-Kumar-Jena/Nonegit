@@ -29,7 +29,7 @@ import { makeSecretBox, verifyTotp } from '../lib/totp';
 import { ApiError } from '../lib/errors';
 import { generateOtpCode, maskEmail, maskPhone, randomToken } from '../lib/secrets';
 import { revokeActiveDevice } from './staff-admin';
-import { loadActiveDevice, loadUser, toDeviceSummary, toUserSummary, type DeviceRow } from '../lib/users';
+import { assertPhoneFree, hardwareHash, loadActiveDevice, loadUser, toDeviceSummary, toUserSummary, type DeviceRow } from '../lib/users';
 
 export const OTP_TTL_MS = 5 * 60_000;
 export const OTP_MAX_ATTEMPTS = 5;
@@ -186,6 +186,14 @@ export async function authRoutes(app: FastifyInstance, deps: Deps) {
     const pk = Buffer.from(fromB64url(body.device.publicKey));
     return withTx(deps.db, async (tx): Promise<OtpVerifyResponse> => {
       let bound = await loadActiveDevice(tx, user.id);
+      const hw = hardwareHash(deps.hash, body.device);
+      // Same physical phone with a new key (the app's data was cleared, or it was reinstalled):
+      // re-bind straight away — it's still their phone.
+      if (bound && !bound.public_key.equals(pk) && hw && bound.hw_hash?.equals(hw) && bound.platform === body.device.platform) {
+        await revokeActiveDevice(tx, user.id, 'same phone, new key (app data cleared or reinstalled)', new Date(deps.clock()));
+        await appendAudit(tx, { tenantId: user.tenant_id, actorType: 'user', actorId: user.id, action: 'device.rekey_same_phone', subject: `device:${bound.id}` });
+        bound = undefined;
+      }
       // Demo accounts hop between test phones: the new phone simply takes over.
       if (bound && !bound.public_key.equals(pk) && deps.config.demoInstantLogin && isDemoEmail(user.email) && !(await switchOn(tx, 'demo_login_off'))) {
         await revokeActiveDevice(tx, user.id, 'demo: signed in on another phone', new Date(deps.clock()));
@@ -198,8 +206,8 @@ export async function authRoutes(app: FastifyInstance, deps: Deps) {
       }
       if (bound.public_key.equals(pk)) {
         await tx.query(
-          `update devices set os_version = $2, app_version = $3, model = $4, last_seen_at = $5 where id = $1`,
-          [bound.id, body.device.osVersion, body.device.appVersion, body.device.model, new Date(deps.clock())],
+          `update devices set os_version = $2, app_version = $3, model = $4, last_seen_at = $5, hw_hash = coalesce(hw_hash, $6) where id = $1`,
+          [bound.id, body.device.osVersion, body.device.appVersion, body.device.model, new Date(deps.clock()), hw],
         );
         const auth = await issueTokens(tx, deps, { userId: user.id, deviceId: bound.id });
         await appendAudit(tx, { tenantId: user.tenant_id, actorType: 'user', actorId: user.id, action: 'auth.login', subject: `device:${bound.id}` });
@@ -240,18 +248,22 @@ export async function authRoutes(app: FastifyInstance, deps: Deps) {
         if (await loadActiveDevice(tx, user.id)) throw new ApiError(409, 'CONFLICT', 'Another device was bound to this account in the meantime.');
         if (deps.config.demoInstantLogin && isDemoEmail(user.email)) {
           // Demo: this phone may have been used for another demo account; free it.
-          const other = await tx.query<{ user_id: string; email: string | null }>(
-            `select d.user_id, u.email from devices d join users u on u.id = d.user_id where d.public_key = $1 and d.status = 'active'`,
+          // (Never between two students: one phone, one student holds in the demo too.)
+          const other = await tx.query<{ user_id: string; email: string | null; role: string }>(
+            `select d.user_id, u.email, u.role from devices d join users u on u.id = d.user_id where d.public_key = $1 and d.status = 'active'`,
             [t.public_key],
           );
           const o = other.rows[0];
-          if (o && isDemoEmail(o.email)) await revokeActiveDevice(tx, o.user_id, 'demo: phone used for another demo account', new Date(deps.clock()));
+          if (o && isDemoEmail(o.email) && !(o.role === 'student' && user.role === 'student'))
+            await revokeActiveDevice(tx, o.user_id, 'demo: phone used for another demo account', new Date(deps.clock()));
         }
         const info = t.device_info;
+        const hw = hardwareHash(deps.hash, info);
+        await assertPhoneFree(tx, hw, user.id, user.role);
         const { rows } = await tx.query<DeviceRow>(
-          `insert into devices(user_id, public_key, fingerprint, platform, model, os_version, app_version, status, bound_at, last_seen_at)
-           values ($1, $2, $3, $4, $5, $6, $7, 'active', $8, $8) returning *`,
-          [user.id, t.public_key, keyFingerprint(t.public_key), info.platform, info.model, info.osVersion, info.appVersion, new Date(deps.clock())],
+          `insert into devices(user_id, public_key, fingerprint, platform, model, os_version, app_version, status, bound_at, last_seen_at, hw_hash)
+           values ($1, $2, $3, $4, $5, $6, $7, 'active', $8, $8, $9) returning *`,
+          [user.id, t.public_key, keyFingerprint(t.public_key), info.platform, info.model, info.osVersion, info.appVersion, new Date(deps.clock()), hw],
         );
         const device = rows[0]!;
         const auth = await issueTokens(tx, deps, { userId: user.id, deviceId: device.id });

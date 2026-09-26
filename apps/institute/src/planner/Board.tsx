@@ -8,6 +8,11 @@ import { layoutDay } from './layout';
 import { colors, fonts } from '@kit/theme';
 
 export const SNAP_MIN = 5;
+/** 570 → "9:30 AM". */
+export const t12 = (min: number) => {
+  const h = Math.floor(min / 60) % 24;
+  return `${h % 12 === 0 ? 12 : h % 12}:${String(min % 60).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+};
 const HEADER_H = 44;
 const GUTTER = 38;
 const LONG_PRESS_MS = 230;
@@ -161,7 +166,7 @@ const Card = memo(function Card({
       ]}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-        <Text style={[styles.code, cancelled && { textDecorationLine: 'line-through' }]} numberOfLines={1}>
+        <Text style={[styles.code, compact && { fontSize: 11 }, cancelled && { textDecorationLine: 'line-through' }]} numberOfLines={compact ? 2 : 1}>
           {course?.code ?? '—'}
         </Text>
         {item.locked ? <Lock color={colors.textDim} size={9} /> : null}
@@ -171,8 +176,7 @@ const Card = memo(function Card({
       </View>
       {h > 30 ? (
         <Text style={styles.meta} numberOfLines={1}>
-          {item.start}
-          {compact ? '' : `–${item.end}`}
+          {compact ? t12(hmToMin(item.start)).replace(':00', '') : `${t12(hmToMin(item.start))}–${t12(hmToMin(item.end))}`}
         </Text>
       ) : null}
       {h > 46 && !compact ? (
@@ -298,6 +302,31 @@ export function Board(p: BoardProps) {
     [colW, p.days, p.items, gridH, dayStart, ppm],
   );
 
+  /** Would dropping here clash? Same teacher or same room at an overlapping time (the server re-checks everything). */
+  const clashAt = useCallback(
+    (t: DropTarget, src: DragSource, dur: number): string | null => {
+      if (t.overKey) return null; // a swap: checked after the drop
+      const teacherId = src.kind === 'item' ? src.item.teacherId : src.course.instructorId;
+      const roomId = src.kind === 'item' ? src.item.roomId : null;
+      const end = t.startMin + dur;
+      for (const i of p.items) {
+        if (i.date !== t.date || i.status === 'cancelled' || (src.kind === 'item' && i.key === src.item.key)) continue;
+        if (!(hmToMin(i.start) < end && t.startMin < hmToMin(i.end))) continue;
+        const code = p.courses.get(i.courseId)?.code ?? 'another class';
+        if (teacherId && i.teacherId === teacherId) return `${p.teachers.get(teacherId) ?? 'The teacher'} teaches ${code} then`;
+        if (roomId && i.roomId === roomId) return `${p.rooms.get(roomId) ?? 'The room'} has ${code} then`;
+      }
+      return null;
+    },
+    [p.items, p.courses, p.teachers, p.rooms],
+  );
+  const lastTargetKey = useRef('');
+  const tick = (t: DropTarget | null) => {
+    const k = t ? `${t.date}|${t.startMin}|${t.overKey ?? ''}` : '';
+    if (k && k !== lastTargetKey.current) void Haptics.selectionAsync().catch(() => undefined);
+    lastTargetKey.current = k;
+  };
+
   // Auto-scroll while holding near an edge.
   useEffect(() => {
     if (!drag) return;
@@ -345,11 +374,17 @@ export function Board(p: BoardProps) {
       },
       move: (x: number, y: number) => {
         pointer.current = { x, y };
-        setDrag((cur) => (cur ? { ...cur, x, y, target: targetAt(x, y, cur.box, cur.src) } : cur));
+        setDrag((cur) => {
+          if (!cur) return cur;
+          const target = targetAt(x, y, cur.box, cur.src);
+          tick(target);
+          return { ...cur, x, y, target };
+        });
       },
       end: (x: number, y: number) => {
         const cur = dragRef.current;
         setDrag(null);
+        lastTargetKey.current = '';
         if (!cur) return;
         const t = targetAt(x, y, cur.box, cur.src);
         if (t) p.onDrop(cur.src, t);
@@ -364,6 +399,12 @@ export function Board(p: BoardProps) {
   const ghostCourse = drag ? (drag.src.kind === 'item' ? p.courses.get(drag.src.item.courseId) : drag.src.course) : undefined;
   const target = drag?.target;
   const targetDur = drag ? (drag.src.kind === 'item' ? hmToMin(drag.src.item.end) - hmToMin(drag.src.item.start) : 60) : 0;
+  const clash = drag && target ? clashAt(target, drag.src, targetDur) : null;
+  const tone = !target ? colors.textDim : clash ? colors.red : target.overKey ? colors.amber : colors.green;
+  const nowMin = (() => {
+    const d = new Date();
+    return d.getHours() * 60 + d.getMinutes();
+  })();
 
   return (
     <View style={{ flex: 1 }}>
@@ -407,7 +448,7 @@ export function Board(p: BoardProps) {
               <View style={{ width: gridW, height: gridH + 8 }}>
                 {hours.map((m) => (
                   <View key={m} style={[styles.hourLine, { top: (m - dayStart) * ppm }]}>
-                    <Text style={styles.hourText}>{minToHm(m).slice(0, 2)}</Text>
+                    <Text style={styles.hourText}>{`${Math.floor(m / 60) % 12 === 0 ? 12 : Math.floor(m / 60) % 12}${Math.floor(m / 60) < 12 ? 'a' : 'p'}`}</Text>
                   </View>
                 ))}
                 {p.days.map((d, i) => (
@@ -423,13 +464,19 @@ export function Board(p: BoardProps) {
                         top: (target.startMin - dayStart) * ppm,
                         width: colW - 4,
                         height: Math.max(22, targetDur * ppm - 2),
-                        borderColor: target.overKey ? colors.amber : colors.cyan,
+                        borderColor: tone,
+                        backgroundColor: clash ? 'rgba(248,113,113,0.14)' : target.overKey ? 'rgba(251,191,36,0.12)' : 'rgba(74,222,128,0.12)',
                       },
                     ]}
                   >
-                    <Text style={styles.dropText}>
-                      {target.overKey ? 'Swap' : `${minToHm(target.startMin)}`}
+                    <Text style={[styles.dropText, { color: tone }]} numberOfLines={2}>
+                      {target.overKey ? '⇄ Swap' : clash ? '✕ Clash' : `✓ ${t12(target.startMin)}`}
                     </Text>
+                  </View>
+                ) : null}
+                {p.days.includes(p.today) && nowMin >= dayStart && nowMin <= dayEnd ? (
+                  <View pointerEvents="none" style={[styles.nowLine, { left: GUTTER + p.days.indexOf(p.today) * colW, width: colW, top: (nowMin - dayStart) * ppm }]}>
+                    <View style={styles.nowDot} />
                   </View>
                 ) : null}
                 {p.items.map((it) => (
@@ -474,15 +521,22 @@ export function Board(p: BoardProps) {
             {
               left: drag.x - drag.box.fx - origin.current.root.x,
               top: drag.y - drag.box.fy - origin.current.root.y,
-              width: Math.max(60, drag.box.w),
-              height: Math.max(30, drag.box.h),
+              width: Math.max(120, drag.box.w),
+              height: Math.max(46, drag.box.h),
+              transform: [{ scale: 1.06 }],
               backgroundColor: ghostCourse ? courseColor(ghostCourse.id).bg : colors.card,
-              borderColor: ghostCourse ? courseColor(ghostCourse.id).line : colors.cyan,
+              borderColor: target ? tone : ghostCourse ? courseColor(ghostCourse.id).line : colors.cyan,
             },
           ]}
         >
           <Text style={styles.code}>{ghostCourse?.code ?? ''}</Text>
-          {target ? <Text style={styles.meta}>{`${DAY_SHORT[weekdayOf(target.date)]} ${minToHm(target.startMin)}`}</Text> : <Text style={styles.meta}>drop on the week</Text>}
+          {target ? (
+            <Text style={[styles.meta, { color: tone }]} numberOfLines={2}>
+              {target.overKey ? 'Drop to swap' : clash ?? `${DAY_SHORT[weekdayOf(target.date)]} ${t12(target.startMin)}–${t12(target.startMin + targetDur)}`}
+            </Text>
+          ) : (
+            <Text style={styles.meta}>Drag onto the week</Text>
+          )}
         </View>
       ) : null}
     </View>
@@ -493,17 +547,19 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border, backgroundColor: colors.bg },
   dayHead: { alignItems: 'center', justifyContent: 'center', borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: colors.border },
   today: { backgroundColor: 'rgba(255, 255, 255, 0.07)' },
-  dayName: { fontFamily: fonts.semibold, fontSize: 12, color: colors.text },
-  dayDate: { fontFamily: fonts.mono, fontSize: 10, color: colors.textDim },
+  dayName: { fontFamily: fonts.semibold, fontSize: 13, color: colors.text },
+  dayDate: { fontFamily: fonts.mono, fontSize: 10.5, color: colors.textMuted },
   hourLine: { position: 'absolute', left: 0, right: 0, height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
-  hourText: { position: 'absolute', left: 6, top: -1, fontFamily: fonts.mono, fontSize: 10, color: colors.textDim },
+  hourText: { position: 'absolute', left: 5, top: 1, fontFamily: fonts.mono, fontSize: 10, color: colors.textMuted },
+  nowLine: { position: 'absolute', height: 2, backgroundColor: colors.red },
+  nowDot: { position: 'absolute', left: -4, top: -3, width: 8, height: 8, borderRadius: 4, backgroundColor: colors.red },
   dayCol: { position: 'absolute', top: 0, borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: colors.border },
   card: { position: 'absolute', borderRadius: 8, paddingHorizontal: 4, paddingVertical: 3, overflow: 'hidden' },
-  code: { fontFamily: fonts.bold, fontSize: 11, color: colors.text },
-  meta: { fontFamily: fonts.mono, fontSize: 9.5, color: colors.textMuted },
+  code: { fontFamily: fonts.bold, fontSize: 12.5, color: colors.text },
+  meta: { fontFamily: fonts.medium, fontSize: 10.5, color: colors.textMuted },
   dropPreview: { position: 'absolute', borderRadius: 8, borderWidth: 2, borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255, 255, 255, 0.08)' },
-  dropText: { fontFamily: fonts.mono, fontSize: 10, color: colors.text },
+  dropText: { fontFamily: fonts.semibold, fontSize: 11, color: colors.text, textAlign: 'center' },
   tray: { paddingTop: 10, paddingBottom: 6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
   chip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, borderWidth: 1, minWidth: 84 },
-  ghost: { position: 'absolute', borderRadius: 10, borderWidth: 2, padding: 5, shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 12, elevation: 12 },
+  ghost: { position: 'absolute', borderRadius: 12, borderWidth: 2, padding: 7, gap: 2, shadowColor: '#000', shadowOpacity: 0.6, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 16 },
 });

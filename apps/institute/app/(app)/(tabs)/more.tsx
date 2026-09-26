@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, Switch, View } from 'react-native';
 import { router, type Href } from 'expo-router';
 import { Bell, Building2, CalendarDays, CalendarRange, ChevronRight, Clock4, Inbox, KeyRound, Library, Lock, LogOut, MapPin, Play, Plus, ShieldAlert, Smartphone, Trash2, UserPlus, Users, UsersRound, Wand2 } from 'lucide-react-native';
 import { Screen } from '@kit/components/Screen';
@@ -8,6 +8,7 @@ import { Avatar, Badge, Button, Card, Divider, InfoRow, SectionLabel, Text } fro
 import { APP_VERSION } from '@kit/lib/env';
 import { initials } from '@kit/lib/format';
 import { useOutbox } from '@kit/lib/outbox';
+import { setScreenshotsBlocked, useScreenshotsBlocked } from '@kit/lib/screenshots';
 import { displayHost } from '@kit/lib/server-config';
 import { useSession } from '@kit/state/session';
 import { colors } from '@kit/theme';
@@ -24,6 +25,7 @@ export default function More() {
   const { server, signOut, resetPhone } = useSession();
   const { items: unsent } = useOutbox();
   const u = me.data?.user;
+  const shotsBlocked = useScreenshotsBlocked();
   const admin = u?.role === 'admin';
   const warn = unsent.length
     ? `\n\n⚠ ${unsent.length} offline ${unsent.length === 1 ? 'change has' : 'changes have'} not been uploaded yet (registers, class starts) and will be lost. Connect to the internet first.`
@@ -91,8 +93,22 @@ export default function More() {
         <View style={styles.row}>
           <Lock color={colors.green} size={18} />
           <Text variant="small" color={colors.text} style={{ flex: 1 }}>
-            App lock on · screenshots blocked · data encrypted on the phone
+            App lock on · data encrypted on the phone
           </Text>
+        </View>
+        <Divider style={{ marginVertical: 12 }} />
+        <View style={styles.row}>
+          <View style={{ flex: 1 }}>
+            <Text variant="bodyStrong">Block screenshots</Text>
+            <Text variant="small">Also hides the app in the recent-apps view. Leave off to capture screens (e.g. to report a bug).</Text>
+          </View>
+          <Switch
+            value={shotsBlocked}
+            onValueChange={(v) => void setScreenshotsBlocked(v)}
+            trackColor={{ true: colors.text, false: colors.borderHi }}
+            thumbColor={shotsBlocked ? colors.bg : colors.textMuted}
+            accessibilityLabel="Block screenshots"
+          />
         </View>
         <Divider style={{ marginVertical: 12 }} />
         <InfoRow label="DEVICE" value={me.data ? `${me.data.device.model} · ${me.data.device.fingerprint}` : '—'} />

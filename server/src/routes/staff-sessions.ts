@@ -26,6 +26,7 @@ import {
 } from '@attendly/protocol';
 import type { PoolClient } from 'pg';
 import type { Deps } from '../deps';
+import { assertPhoneFree, hardwareHash } from '../lib/users';
 import { tenantFlag } from '../lib/flags';
 import { withTx, type Queryable } from '../db';
 import { STAFF, instructorFilter, isAdmin, loadCourseFor, loadSessionFor, requireAdmin, type SessionAccessRow } from '../lib/access';
@@ -548,12 +549,15 @@ export async function staffSessionRoutes(app: FastifyInstance, deps: Deps) {
           if (!r.to_public_key || !r.to_device_info) throw new ApiError(400, 'BAD_REQUEST', 'This request has no new device.');
           const taken = await tx.query(`select 1 from devices where public_key = $1 and status = 'active' and user_id <> $2`, [r.to_public_key, r.user_id]);
           if (taken.rowCount) throw new ApiError(409, 'CONFLICT', 'That phone is bound to another account. One phone, one person.');
-          await revokeActiveDevice(tx, r.user_id, 'replaced by approved device switch', t);
           const info = r.to_device_info;
+          const hw = hardwareHash(deps.hash, info);
+          const role = (await tx.query<{ role: string }>('select role from users where id = $1', [r.user_id])).rows[0]!.role;
+          await assertPhoneFree(tx, hw, r.user_id, role);
+          await revokeActiveDevice(tx, r.user_id, 'replaced by approved device switch', t);
           await tx.query(
-            `insert into devices(user_id, public_key, fingerprint, platform, model, os_version, app_version, status, bound_at)
-             values ($1, $2, $3, $4, $5, $6, $7, 'active', $8)`,
-            [r.user_id, r.to_public_key, keyFingerprint(r.to_public_key), info.platform, info.model, info.osVersion, info.appVersion, t],
+            `insert into devices(user_id, public_key, fingerprint, platform, model, os_version, app_version, status, bound_at, hw_hash)
+             values ($1, $2, $3, $4, $5, $6, $7, 'active', $8, $9)`,
+            [r.user_id, r.to_public_key, keyFingerprint(r.to_public_key), info.platform, info.model, info.osVersion, info.appVersion, t, hw],
           );
         } else {
           await revokeActiveDevice(tx, r.user_id, 'reset approved', t);

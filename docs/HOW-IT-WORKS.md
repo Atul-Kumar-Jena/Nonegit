@@ -131,6 +131,6 @@ Tap **Allow** on each card or **Allow all**. If someone refuses, the app tells t
 - **Every request is signed** (method, path, time, random nonce, body hash), so a stolen login token is useless without the phone.
 - **The QR can't be forged and goes stale in seconds.** A photo sent to a friend stops working almost immediately, and the location check stops remote scans anyway.
 - **Signed receipts.** The server signs every mark and the phone checks the signature against the server key it pinned on first connect.
-- **Staff phones** must have a screen lock. The Institute app asks for fingerprint, face or PIN on launch and after 30 s away, hides its content in the app switcher and blocks screenshots.
+- **Staff phones** must have a screen lock. The Institute app asks for fingerprint, face or PIN on launch and after 30 s away, can block screenshots and hide its content in the app switcher (More → This phone; off by default).
 - **At rest:** codes and tokens are stored only as hashes, and everything saved on a phone is encrypted (XChaCha20-Poly1305) with a key held in the phone's secure hardware.
 - **Tamper-evident history.** Every sign-in, mark, change, approval and refusal is chained with SHA-256, and the database refuses edits and deletes on it.

@@ -28,7 +28,14 @@ The server contains a ready-made **Demo Institute of Technology** with a timetab
 | **Dr. S. Banerjee** · **Dr. R. Khanna** · **Prof. A. Joshi** | Teachers | Accept cover requests, run classes |
 | **Aarav Reddy** (and 10 more) | Students | Scan, timetable, "Ask" a teacher |
 
-(Typing the email works too, e.g. `aarav@demo.attendly.app`.) Demo accounts may hop between phones; real accounts can't.
+(Typing the email works too, e.g. `aarav@demo.attendly.app`.)
+
+**One phone, one student** (demo accounts included):
+- A student's account is tied to the physical phone (its hardware ID), not just to the app.
+- Clearing the app's data or reinstalling on the same phone signs the same student straight back in.
+- A second student can't register that phone; the admin must unbind it first (People → the person → Unbind this phone).
+- Moving to a different phone needs the admin's approval.
+- Teachers and admins may share a phone.
 
 **A 10-minute tour with two phones** (Phone A = Institute app, Phone B = Attendly app):
 
@@ -70,9 +77,15 @@ Your real institution is the one you named in Render (`BOOTSTRAP_INSTITUTION_NAM
 - **Today**: your classes, requests waiting for you, *Coming up*.
 - **More → All features**: every screen in one box. The ⓘ on each screen explains it.
 - **Cover a class**: drag a free teacher onto a class. They accept, then the students are told. You're notified of the answer.
-- **Planner**: drag classes to another day/time (drop on a class to swap), add extra classes from the tray, change teacher/room, cancel. Everything stays a draft (red = clash) until **Review & publish**. Giving a class to another teacher sends them a request first.
+- **Planner**: long-press a class and drag it.
+  - The slot under your finger turns **green** (free, with the new time), **amber** (drop to swap) or **red** (clash, with the reason). The phone ticks at each step.
+  - The red line is "now". 🔍 zooms out to the whole week.
+  - Add extra classes from the tray; tap a class to change its teacher or room, or cancel it.
+  - Everything stays a draft until **Review & publish**. Giving a class to another teacher sends them a request first.
 - **Who's busy**: every teacher/room hour by hour, with "Free at".
 - **People · Batches · Rooms · Phone requests · Suspicious scans · Institution**.
+
+**Screenshots** are allowed by default so you can capture bugs. Turn on **More → This phone → Block screenshots** to block them and hide the app in the recent-apps view.
 
 ### Teacher — Institute app
 - Tap a class → **QR** (the code rotates every few seconds), **Show on a big screen**, or **Register**.

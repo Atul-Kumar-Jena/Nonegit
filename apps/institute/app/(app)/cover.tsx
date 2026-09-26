@@ -476,6 +476,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 16,
     backgroundColor: colors.cyan,
+    transform: [{ scale: 1.08 }],
     shadowColor: '#000',
     shadowOpacity: 0.4,
     shadowRadius: 10,

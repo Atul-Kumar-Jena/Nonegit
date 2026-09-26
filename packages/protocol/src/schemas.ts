@@ -82,6 +82,8 @@ export const DeviceInfo = z.object({
   osVersion: shortText(40),
   appVersion: shortText(20),
   integrity: z.object({ rooted: z.boolean(), emulator: z.boolean() }),
+  /** The phone's hardware ID (Android ID / iOS vendor ID): survives clearing the app's data. Stored only as a keyed hash. */
+  hardwareId: z.string().trim().min(4).max(128).optional(),
 });
 export type DeviceInfo = z.infer<typeof DeviceInfo>;
 

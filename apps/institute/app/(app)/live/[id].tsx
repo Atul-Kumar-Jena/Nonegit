@@ -22,7 +22,7 @@ import { useSessionView } from '@/session-view';
 /**
  * The classroom screen: a QR code that changes every few seconds. It is computed
  * on this phone from the class key and the server-synced clock, so it keeps
- * working with no internet. Screenshots are blocked; the screen stays on.
+ * working with no internet. The screen stays on (screenshots can be blocked in More → This phone).
  */
 /** Keeps the screen on while the QR is showing (best effort: never crashes if the platform refuses). */
 function useScreenOn() {

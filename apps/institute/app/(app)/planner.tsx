@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { ChevronLeft, ChevronRight, CloudOff, FileClock, ListChecks, Undo2 } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight, CloudOff, FileClock, ListChecks, Undo2, ZoomIn, ZoomOut } from 'lucide-react-native';
 import {
   addDaysYmd,
   applyOps,
@@ -31,7 +31,7 @@ import { useApi } from '@kit/state/session';
 import { colors } from '@kit/theme';
 import { ConflictList, TeacherPicker } from '@/components/Adjust';
 import { DateField, Field, Select, Sheet, TimeField, confirmAction, fromMinutes, toMinutes } from '@/components/forms';
-import { Board, type DragSource, type DropTarget } from '@/planner/Board';
+import { Board, type DragSource, type DropTarget, t12 } from '@/planner/Board';
 import { describeOp, type KnownSession } from '@/planner/describe';
 import { useDraft } from '@/planner/useDraft';
 import { useIsAdmin, useOverview, usePlannerWeek } from '@/queries';
@@ -59,7 +59,8 @@ export default function Planner() {
   const week = weekQ.data;
   const d = useDraft(weekStart);
   const [scope, setScope] = useState<Scope>('once');
-  const [compact, setCompact] = useState(true);
+  // Wide, readable columns by default; zoom out to see the whole week at once.
+  const [compact, setCompact] = useState(false);
   const [filterKind, setFilterKind] = useState<FilterKind>('all');
   const [filterId, setFilterId] = useState<string | null>(null);
   const [history, setHistory] = useState<DraftOp[][]>([]);
@@ -210,7 +211,9 @@ export default function Planner() {
             <ChevronRight color={colors.text} size={16} />
           </IconButton>
           <View style={{ flex: 1 }} />
-          <Segmented value={compact ? 'fit' : 'detail'} options={[{ value: 'fit', label: 'Fit' }, { value: 'detail', label: 'Detail' }]} onChange={(v) => setCompact(v === 'fit')} />
+          <IconButton label={compact ? 'Zoom in (wide days)' : 'Zoom out (whole week)'} onPress={() => setCompact((c) => !c)}>
+            {compact ? <ZoomIn color={colors.text} size={18} /> : <ZoomOut color={colors.text} size={18} />}
+          </IconButton>
         </View>
         <Segmented
           value={scope}
@@ -456,7 +459,7 @@ function ClassSheet({
 
   if (item.locked || item.status !== 'scheduled') {
     return (
-      <Sheet open onClose={onClose} title={`${course?.code ?? 'Class'} · ${item.start}`}>
+      <Sheet open onClose={onClose} title={`${course?.code ?? 'Class'} · ${t12(hmToMin(item.start))}`}>
         <Text variant="small">
           {item.status === 'cancelled' ? 'This class is cancelled.' : 'This class has already started or ended, so it can’t be changed here.'} {course?.title}
         </Text>
@@ -469,7 +472,7 @@ function ClassSheet({
   return (
     <Sheet open onClose={onClose} title={`${course?.code ?? 'Class'} · ${course?.title ?? ''}`}>
       <Text variant="small">
-        {`${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][weekdayOf(item.date)]} ${item.start}–${item.end}`}
+        {`${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][weekdayOf(item.date)]} ${t12(hmToMin(item.start))}–${t12(hmToMin(item.end))}`}
         {item.roomId ? ` · ${maps.rooms.get(item.roomId)}` : ' · no room'} · {item.teacherId ? maps.teachers.get(item.teacherId) : 'no teacher'}
         {item.substitute ? ' (substitute)' : ''}
       </Text>

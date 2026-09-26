@@ -83,10 +83,17 @@ describe('demo mode', () => {
     // The old phone's session is gone.
     expect((await phoneA.call('GET', '/v1/me/dashboard')).statusCode).toBe(401);
 
-    // phoneB now signs in as another demo student: the phone is handed over.
+    // …but phoneB can't become a second demo student's phone: one phone, one student, even in the demo.
     const other = await instantSignIn(phoneB, 'rohan@demo.attendly.app');
     expect(other.json().status).toBe('bind_required');
-    expect((await phoneB.bind(other.json().ticket)).statusCode).toBe(200);
+    expect((await phoneB.bind(other.json().ticket)).statusCode).toBe(409);
+    // Demo staff may still share a phone (the guided tour signs in as several teachers on one phone).
+    const staffPhone = new TestDevice(ctx);
+    for (const email of ['banerjee@demo.attendly.app', 'khanna@demo.attendly.app']) {
+      const s = await instantSignIn(staffPhone, email);
+      expect(s.json().status).toBe('bind_required');
+      expect((await staffPhone.bind(s.json().ticket)).statusCode).toBe(200);
+    }
   });
 
   it('never hands over a real account’s phone', async () => {

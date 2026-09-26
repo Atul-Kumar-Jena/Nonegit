@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { AppState, Platform, StyleSheet, View } from 'react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
-import * as ScreenCapture from 'expo-screen-capture';
+import { loadScreenshotSetting } from '../lib/screenshots';
 import { Lock, ShieldAlert } from 'lucide-react-native';
 import { LogoMark } from './Logo';
 import { Backdrop } from './Screen';
@@ -18,7 +18,7 @@ type LockState = 'checking' | 'locked' | 'no-screen-lock' | 'open';
  * Staff and developer phones hold student data, live QR secrets or platform controls, so these apps:
  *  • refuses to run on a phone without a screen lock,
  *  • asks for fingerprint / face / device PIN on launch and after 30 s away,
- *  • hides its content in the app switcher and blocks screenshots/recording.
+ *  • can block screenshots and hide its content in the app switcher (a setting, off by default).
  */
 export function AppLock({ children }: { children: ReactNode }) {
   const { phase, signOut, audience } = useSession();
@@ -32,11 +32,9 @@ export function AppLock({ children }: { children: ReactNode }) {
   const freshLogin = useRef(false);
   if (phase === 'signed-out' || phase === 'needs-server') freshLogin.current = true;
 
+  // Screenshot blocking is a choice (More → This phone), off by default.
   useEffect(() => {
-    if (web) return;
-    void ScreenCapture.preventScreenCaptureAsync('app-lock').catch(() => undefined);
-    void ScreenCapture.enableAppSwitcherProtectionAsync(0.9).catch(() => undefined);
-    return () => void ScreenCapture.allowScreenCaptureAsync('app-lock').catch(() => undefined);
+    if (!web) void loadScreenshotSetting();
   }, [web]);
 
   const unlock = useCallback(async () => {

@@ -1,4 +1,5 @@
 import { keyFingerprint, type DeviceSummary, type Platform, type Role, type UserSummary } from '@attendly/protocol';
+import { ApiError } from './errors';
 import type { Queryable } from '../db';
 
 export interface UserRow {
@@ -53,6 +54,27 @@ export interface DeviceRow {
   status: 'active' | 'revoked';
   bound_at: Date | null;
   last_seen_at: Date | null;
+  hw_hash: Buffer | null;
+}
+
+/** Keyed hash of a phone's hardware ID (the raw ID is never stored). */
+export function hardwareHash(hash: (purpose: string, value: string) => Buffer, info: { platform: string; hardwareId?: string }): Buffer | null {
+  return info.hardwareId ? hash('hw', `${info.platform}:${info.hardwareId}`) : null;
+}
+
+/**
+ * One phone, one student: refuses when this physical phone is already bound to another
+ * student (clearing the app's data doesn't make it a new phone). Staff are not limited.
+ */
+export async function assertPhoneFree(db: Queryable, hw: Buffer | null, userId: string, role: string): Promise<void> {
+  if (!hw || role !== 'student') return;
+  const { rows } = await db.query<{ roll_no: string | null }>(
+    `select u.roll_no from devices d join users u on u.id = d.user_id
+      where d.hw_hash = $1 and d.status = 'active' and d.user_id <> $2 and u.role = 'student' limit 1`,
+    [hw, userId],
+  );
+  if (rows[0])
+    throw new ApiError(409, 'CONFLICT', 'This phone is already registered to another student. One phone, one student — ask your admin to unbind it from the other account first.');
 }
 
 export async function loadActiveDevice(db: Queryable, userId: string): Promise<DeviceRow | undefined> {
