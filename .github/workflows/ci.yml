@@ -53,6 +53,9 @@ jobs:
       - name: Institute app JS bundle (Android)
         working-directory: apps/institute
         run: npx expo export --platform android --output-dir /tmp/dist-institute
+      - name: Developer app JS bundle (Android)
+        working-directory: apps/developer
+        run: npx expo export --platform android --output-dir /tmp/dist-developer
 
   docker:
     name: Server Docker image
@@ -84,7 +87,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        app: [student, institute]
+        app: [student, institute, developer]
     env:
       # Set these under Settings → Secrets and variables → Actions → Variables.
       EXPO_PUBLIC_API_URL: ${{ vars.ATTENDLY_API_URL }}
@@ -117,7 +120,7 @@ jobs:
           retention-days: 30
 
   release:
-    name: Publish both APKs
+    name: Publish the APKs
     runs-on: ubuntu-latest
     needs: android-apk
     if: github.event_name == 'push' && github.ref == 'refs/heads/claude/three-secure-synced-apps-42sdud'
@@ -129,7 +132,7 @@ jobs:
           pattern: attendly-*-apk
           merge-multiple: true
       - name: Zip both apps
-        run: zip -9 attendly-apps.zip attendly-student.apk attendly-institute.apk
+        run: zip -9 attendly-apps.zip attendly-student.apk attendly-institute.apk attendly-developer.apk
       # Direct, login-free links that always point at the newest build:
       # https://github.com/<owner>/<repo>/releases/latest/download/attendly-student.apk
       # https://github.com/<owner>/<repo>/releases/latest/download/attendly-institute.apk
@@ -143,10 +146,12 @@ jobs:
             attendly-apps.zip
             attendly-student.apk
             attendly-institute.apk
+            attendly-developer.apk
           body: |
-            Test build of both Attendly Android apps, commit ${{ github.sha }}.
-            • attendly-apps.zip — both apps in one zip
+            Test build of the Attendly Android apps, commit ${{ github.sha }}.
+            • attendly-apps.zip — all three apps in one zip
             • attendly-student.apk — for students (scan the class QR, see attendance)
             • attendly-institute.apk — for teachers and admins (timetable, classes, QR, register)
+            • attendly-developer.apk — for the platform owner (institutions, kill switches, audit, flags)
             Install: open this page on the phone, tap the APK, allow "install unknown apps".
             Signed with a test key — for testing only, not for the Play Store.
