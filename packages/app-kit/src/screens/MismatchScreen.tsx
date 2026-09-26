@@ -41,7 +41,7 @@ export default function Mismatch() {
         Your account is bound to another phone
       </Text>
       <Text variant="body" style={{ marginTop: 8 }}>
-        For attendance to be unforgeable, each student can mark only from one bound phone.
+        For attendance to be unforgeable, each account works only from one bound phone.
       </Text>
 
       <Card style={[styles.row, { marginTop: 20 }]}>

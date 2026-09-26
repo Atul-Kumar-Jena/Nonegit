@@ -322,8 +322,9 @@ export async function staffAdminRoutes(app: FastifyInstance, deps: Deps) {
     const skipped: BulkImportResponse['skipped'] = [];
     let created = 0;
     for (let i = 0; i < b.rows.length; i++) {
-      const raw = b.rows[i] as Record<string, unknown>;
-      const parsed = PersonBody.safeParse({ role: 'student', ...raw, courseIds: b.courseIds });
+      const raw = (b.rows[i] && typeof b.rows[i] === 'object' ? b.rows[i] : {}) as Record<string, unknown>;
+      // Bulk import creates students (or teachers); admins are only ever added one at a time.
+      const parsed = PersonBody.safeParse({ ...raw, role: raw.role === 'teacher' ? 'teacher' : 'student', courseIds: raw.role === 'teacher' ? [] : b.courseIds });
       if (!parsed.success) {
         skipped.push({ row: i + 1, reason: parsed.error.issues[0]?.message ?? 'invalid row' });
         continue;

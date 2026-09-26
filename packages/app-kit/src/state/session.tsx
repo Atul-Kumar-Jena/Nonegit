@@ -48,6 +48,8 @@ interface SessionValue {
   requestRebind(reason: string): Promise<void>;
   signOut(): Promise<void>;
   resetPhone(): Promise<void>;
+  /** Which app this is (name + who may sign in). */
+  audience: AppAudience;
   clearNotice(): void;
 }
 
@@ -356,9 +358,10 @@ export function SessionProvider({ children, audience }: { children: ReactNode; a
       requestRebind,
       signOut,
       resetPhone,
+      audience,
       clearNotice: () => setNotice(null),
     }),
-    [phase, server, api, notice, identityError, pendingOtp, pendingDevice, connect, requestOtp, verifyOtp, bindDevice, requestRebind, signOut, resetPhone],
+    [audience, phase, server, api, notice, identityError, pendingOtp, pendingDevice, connect, requestOtp, verifyOtp, bindDevice, requestRebind, signOut, resetPhone],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

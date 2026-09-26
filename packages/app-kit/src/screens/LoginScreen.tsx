@@ -18,7 +18,7 @@ const CHANNELS = [
 
 /** 02 · Login · OTP — institution-issued ID. */
 export default function Login() {
-  const { server, requestOtp, notice, clearNotice, pendingOtp } = useSession();
+  const { server, requestOtp, notice, clearNotice, pendingOtp, audience } = useSession();
   const [channel, setChannel] = useState<Channel>(pendingOtp?.channel === 'phone' && server?.channels.includes('phone') ? 'phone' : 'email');
   const [value, setValue] = useState(pendingOtp?.identifier ?? '');
   const [busy, setBusy] = useState(false);
@@ -53,7 +53,9 @@ export default function Login() {
       <LogoMark size={44} />
       <View style={{ gap: 6, marginTop: 22 }}>
         <Text variant="title">Sign in</Text>
-        <Text variant="body">Use your institution-issued ID.</Text>
+        <Text variant="body">
+          {audience.allowedRoles.includes('student') ? 'Use your institution-issued ID.' : `${audience.appName} — for teachers and administrators. Use the email your institution registered.`}
+        </Text>
       </View>
       {notice ? (
         <View style={{ marginTop: 16 }}>

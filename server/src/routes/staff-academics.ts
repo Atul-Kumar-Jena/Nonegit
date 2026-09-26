@@ -264,6 +264,19 @@ export async function staffAcademicRoutes(app: FastifyInstance, deps: Deps) {
       );
       if (clash.rows[0]) throw new ApiError(409, 'CONFLICT', `That room is already booked for ${clash.rows[0].code} at an overlapping time.`);
     }
+    // …and no teacher in two places at once.
+    if (b.active) {
+      const busy = await deps.db.query<{ code: string }>(
+        `select c.code from timetable_slots sl join courses c on c.id = sl.course_id
+          where sl.tenant_id = $1 and sl.active and sl.weekday = $3 and ($4::uuid is null or sl.id <> $4)
+            and sl.start_time < $6::time and sl.end_time > $5::time
+            and (sl.valid_until is null or sl.valid_until >= coalesce($7::date, current_date))
+            and c.instructor_id is not null and c.instructor_id = (select instructor_id from courses where id = $2)
+          limit 1`,
+        [auth.tenantId, b.courseId, b.weekday, id, b.start, b.end, b.validFrom ?? null],
+      );
+      if (busy.rows[0]) throw new ApiError(409, 'CONFLICT', `This course’s teacher already teaches ${busy.rows[0].code} at an overlapping time that day.`);
+    }
     const slotId = await withTx(deps.db, async (tx) => {
       const params = [auth.tenantId, b.courseId, b.weekday, b.start, b.end, b.roomId ?? null, b.mode, b.rotationS, b.validFrom ?? null, b.validUntil ?? null, b.active];
       const { rows } = id

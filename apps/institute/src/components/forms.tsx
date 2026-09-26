@@ -1,0 +1,324 @@
+import { useMemo, useState, type ReactNode } from 'react';
+import { Alert, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Switch, View } from 'react-native';
+import { router } from 'expo-router';
+import { ArrowLeft, Check, ChevronDown, Minus, Plus, Search, X } from 'lucide-react-native';
+import { IconButton, Input, Text } from '@kit/components/ui';
+import { colors, fonts, radius } from '@kit/theme';
+
+/** Top bar: back button, title, optional action on the right. */
+export function Header({ title, subtitle, right, onBack }: { title: string; subtitle?: string; right?: ReactNode; onBack?: () => void }) {
+  return (
+    <View style={styles.header}>
+      <IconButton label="Back" onPress={onBack ?? (() => (router.canGoBack() ? router.back() : router.replace('/home')))}>
+        <ArrowLeft color={colors.text} size={18} />
+      </IconButton>
+      <View style={{ flex: 1 }}>
+        {subtitle ? (
+          <Text variant="label" numberOfLines={1}>
+            {subtitle}
+          </Text>
+        ) : null}
+        <Text variant="heading" numberOfLines={1}>
+          {title}
+        </Text>
+      </View>
+      {right}
+    </View>
+  );
+}
+
+export function Field({ label, hint, error, children }: { label: string; hint?: string; error?: string | null; children: ReactNode }) {
+  return (
+    <View style={{ marginTop: 16 }}>
+      <Text variant="label" style={{ marginBottom: 8 }}>
+        {label}
+      </Text>
+      {children}
+      {error ? (
+        <Text variant="small" color={colors.red} style={{ marginTop: 6 }}>
+          {error}
+        </Text>
+      ) : hint ? (
+        <Text variant="small" style={{ marginTop: 6 }}>
+          {hint}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+/** A row of mutually-exclusive chips. */
+export function Chips<T extends string | number>({ value, options, onChange }: { value: T; options: readonly { value: T; label: string }[]; onChange: (v: T) => void }) {
+  return (
+    <View style={styles.chips}>
+      {options.map((o) => {
+        const on = o.value === value;
+        return (
+          <Pressable key={String(o.value)} onPress={() => onChange(o.value)} accessibilityRole="radio" accessibilityState={{ selected: on }} style={[styles.chip, on && styles.chipOn]}>
+            <Text style={[styles.chipText, on && { color: colors.text }]}>{o.label}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+export function ToggleRow({ label, hint, value, onChange, disabled }: { label: string; hint?: string; value: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+  return (
+    <View style={styles.toggle}>
+      <View style={{ flex: 1 }}>
+        <Text variant="bodyStrong">{label}</Text>
+        {hint ? <Text variant="small">{hint}</Text> : null}
+      </View>
+      <Switch
+        value={value}
+        disabled={disabled}
+        onValueChange={onChange}
+        trackColor={{ true: colors.cyan, false: colors.borderHi }}
+        thumbColor="#ffffff"
+        ios_backgroundColor={colors.borderHi}
+        accessibilityLabel={label}
+      />
+    </View>
+  );
+}
+
+export function Checkbox({ checked, tone = 'cyan', size = 24 }: { checked: boolean; tone?: 'cyan' | 'green' | 'amber'; size?: number }) {
+  const c = tone === 'green' ? colors.green : tone === 'amber' ? colors.amber : colors.cyan;
+  return (
+    <View style={[styles.box, { width: size, height: size, borderColor: checked ? c : colors.borderHi, backgroundColor: checked ? c : 'transparent' }]}>
+      {checked ? <Check color="#04141c" size={size - 8} strokeWidth={3} /> : null}
+    </View>
+  );
+}
+
+export function Empty({ title, message, action }: { title: string; message?: string; action?: ReactNode }) {
+  return (
+    <View style={styles.empty}>
+      <Text variant="bodyStrong" style={{ textAlign: 'center' }}>
+        {title}
+      </Text>
+      {message ? (
+        <Text variant="small" style={{ textAlign: 'center', marginTop: 6 }}>
+          {message}
+        </Text>
+      ) : null}
+      {action ? <View style={{ marginTop: 14, alignSelf: 'stretch' }}>{action}</View> : null}
+    </View>
+  );
+}
+
+/** Cross-platform confirm dialog. */
+export function confirmAction(title: string, message: string, action: string, run: () => void, destructive = false) {
+  if (Platform.OS === 'web') {
+    if (globalThis.confirm?.(`${title}\n\n${message}`)) run();
+    return;
+  }
+  Alert.alert(title, message, [
+    { text: 'Cancel', style: 'cancel' },
+    { text: action, style: destructive ? 'destructive' : 'default', onPress: run },
+  ]);
+}
+
+export function Sheet({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: ReactNode }) {
+  return (
+    <Modal visible={open} transparent animationType="slide" onRequestClose={onClose}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+        <Pressable style={styles.scrim} onPress={onClose} accessibilityLabel="Close" />
+        <View style={styles.sheet}>
+          <View style={styles.grabber} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+            <Text variant="heading" style={{ flex: 1 }}>
+              {title}
+            </Text>
+            <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Close" hitSlop={10}>
+              <X color={colors.textMuted} size={20} />
+            </Pressable>
+          </View>
+          {children}
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+/** A select box that opens a searchable list. */
+export function Select<T extends string>({
+  value,
+  options,
+  onChange,
+  placeholder = 'Choose…',
+  title,
+  allowNone,
+}: {
+  value: T | null;
+  options: readonly { value: T; label: string; sub?: string }[];
+  onChange: (v: T | null) => void;
+  placeholder?: string;
+  title: string;
+  allowNone?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const current = options.find((o) => o.value === value);
+  const filtered = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    return s ? options.filter((o) => `${o.label} ${o.sub ?? ''}`.toLowerCase().includes(s)) : options;
+  }, [q, options]);
+  return (
+    <>
+      <Pressable onPress={() => setOpen(true)} accessibilityRole="button" accessibilityLabel={title} style={styles.select}>
+        <Text variant="body" color={current ? colors.text : colors.textDim} style={{ flex: 1 }} numberOfLines={1}>
+          {current ? current.label : value === null && allowNone ? allowNone : placeholder}
+        </Text>
+        <ChevronDown color={colors.textDim} size={18} />
+      </Pressable>
+      <Sheet open={open} onClose={() => setOpen(false)} title={title}>
+        {options.length > 8 ? (
+          <View style={{ marginVertical: 8 }}>
+            <Input value={q} onChangeText={setQ} placeholder="Search" icon={<Search color={colors.textDim} size={16} />} autoCorrect={false} />
+          </View>
+        ) : null}
+        <FlatList
+          style={{ maxHeight: 380 }}
+          keyboardShouldPersistTaps="handled"
+          data={allowNone ? [{ value: null as T | null, label: allowNone }, ...filtered] : filtered}
+          keyExtractor={(o) => String(o.value)}
+          renderItem={({ item }) => (
+            <Pressable
+              onPress={() => {
+                onChange(item.value);
+                setOpen(false);
+                setQ('');
+              }}
+              accessibilityRole="button"
+              style={styles.option}
+            >
+              <View style={{ flex: 1 }}>
+                <Text variant="bodyStrong">{item.label}</Text>
+                {'sub' in item && item.sub ? <Text variant="small">{item.sub}</Text> : null}
+              </View>
+              {item.value === value ? <Check color={colors.cyan} size={18} /> : null}
+            </Pressable>
+          )}
+          ListEmptyComponent={<Text variant="small">Nothing matches.</Text>}
+        />
+      </Sheet>
+    </>
+  );
+}
+
+function Stepper({ value, onDec, onInc, label }: { value: string; onDec: () => void; onInc: () => void; label: string }) {
+  return (
+    <View style={styles.stepper}>
+      <Pressable onPress={onDec} style={styles.stepBtn} accessibilityRole="button" accessibilityLabel={`Earlier ${label}`} hitSlop={4}>
+        <Minus color={colors.text} size={16} />
+      </Pressable>
+      <Text style={styles.stepVal}>{value}</Text>
+      <Pressable onPress={onInc} style={styles.stepBtn} accessibilityRole="button" accessibilityLabel={`Later ${label}`} hitSlop={4}>
+        <Plus color={colors.text} size={16} />
+      </Pressable>
+    </View>
+  );
+}
+
+const pad = (n: number) => String(n).padStart(2, '0');
+export function toMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(':').map(Number);
+  return (h ?? 0) * 60 + (m ?? 0);
+}
+export function fromMinutes(min: number): string {
+  const m = ((min % 1440) + 1440) % 1440;
+  return `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
+}
+
+/** 24h time picker: hour and 5-minute steppers (no keyboard, no invalid input possible). */
+export function TimeField({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) {
+  const min = toMinutes(value);
+  return (
+    <View style={styles.timeRow}>
+      <Stepper label={`${label} hour`} value={value.slice(0, 2)} onDec={() => onChange(fromMinutes(min - 60))} onInc={() => onChange(fromMinutes(min + 60))} />
+      <Text style={styles.colon}>:</Text>
+      <Stepper label={`${label} minutes`} value={value.slice(3)} onDec={() => onChange(fromMinutes(min % 5 ? min - (min % 5) : min - 5))} onInc={() => onChange(fromMinutes(min - (min % 5) + 5))} />
+    </View>
+  );
+}
+
+export function ymd(d: Date): string {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+export function addDays(ymdStr: string, days: number): string {
+  const [y, m, d] = ymdStr.split('-').map(Number);
+  const dt = new Date(y ?? 1970, (m ?? 1) - 1, d ?? 1);
+  dt.setDate(dt.getDate() + days);
+  return ymd(dt);
+}
+export function prettyDate(ymdStr: string): string {
+  const [y, m, d] = ymdStr.split('-').map(Number);
+  const dt = new Date(y ?? 1970, (m ?? 1) - 1, d ?? 1);
+  return dt.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+/** Date picker: previous/next day and week, always a valid calendar date. */
+export function DateField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <View style={styles.dateRow}>
+      <Pressable onPress={() => onChange(addDays(value, -7))} style={styles.dateBtn} accessibilityRole="button" accessibilityLabel="One week earlier">
+        <Text variant="monoSmall">−7</Text>
+      </Pressable>
+      <Pressable onPress={() => onChange(addDays(value, -1))} style={styles.dateBtn} accessibilityRole="button" accessibilityLabel="One day earlier">
+        <Minus color={colors.text} size={14} />
+      </Pressable>
+      <Text variant="bodyStrong" style={{ flex: 1, textAlign: 'center' }}>
+        {prettyDate(value)}
+      </Text>
+      <Pressable onPress={() => onChange(addDays(value, 1))} style={styles.dateBtn} accessibilityRole="button" accessibilityLabel="One day later">
+        <Plus color={colors.text} size={14} />
+      </Pressable>
+      <Pressable onPress={() => onChange(addDays(value, 7))} style={styles.dateBtn} accessibilityRole="button" accessibilityLabel="One week later">
+        <Text variant="monoSmall">+7</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+export const WEEKDAYS = [
+  { value: 1, label: 'Mon' },
+  { value: 2, label: 'Tue' },
+  { value: 3, label: 'Wed' },
+  { value: 4, label: 'Thu' },
+  { value: 5, label: 'Fri' },
+  { value: 6, label: 'Sat' },
+  { value: 0, label: 'Sun' },
+] as const;
+export const WEEKDAY_NAME = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+/** The first message of a validation error, readable. */
+export function firstIssue(err: unknown): string {
+  const issues = (err as { issues?: { message: string; path?: PropertyKey[] }[] })?.issues;
+  if (Array.isArray(issues) && issues[0]) return issues[0].message;
+  return err instanceof Error ? err.message : 'Something went wrong.';
+}
+
+const styles = StyleSheet.create({
+  header: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4, marginBottom: 8 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
+  chipOn: { borderColor: 'rgba(34,211,238,0.55)', backgroundColor: 'rgba(34,211,238,0.10)' },
+  chipText: { fontFamily: fonts.medium, fontSize: 13.5, color: colors.textMuted },
+  toggle: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 6 },
+  box: { borderRadius: 7, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
+  empty: { alignItems: 'center', paddingVertical: 28, paddingHorizontal: 16, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.border, borderRadius: radius.lg },
+  scrim: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' },
+  sheet: { backgroundColor: colors.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: 1, borderColor: colors.border, padding: 20, paddingBottom: 36, maxHeight: '88%' },
+  grabber: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: colors.borderHi, marginBottom: 14 },
+  select: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 52, paddingHorizontal: 16, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bgRaised },
+  option: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 13, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+  stepper: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  stepBtn: { width: 40, height: 40, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bgRaised },
+  stepVal: { fontFamily: fonts.monoMedium, fontSize: 20, color: colors.text, minWidth: 34, textAlign: 'center' },
+  colon: { fontFamily: fonts.monoMedium, fontSize: 20, color: colors.textMuted },
+  timeRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  dateRow: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 6, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bgRaised },
+  dateBtn: { width: 38, height: 38, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
+});

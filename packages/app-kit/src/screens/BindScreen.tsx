@@ -13,7 +13,7 @@ import { deviceKeys } from '../lib/device-key';
 import { useSession } from '../state/session';
 import { colors } from '../theme';
 
-/** 03 · Device binding — one student, one phone (step 2 of 2). */
+/** 03 · Device binding — one person, one phone (step 2 of 2). */
 export default function Bind() {
   const { pendingDevice, bindDevice } = useSession();
   const [device, setDevice] = useState<{ model: string; os: string; fingerprint: string; rooted: boolean } | null>(null);
@@ -69,7 +69,7 @@ export default function Bind() {
       </Card>
 
       <Text variant="heading" style={{ marginTop: 22, fontSize: 19 }}>
-        One student, one device.
+        One person, one device.
       </Text>
       <Text variant="body" style={{ marginTop: 8 }}>
         We’ll bind {pendingDevice.user.rollNo ? `roll number ${pendingDevice.user.rollNo}` : 'your account'} to this phone’s cryptographic key. Switching devices later requires admin approval.
