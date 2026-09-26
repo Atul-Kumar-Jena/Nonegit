@@ -31,9 +31,14 @@ export async function devRoutes(app: FastifyInstance, deps: Deps) {
   if (!token) return;
   app.log.warn('DEV TOOLS ENABLED at /dev — for testing only, never on a real deployment');
 
+  // Compare only letters and digits: generated tokens may contain + / = which get mangled
+  // when pasted into a URL (a "+" becomes a space). Entropy stays far above brute-force range.
+  const norm = (t: string) => t.replace(/[^A-Za-z0-9]/g, '');
+  const expected = utf8ToBytes(norm(token));
+
   function guard(req: FastifyRequest) {
     const given = (req.headers['x-dev-token'] as string | undefined) ?? (req.query as { token?: string } | undefined)?.token ?? '';
-    if (!timingSafeEqual(utf8ToBytes(given), utf8ToBytes(token!))) throw new ApiError(404, 'NOT_FOUND');
+    if (typeof given !== 'string' || !timingSafeEqual(utf8ToBytes(norm(given)), expected)) throw new ApiError(404, 'NOT_FOUND');
   }
 
   app.get('/dev', async (req, reply: FastifyReply) => {
@@ -43,6 +48,12 @@ export async function devRoutes(app: FastifyInstance, deps: Deps) {
       .header('cache-control', 'no-store')
       .header('referrer-policy', 'no-referrer')
       .send(DEV_PAGE);
+  });
+
+  /** Sign-in codes printed in console mode, shown on the console so testers never need server logs. */
+  app.get('/dev/api/codes', async (req) => {
+    guard(req);
+    return deps.config.otpDelivery === 'console' || deps.config.smsDelivery === 'console' ? (deps.sender.recentCodes?.() ?? []) : [];
   });
 
   app.get('/dev/api/courses', async (req) => {
@@ -176,7 +187,7 @@ export async function devRoutes(app: FastifyInstance, deps: Deps) {
   });
 }
 
-const DEV_PAGE = /* html */ `<!doctype html>
+export const DEV_PAGE = /* html */ `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Attendly · Dev faculty console</title>
 <style>
@@ -214,7 +225,7 @@ const DEV_PAGE = /* html */ `<!doctype html>
       <label>Geofence centre</label>
       <div class="row"><input id="lat" placeholder="Latitude" inputmode="decimal"><input id="lng" placeholder="Longitude" inputmode="decimal"></div>
       <button class="ghost" id="here" style="width:100%;margin-top:8px">Use this computer's location</button>
-      <div class="row"><div><label>Radius</label><select id="radius"><option>25</option><option selected>50</option><option>100</option><option>250</option><option>1000</option></select></div>
+      <div class="row"><div><label>Radius</label><select id="radius"><option>25</option><option>50</option><option>100</option><option selected>250</option><option>1000</option></select></div>
       <div><label>Rotate every</label><select id="rot"><option value="3">3s</option><option value="5">5s</option><option value="7" selected>7s</option><option value="10">10s</option><option value="15">15s</option></select></div>
       <div><label>Duration</label><select id="dur"><option value="30">30m</option><option value="60" selected>60m</option><option value="120">120m</option></select></div></div>
       <button class="primary" id="start">Start new session →</button>
@@ -222,8 +233,14 @@ const DEV_PAGE = /* html */ `<!doctype html>
       <div class="err" id="err"></div>
       <div class="list" id="sessions"></div>
     </div>
+    <div>
+    <div class="card" style="margin-bottom:16px">
+      <b>Sign-in codes</b> <span class="muted" style="font-size:12px">(testing: codes appear here instead of email)</span>
+      <div class="list" id="codes"><div class="muted" style="padding-top:8px;font-size:13px">No codes yet. Tap “Send OTP” in the app.</div></div>
+    </div>
     <div class="card" id="qrcard" style="text-align:center">
       <div class="muted" style="padding:80px 0">Start or open a session to display its rotating QR.</div>
+    </div>
     </div>
   </div>
 </div>
@@ -250,7 +267,7 @@ function place() {
 }
 async function loadScheduled() {
   const ss = await api('/dev/api/scheduled');
-  $('scheduled').innerHTML = ss.length ? '<label>Today\'s timetable</label>' + ss.map((s) =>
+  $('scheduled').innerHTML = ss.length ? '<label>Today’s timetable</label>' + ss.map((s) =>
     '<div class="item"><div><b>' + esc(s.code) + '</b> <span class="muted">' + esc(new Date(s.scheduled_start).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})) + ' · ' + esc(s.room) + '</span></div>' +
     '<button class="ghost" data-golive="' + esc(s.id) + '">Go live here</button></div>').join('') : '';
 }
@@ -310,6 +327,14 @@ function countdown() {
   cd.textContent = Math.ceil(left / 1000) + 's'; bar.style.width = (100 * left / period) + '%';
   if (left > 0 && current) requestAnimationFrame(countdown);
 }
+async function loadCodes() {
+  const cs = await api('/dev/api/codes');
+  if (!cs.length) { $('codes').innerHTML = '<div class="muted" style="padding-top:8px;font-size:13px">No codes yet. Tap “Send OTP” in the app. (Codes are cleared when the server restarts.)</div>'; return; }
+  $('codes').innerHTML = cs.map((c) => '<div class="item"><span>' + esc(c.to) + '<br><span class="muted" style="font-size:12px">' +
+    esc(new Date(c.at).toLocaleTimeString()) + '</span></span><span class="big" style="font-size:28px;letter-spacing:.12em">' + esc(c.code) + '</span></div>').join('');
+}
+setInterval(() => loadCodes().catch(() => {}), 3000);
+loadCodes().catch(() => {});
 loadCourses().then(loadScheduled).then(loadSessions).catch((e) => ($('err').textContent = e.message));
 setInterval(() => loadSessions().catch(() => {}), 5000);
 </script></body></html>`;

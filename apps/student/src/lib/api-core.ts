@@ -11,6 +11,7 @@
  *    server is measured and corrected transparently.
  */
 import { z } from 'zod';
+import { parseServerAddress } from './server-address';
 import {
   API_ERROR_CODES,
   AuthTokens,
@@ -62,7 +63,8 @@ export interface Rejection {
 
 export class ApiRequestError extends Error {
   constructor(
-    readonly code: ApiErrorCode | 'NETWORK' | 'TIMEOUT' | 'BAD_RESPONSE',
+    /** UNREADABLE = not JSON at all (e.g. a web page); BAD_RESPONSE = JSON that breaks the API contract. */
+    readonly code: ApiErrorCode | 'NETWORK' | 'TIMEOUT' | 'BAD_RESPONSE' | 'UNREADABLE',
     message: string,
     readonly status = 0,
     readonly rejection?: Rejection,
@@ -91,18 +93,9 @@ export interface ApiClientOptions {
 
 const SESSION_FATAL: readonly string[] = ['UNAUTHENTICATED', 'DEVICE_REVOKED', 'ACCOUNT_SUSPENDED'];
 
+/** Canonical, validated base URL (see server-address.ts for why this avoids `URL`). */
 export function normalizeBaseUrl(raw: string, allowHttp: boolean): string {
-  const trimmed = raw.trim().replace(/\/+$/, '');
-  let url: URL;
-  try {
-    url = new URL(trimmed);
-  } catch {
-    throw new Error('Enter a full server address, e.g. https://attendly.your-college.edu');
-  }
-  if (url.protocol !== 'https:' && !(allowHttp && url.protocol === 'http:'))
-    throw new Error('The server address must start with https:// — attendance data is never sent unencrypted.');
-  if (url.username || url.password || url.search || url.hash) throw new Error('The server address must not contain credentials, a query or a fragment.');
-  return `${url.protocol}//${url.host}${url.pathname === '/' ? '' : url.pathname.replace(/\/+$/, '')}`;
+  return parseServerAddress(raw, allowHttp);
 }
 
 export class ApiClient {
@@ -119,6 +112,9 @@ export class ApiClient {
   private offsetKnown = false;
 
   constructor(o: ApiClientOptions) {
+    // Defence in depth: nothing unvalidated may ever reach the native network stack.
+    // (A base URL is canonical iff re-parsing it is a no-op; http is re-checked by the caller's policy.)
+    if (parseServerAddress(o.baseUrl, true) !== o.baseUrl) throw new Error('ApiClient: base URL must be normalised with normalizeBaseUrl()');
     this.baseUrl = o.baseUrl;
     this.keys = o.keys;
     this.tokens = o.tokens;
@@ -140,9 +136,15 @@ export class ApiClient {
 
   // ───────────────────────────── transport ─────────────────────────────
 
-  private async send(method: 'GET' | 'POST', path: string, body: string | undefined, headers: Record<string, string>): Promise<{ status: number; json: unknown }> {
+  private async send(
+    method: 'GET' | 'POST',
+    path: string,
+    body: string | undefined,
+    headers: Record<string, string>,
+    timeoutMs = this.timeoutMs,
+  ): Promise<{ status: number; json: unknown }> {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     let res: Response;
     const sentAt = this.now();
     try {
@@ -170,7 +172,7 @@ export class ApiClient {
       try {
         json = JSON.parse(text);
       } catch {
-        throw new ApiRequestError('BAD_RESPONSE', 'The server sent an unreadable response.', res.status);
+        throw new ApiRequestError('UNREADABLE', 'The server sent an unreadable response.', res.status);
       }
     }
     return { status: res.status, json };
@@ -194,9 +196,9 @@ export class ApiClient {
     return r.data;
   }
 
-  private async publicCall<T>(method: 'GET' | 'POST', path: string, schema: z.ZodType<T>, payload?: unknown): Promise<T> {
+  private async publicCall<T>(method: 'GET' | 'POST', path: string, schema: z.ZodType<T>, payload?: unknown, timeoutMs?: number): Promise<T> {
     const body = payload === undefined ? undefined : JSON.stringify(payload);
-    const { status, json } = await this.send(method, path, body, {});
+    const { status, json } = await this.send(method, path, body, {}, timeoutMs);
     if (status < 200 || status >= 300) throw this.toError(status, json);
     return this.parse(schema, json, status);
   }
@@ -267,8 +269,9 @@ export class ApiClient {
 
   // ───────────────────────────── endpoints ─────────────────────────────
 
-  meta() {
-    return this.publicCall('GET', '/v1/meta', MetaResponse);
+  /** `timeoutMs` lets the first connect wait for a sleeping free-tier server to wake up. */
+  meta(timeoutMs?: number) {
+    return this.publicCall('GET', '/v1/meta', MetaResponse, undefined, timeoutMs);
   }
 
   requestOtp(body: OtpRequestBody) {

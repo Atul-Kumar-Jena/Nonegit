@@ -2,11 +2,16 @@ import { buildApp, startJanitor } from './app';
 import { ConfigError, loadConfig } from './config';
 import { createPool } from './db';
 import { migrate } from './migrate';
+import { seedDemo } from './seed';
 
 async function main() {
   const config = loadConfig();
   const db = createPool(config.databaseUrl, config.databasePoolMax, config.databaseSsl);
   await migrate(db, undefined, (m) => console.log(`[migrate] ${m}`));
+  if (config.seedDemo) {
+    // Best effort: demo data must never stop the API from serving.
+    await seedDemo(db, config, { log: (m) => console.log(`[seed] ${m}`) }).catch((err: Error) => console.error(`[seed] skipped: ${err.message}`));
+  }
   const { app, deps } = await buildApp({ config, db });
 
   if (config.otpDelivery === 'console') app.log.warn('OTP_DELIVERY=console — sign-in codes are printed to this log, not emailed.');

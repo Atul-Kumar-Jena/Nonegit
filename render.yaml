@@ -1,0 +1,42 @@
+# One-click TEST deployment of the Attendly API on Render (free tier).
+# Render dashboard → New → Blueprint → pick this repo and branch → Apply.
+#
+# This blueprint is for TESTING: sign-in codes are shown on the /dev console instead of
+# being emailed, and the demo institution is created automatically. For real use, set
+# OTP_DELIVERY=smtp (+ SMTP_URL), remove DEV_TOOLS_TOKEN and SEED_DEMO.
+services:
+  - type: web
+    name: attendly-api
+    runtime: docker
+    plan: free
+    branch: claude/three-secure-synced-apps-42sdud
+    dockerfilePath: ./server/Dockerfile
+    dockerContext: .
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: attendly-db
+          property: connectionString
+      - key: SERVER_SIGNING_KEY
+        generateValue: true
+      - key: TOKEN_PEPPER
+        generateValue: true
+      - key: DEV_TOOLS_TOKEN
+        generateValue: true
+      - key: OTP_DELIVERY
+        value: console
+      - key: SMS_DELIVERY
+        value: console
+      - key: TRUST_PROXY
+        value: 'true'
+      - key: SEED_DEMO
+        value: 'true'
+
+databases:
+  - name: attendly-db
+    plan: free
+    databaseName: attendly
+    user: attendly

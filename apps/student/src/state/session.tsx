@@ -51,6 +51,23 @@ interface SessionValue {
 
 const Ctx = createContext<SessionValue | null>(null);
 
+/** Free-tier servers (e.g. Render) sleep when idle and need up to a minute to wake. */
+const CONNECT_TIMEOUT_MS = 75_000;
+
+/** Turns a failed first contact into advice a non-technical person can act on. */
+function connectErrorMessage(err: unknown): string {
+  if (err instanceof ApiRequestError) {
+    if (err.code === 'UNREADABLE' || err.code === 'NOT_FOUND' || err.status === 404)
+      return 'That address answered, but it is not an Attendly server. Paste the full address of YOUR Attendly server (for example https://attendly-api-xxxx.onrender.com), not a website’s home page.';
+    if (err.code === 'BAD_RESPONSE')
+      return 'That server’s reply doesn’t match this version of the app. If it is your Attendly server, update the app (or the server); otherwise check the address.';
+    if (err.code === 'TIMEOUT') return 'The server did not answer within a minute. Check that it is running (free servers can be slow to wake) and try again.';
+    if (err.code === 'NETWORK') return 'Couldn’t reach that address. Check it is typed exactly right, that your phone has internet, and that the server is running.';
+    return err.message;
+  }
+  return err instanceof Error ? err.message : 'Could not connect to that server.';
+}
+
 export function useSession(): SessionValue {
   const v = useContext(Ctx);
   if (!v) throw new Error('useSession must be used inside <SessionProvider>');
@@ -109,7 +126,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const existing = await loadServerConfig();
       // Probe with a throw-away client; it only becomes the app's client once the identity check passes.
       const client = buildClient(url);
-      const meta = await client.meta();
+      let meta;
+      try {
+        meta = await client.meta(CONNECT_TIMEOUT_MS);
+      } catch (err) {
+        throw new Error(connectErrorMessage(err));
+      }
       const cfg = checkServerIdentity(url, meta, existing);
       installClient(client);
       if (existing && existing.url !== url) {
@@ -129,7 +151,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     (async () => {
       try {
-        const cfg = await loadServerConfig();
+        let cfg = await loadServerConfig();
         if (cancelled) return;
         if (!cfg) {
           if (DEFAULT_SERVER_URL) {
@@ -144,8 +166,25 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           setPhase('needs-server');
           return;
         }
+        let storedUrl: string;
+        try {
+          storedUrl = normalizeBaseUrl(cfg.url, ALLOW_HTTP);
+        } catch {
+          // A stored address this build can't use: start over safely. Its session tokens
+          // belong to that server, so they must never be sent anywhere else.
+          await tokenStore.clear();
+          await clearServerConfig();
+          setPhase('needs-server');
+          return;
+        }
+        if (storedUrl !== cfg.url) {
+          // Legacy (non-canonical) spelling of the same address: store the canonical form so
+          // later identity/pin checks compare like with like.
+          cfg = { ...cfg, url: storedUrl };
+          await saveServerConfig(cfg);
+        }
         setServer(cfg);
-        const client = installClient(buildClient(cfg.url));
+        const client = installClient(buildClient(storedUrl));
         setPhase((await tokenStore.get()) ? 'signed-in' : 'signed-out');
         // Background identity check + clock sync; offline is fine.
         client

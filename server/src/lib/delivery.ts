@@ -13,15 +13,25 @@ export interface OtpSender {
   send(msg: OtpMessage): Promise<void>;
   /** True when the channel can actually deliver (used to refuse phone OTP when SMS is disabled). */
   supports(channel: 'email' | 'phone'): boolean;
+  /** Console mode only: the last few codes, so the testing console can show them. */
+  recentCodes?(): { to: string; code: string; at: string }[];
 }
 
+const RECENT_LIMIT = 10;
+
 export function createOtpSender(config: Config, log: FastifyBaseLogger): OtpSender {
+  const recent: { to: string; code: string; at: string }[] = [];
+  const remember = (to: string, code: string) => {
+    recent.unshift({ to, code, at: new Date().toISOString() });
+    recent.length = Math.min(recent.length, RECENT_LIMIT);
+  };
   const transport =
     config.otpDelivery === 'smtp' && config.smtpUrl ? nodemailer.createTransport(config.smtpUrl) : null;
 
   async function sendEmail(msg: OtpMessage) {
     if (config.otpDelivery === 'console' || !transport) {
       log.warn({ to: msg.to, code: msg.code }, `[otp:console] Attendly sign-in code for ${msg.to}: ${msg.code}`);
+      remember(msg.to, msg.code);
       return;
     }
     await transport.sendMail({
@@ -37,6 +47,7 @@ export function createOtpSender(config: Config, log: FastifyBaseLogger): OtpSend
   async function sendSms(msg: OtpMessage) {
     if (config.smsDelivery === 'console') {
       log.warn({ to: msg.to, code: msg.code }, `[otp:console] Attendly SMS code for ${msg.to}: ${msg.code}`);
+      remember(msg.to, msg.code);
       return;
     }
     if (config.smsDelivery !== 'twilio' || !config.twilio) throw new Error('SMS delivery is disabled');
@@ -54,6 +65,7 @@ export function createOtpSender(config: Config, log: FastifyBaseLogger): OtpSend
   }
 
   return {
+    recentCodes: () => recent.map((r) => ({ ...r })),
     supports: (channel) => channel === 'email' || config.smsDelivery !== 'disabled',
     async send(msg) {
       if (msg.channel === 'email') await sendEmail(msg);

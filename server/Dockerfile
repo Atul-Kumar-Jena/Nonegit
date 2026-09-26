@@ -18,5 +18,5 @@ COPY --from=build /repo/server/dist ./dist
 COPY --from=build /repo/server/migrations ./migrations
 USER node
 EXPOSE 4000
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s CMD wget -qO- http://127.0.0.1:4000/healthz || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s CMD wget -qO- "http://127.0.0.1:${PORT}/healthz" || exit 1
 CMD ["node", "dist/server.cjs"]

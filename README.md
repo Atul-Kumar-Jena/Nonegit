@@ -22,7 +22,7 @@ The backend (`server/`) and the shared crypto/contract package (`packages/protoc
 | Database | **PostgreSQL 16** | Transactions and unique constraints enforce "one student, one device" and "one mark per session" at the database level. |
 | Contract | **zod** schemas shared by the server and apps | Every request and response is validated on both sides. A mismatch shows a clean error; it never crashes. |
 | Data fetching | TanStack Query | Caching, retry with backoff, refresh when the app returns to the foreground, offline display. |
-| Tests | Vitest + real PostgreSQL + Playwright | 77 automated tests, plus a browser-driven run of the whole student journey. |
+| Tests | Vitest + real PostgreSQL + Playwright | 90 automated tests, plus a browser-driven run of the whole student journey. |
 | CI | GitHub Actions | Typecheck, all tests, Docker image smoke test, and a downloadable **Android APK** on every push. |
 
 ## How the three apps sync securely
@@ -95,6 +95,9 @@ To sign in as yourself instead of the demo student, set `SEED_STUDENT_EMAIL=you@
 
 ## 2 · Test the Student app on your phone
 
+> **Easiest path, no computer setup:** follow **[docs/TESTING.md](docs/TESTING.md)**. It covers a one-click free server on Render, a direct APK link, and a 20-step checklist with expected results.
+
+
 ### Option A: Expo Go (fastest, no build)
 
 1. Install **Expo Go** from the Play Store / App Store. It must be the version for SDK 57.
@@ -159,8 +162,8 @@ Migrations run automatically on boot. Liveness check: `GET /healthz`.
 ```bash
 npm run typecheck                      # protocol + server + app
 npm test -w packages/protocol          # 28 unit tests (RFC 8032 vector, OpenSSL interop, malleability, QR, geofence, 75% maths)
-npm test -w server                     # 40 integration tests on real Postgres (replay, tampering, token theft, refresh reuse, OTP lockout, fake GPS, concurrency…)
-npm test -w apps/student               # 9 end-to-end tests: the phone's API client over HTTP against the real server
+npm test -w server                     # 47 integration tests on real Postgres (replay, tampering, token theft, refresh reuse, OTP lockout, fake GPS, concurrency…)
+npm test -w apps/student               # 15 tests: the phone's API client over HTTP against the real server + 20,000 fuzzed server addresses
 ```
 
 The server tests need Postgres at `postgres://postgres@127.0.0.1:5432/postgres`; override with `TEST_DATABASE_URL`. Each test file gets its own throwaway database.

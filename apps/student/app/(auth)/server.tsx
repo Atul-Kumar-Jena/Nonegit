@@ -35,7 +35,7 @@ export default function ServerSetup() {
       <LogoMark size={44} />
       <View style={{ gap: 6, marginTop: 8 }}>
         <Text variant="title">Connect to your institution</Text>
-        <Text variant="body">Enter the Attendly server address your institution gave you.</Text>
+        <Text variant="body">Paste the address of your Attendly server — exactly as it was shown when the server was set up.</Text>
       </View>
       {notice ? <Notice message={notice} onDismiss={clearNotice} /> : null}
       <Text variant="label" style={{ marginTop: 6 }}>
@@ -44,7 +44,7 @@ export default function ServerSetup() {
       <Input
         value={url}
         onChangeText={setUrl}
-        placeholder="https://attendly.your-college.edu"
+        placeholder="https://attendly-api-xxxx.onrender.com"
         autoCapitalize="none"
         autoCorrect={false}
         keyboardType="url"
@@ -56,6 +56,11 @@ export default function ServerSetup() {
       />
       {error ? <Notice message={error} tone="red" /> : null}
       <Button title="Connect" onPress={() => void submit()} loading={busy} disabled={!url.trim()} />
+      {busy ? (
+        <Text variant="small" style={{ textAlign: 'center' }}>
+          Connecting… a free server that was asleep can take up to a minute to wake up.
+        </Text>
+      ) : null}
       <Card style={{ gap: 8, marginTop: 8 }}>
         <Badge label="Pinned on first connect" tone="violet" icon={<Lock color="#a78bfa" size={11} />} />
         <Text variant="small">

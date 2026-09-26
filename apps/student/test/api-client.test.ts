@@ -63,6 +63,8 @@ describe('normalizeBaseUrl', () => {
     expect(normalizeBaseUrl('http://192.168.1.5:4000', true)).toBe('http://192.168.1.5:4000');
     expect(() => normalizeBaseUrl('https://u:p@a.edu', false)).toThrow();
     expect(() => normalizeBaseUrl('not a url', false)).toThrow();
+    expect(() => normalizeBaseUrl('https://.....trycloudflare.com', false)).toThrow();
+    expect(() => new ApiClient({ baseUrl: 'https://.....x.com', keys: { secretKey: async () => new Uint8Array(32), publicKey: async () => new Uint8Array(32) }, tokens: { get: async () => null, set: async () => {}, clear: async () => {} } })).toThrow();
   });
 });
 
