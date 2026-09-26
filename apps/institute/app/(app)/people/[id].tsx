@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
-import { Ban, CheckCircle2, Pencil, Smartphone } from 'lucide-react-native';
+import { Ban, CheckCircle2, KeyRound, Pencil, Smartphone } from 'lucide-react-native';
+import type { AuthenticatorSetup } from '@attendly/protocol';
+import { QrCode } from '@kit/components/QrCode';
 import { Screen } from '@kit/components/Screen';
 import { Avatar, Badge, Button, Card, ErrorState, InfoRow, Loading, Notice, SectionLabel, Text } from '@kit/components/ui';
 import { dateLong, initials } from '@kit/lib/format';
@@ -21,7 +23,8 @@ export default function PersonDetail() {
   const me = useMe();
   const q = usePerson(id);
   const courses = useCourses();
-  const [busy, setBusy] = useState<null | 'status' | 'device'>(null);
+  const [busy, setBusy] = useState<null | 'status' | 'device' | 'totp'>(null);
+  const [issued, setIssued] = useState<AuthenticatorSetup | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
 
@@ -122,6 +125,79 @@ export default function PersonDetail() {
           <Text variant="small">No phone bound yet — they bind one the first time they sign in.</Text>
         )}
       </Card>
+
+      {p.role === 'student' || p.role === 'teacher' ? (
+        <>
+          <SectionLabel>Authenticator</SectionLabel>
+          <Card style={{ gap: 12 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <KeyRound color={p.authenticator ? colors.green : colors.textDim} size={18} />
+              <Text variant="body" style={{ flex: 1 }}>
+                {p.authenticator ? 'Signs in with Google Authenticator codes.' : 'Signs in with emailed codes.'}
+              </Text>
+            </View>
+            {issued ? (
+              <View style={{ alignItems: 'center', gap: 10 }}>
+                <Text variant="bodyStrong" style={{ textAlign: 'center' }}>
+                  Ask {p.fullName.split(' ')[0]} to scan this in Google Authenticator (+ → Scan a QR code)
+                </Text>
+                <QrCode value={issued.otpauthUrl} size={240} />
+                <Text variant="mono" selectable style={{ letterSpacing: 1.2, textAlign: 'center' }}>
+                  {issued.secret.replace(/(.{4})/g, '$1 ').trim()}
+                </Text>
+                <Text variant="small" style={{ textAlign: 'center' }}>
+                  It works at once: they sign in with their email and the 6-digit code the app shows. Close this when they’re done — the code is shown only now.
+                </Text>
+                <Button title="Done" kind="secondary" compact onPress={() => setIssued(null)} />
+              </View>
+            ) : (
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <Button
+                  title={p.authenticator ? 'Set up again' : 'Set up authenticator'}
+                  compact
+                  loading={busy === 'totp'}
+                  onPress={() =>
+                    confirmAction(
+                      'Set up an authenticator?',
+                      `Show the next screen to ${p.fullName} in person. ${p.authenticator ? 'Their old authenticator stops working.' : 'After this they sign in with the app’s codes instead of email.'}`,
+                      'Show QR',
+                      () =>
+                        void (async () => {
+                          setBusy('totp');
+                          setError(null);
+                          try {
+                            setIssued(await staffApi.issueAuthenticator(api, p.id));
+                            void qc.invalidateQueries({ queryKey: ['staff', 'person', p.id] });
+                          } catch (err) {
+                            setError(err instanceof Error ? err.message : 'Couldn’t set it up.');
+                          } finally {
+                            setBusy(null);
+                          }
+                        })(),
+                    )
+                  }
+                  style={{ flex: 1 }}
+                />
+                {p.authenticator ? (
+                  <Button
+                    title="Reset"
+                    kind="danger"
+                    compact
+                    onPress={() =>
+                      confirmAction('Reset their authenticator?', `${p.fullName} goes back to emailed codes (use this if they lost the phone with the app).`, 'Reset', () =>
+                        void staffApi
+                          .removeAuthenticator(api, p.id)
+                          .then(() => qc.invalidateQueries({ queryKey: ['staff', 'person', p.id] }))
+                          .catch((err: Error) => setError(err.message)),
+                      )
+                    }
+                  />
+                ) : null}
+              </View>
+            )}
+          </Card>
+        </>
+      ) : null}
 
       <SectionLabel>{p.role === 'student' ? 'Courses' : 'Teaches'}</SectionLabel>
       <Card>

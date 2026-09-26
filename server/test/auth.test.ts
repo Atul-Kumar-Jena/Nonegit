@@ -81,7 +81,8 @@ describe('OTP sign-in and device binding', () => {
     for (const who of ['someone@gmail.com', 'ghost@iit.ac.in']) {
       const r = await phone.requestOtp(who);
       expect(r.statusCode).toBe(200);
-      expect(Object.keys(r.json()).sort()).toEqual(['challengeId', 'destination', 'expiresAt', 'resendAfterSec']);
+      expect(Object.keys(r.json()).sort()).toEqual(['challengeId', 'destination', 'expiresAt', 'method', 'resendAfterSec']);
+      expect(r.json().method).toBe('email'); // same answer as for a registered person without an authenticator
       // …and no code can ever verify it.
       expect((await phone.verifyOtp(r.json().challengeId, '000000')).json().error.code).toBe('OTP_INVALID');
     }

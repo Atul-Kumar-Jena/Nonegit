@@ -98,6 +98,8 @@ export const Person = z.object({
   status: z.enum(['active', 'suspended']),
   device: z.object({ model: z.string(), fingerprint: z.string(), boundAt: IsoDate.nullable() }).nullable(),
   courseIds: z.array(uuid),
+  /** Signs in with an authenticator app (Google Authenticator) instead of emailed codes. */
+  authenticator: z.boolean().default(false),
 });
 export type Person = z.infer<typeof Person>;
 

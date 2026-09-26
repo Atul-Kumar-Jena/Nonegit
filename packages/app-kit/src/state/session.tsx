@@ -28,6 +28,8 @@ export interface PendingOtp {
   resendAt: number;
   /** Demo accounts on a demo server: the code, so no one has to type it. */
   instantCode?: string;
+  /** Code from an email we sent, or from the person's authenticator app. */
+  method: 'email' | 'authenticator';
 }
 
 export type PendingDevice =
@@ -250,6 +252,7 @@ export function SessionProvider({ children, audience }: { children: ReactNode; a
       destination: r.destination,
       expiresAt: r.expiresAt,
       resendAt: Date.now() + r.resendAfterSec * 1000,
+      method: r.method,
       ...(r.instantCode ? { instantCode: r.instantCode } : {}),
     };
     setPendingOtp(p);

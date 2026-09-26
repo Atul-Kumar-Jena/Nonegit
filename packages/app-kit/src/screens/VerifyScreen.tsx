@@ -85,9 +85,15 @@ export default function Verify() {
       <Text variant="title" style={{ marginTop: 6 }}>
         Enter the code
       </Text>
-      <Text variant="body" style={{ marginTop: 6 }}>
-        If <Text color={colors.text}>{pendingOtp.destination}</Text> is registered with your institution, a 6-digit code is on its way. It expires in 5 minutes. No code? Check the address or ask your admin to add you.
-      </Text>
+      {pendingOtp.method === 'authenticator' ? (
+        <Text variant="body" style={{ marginTop: 6 }}>
+          Open <Text color={colors.text}>Google Authenticator</Text> (or your authenticator app) and type the 6-digit code shown for <Text color={colors.text}>Attendly</Text>. Codes change every 30 seconds.
+        </Text>
+      ) : (
+        <Text variant="body" style={{ marginTop: 6 }}>
+          If <Text color={colors.text}>{pendingOtp.destination}</Text> is registered with your institution, a 6-digit code is on its way. It expires in 5 minutes. No code? Check the address or ask your admin to add you.
+        </Text>
+      )}
       <View style={{ marginTop: 28 }}>
         <OtpInput value={code} onChange={setCode} invalid={!!error} disabled={busy} />
       </View>
@@ -102,11 +108,17 @@ export default function Verify() {
         </View>
       ) : null}
       <Button title="Verify" onPress={() => void submit(code)} loading={busy} disabled={code.length !== 6} style={{ marginTop: 24 }} />
-      <Pressable onPress={() => void resend()} disabled={resendIn > 0} accessibilityRole="button" style={{ marginTop: 20, alignSelf: 'center' }} hitSlop={10}>
-        <Text variant="small" color={resendIn > 0 ? colors.textDim : colors.cyan}>
-          {resendIn > 0 ? `Resend code in ${resendIn}s` : 'Resend code'}
+      {pendingOtp.method === 'authenticator' ? (
+        <Text variant="small" style={{ marginTop: 20, textAlign: 'center' }}>
+          Lost the authenticator phone? Ask your admin to reset it.
         </Text>
-      </Pressable>
+      ) : (
+        <Pressable onPress={() => void resend()} disabled={resendIn > 0} accessibilityRole="button" style={{ marginTop: 20, alignSelf: 'center' }} hitSlop={10}>
+          <Text variant="small" color={resendIn > 0 ? colors.textDim : colors.cyan}>
+            {resendIn > 0 ? `Resend code in ${resendIn}s` : 'Resend code'}
+          </Text>
+        </Pressable>
+      )}
     </Screen>
   );
 }

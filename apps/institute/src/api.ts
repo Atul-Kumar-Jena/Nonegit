@@ -4,6 +4,8 @@
  */
 import { z } from 'zod';
 import {
+  AuthenticatorSetup,
+  AuthenticatorStatus,
   ChangeRequest,
   CoverResponse,
   DecisionResponse,
@@ -100,6 +102,8 @@ export const staffApi = {
   acceptRequest: (api: ApiClient, id: string, reply?: string, acceptWarnings = false) =>
     api.authed('POST', `/v1/staff/requests/${enc(id)}/accept`, DecisionResponse, { acceptWarnings, ...(reply ? { reply } : {}) }),
   declineRequest: (api: ApiClient, id: string, reply?: string) => api.authed('POST', `/v1/staff/requests/${enc(id)}/decline`, DecisionResponse, reply ? { reply } : {}),
+  issueAuthenticator: (api: ApiClient, personId: string) => api.authed('POST', `/v1/staff/people/${enc(personId)}/authenticator`, AuthenticatorSetup, {}),
+  removeAuthenticator: (api: ApiClient, personId: string) => api.authed('POST', `/v1/staff/people/${enc(personId)}/authenticator/remove`, AuthenticatorStatus, {}),
   cancelRequest: (api: ApiClient, id: string) => api.authed('POST', `/v1/staff/requests/${enc(id)}/cancel`, ChangeRequest, {}),
   availability: (api: ApiClient, date: string, days = 1) => api.authed('GET', `/v1/staff/availability${qs({ date, days })}`, Availability),
 

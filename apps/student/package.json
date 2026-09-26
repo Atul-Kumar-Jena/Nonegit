@@ -43,6 +43,7 @@
     "expo-system-ui": "~57.0.4",
     "expo-task-manager": "~57.0.20",
     "lucide-react-native": "1.48.0",
+    "qrcode": "1.5.4",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.86.3",
@@ -53,6 +54,7 @@
     "zod": "4.6.5"
   },
   "devDependencies": {
+    "@types/qrcode": "1.5.5",
     "@types/react": "~19.2.2",
     "typescript": "~6.0.3"
   }

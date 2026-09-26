@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Switch, View } from 'react-native';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { LogOut, RefreshCw, Server, ShieldCheck, Smartphone, Trash2, MessageSquareText } from 'lucide-react-native';
+import { LogOut, RefreshCw, Server, ShieldCheck, Smartphone, Trash2, MessageSquareText, KeyRound } from 'lucide-react-native';
 import { Screen } from '@kit/components/Screen';
 import { SyncBanner } from '@kit/components/SyncBanner';
 import { useOutbox } from '@kit/lib/outbox';
@@ -163,6 +163,7 @@ export default function Profile() {
 
       <Button title="Permissions & notifications" kind="secondary" onPress={() => router.push('/permissions')} icon={<ShieldCheck color={colors.text} size={16} />} style={{ marginTop: 12 }} />
       <Button title="My requests to teachers" kind="secondary" onPress={() => router.push('/requests')} icon={<MessageSquareText color={colors.text} size={16} />} style={{ marginTop: 10 }} />
+      <Button title="Sign-in security (Google Authenticator)" kind="secondary" onPress={() => router.push('/security')} icon={<KeyRound color={colors.text} size={16} />} style={{ marginTop: 10 }} />
 
       <SectionLabel>App</SectionLabel>
       <Card>

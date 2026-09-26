@@ -25,6 +25,7 @@ import { appendAudit } from '../lib/audit';
 import { issueTokens, requireDevice, rotateRefreshToken } from '../lib/auth';
 import { isDemoEmail } from '../lib/demo';
 import { switchOn } from '../lib/flags';
+import { makeSecretBox, verifyTotp } from '../lib/totp';
 import { ApiError } from '../lib/errors';
 import { generateOtpCode, maskEmail, maskPhone, randomToken } from '../lib/secrets';
 import { revokeActiveDevice } from './staff-admin';
@@ -80,6 +81,7 @@ async function consumeTicket(tx: PoolClient, deps: Deps, ticket: string, kind: '
 }
 
 export async function authRoutes(app: FastifyInstance, deps: Deps) {
+  const box = makeSecretBox(deps.config.tokenPepper);
   // ── Step 1: request a one-time code ──────────────────────────────────────
   app.post('/v1/auth/otp/request', { config: strictLimit }, async (req): Promise<OtpRequestResponse> => {
     const body = OtpRequestBody.parse(req.body);
@@ -89,8 +91,9 @@ export async function authRoutes(app: FastifyInstance, deps: Deps) {
     // Only people an admin has registered can receive a code — whatever their email domain.
     // The response is identical either way, so it never reveals who is registered.
     const col = body.channel === 'email' ? 'email' : 'phone';
-    const u = await deps.db.query<{ id: string; role: string; status: string; tenant_status: string; tenant_name: string }>(
-      `select u.id, u.role, u.status, t.status as tenant_status, t.name as tenant_name from users u join tenants t on t.id = u.tenant_id where u.${col} = $1`,
+    const u = await deps.db.query<{ id: string; role: string; status: string; tenant_status: string; tenant_name: string; totp: boolean }>(
+      `select u.id, u.role, u.status, t.status as tenant_status, t.name as tenant_name, u.totp_enabled_at is not null as totp
+         from users u join tenants t on t.id = u.tenant_id where u.${col} = $1`,
       [body.identifier],
     );
     const user = u.rows[0];
@@ -115,15 +118,17 @@ export async function authRoutes(app: FastifyInstance, deps: Deps) {
 
     // Unknown or suspended users get an indistinguishable response, but no code is ever sent.
     const eligible = user && user.status === 'active' && user.tenant_status === 'active';
+    // People with an authenticator app type its code: nothing is sent.
+    const method = eligible && user.totp && !instant ? ('authenticator' as const) : ('email' as const);
     const code = generateOtpCode();
     const expiresAt = new Date(now + OTP_TTL_MS);
     const { rows } = await deps.db.query<{ id: string }>(
-      `insert into otp_challenges(user_id, channel, identifier, code_hash, expires_at, request_ip, created_at)
-       values ($1, $2, $3, $4, $5, $6, $7) returning id`,
-      [eligible ? user!.id : null, body.channel, body.identifier, deps.hash('otp', `${body.identifier}:${code}`), expiresAt, req.ip, new Date(now)],
+      `insert into otp_challenges(user_id, channel, identifier, code_hash, expires_at, request_ip, created_at, method)
+       values ($1, $2, $3, $4, $5, $6, $7, $8) returning id`,
+      [eligible ? user!.id : null, body.channel, body.identifier, deps.hash('otp', `${body.identifier}:${code}`), expiresAt, req.ip, new Date(now), method],
     );
     const challengeId = rows[0]!.id;
-    if (eligible && !instant) {
+    if (eligible && !instant && method === 'email') {
       // Not awaited: response time must not reveal whether the account exists.
       deps.sender
         .send({ channel: body.channel, to: body.identifier, code, institution })
@@ -134,6 +139,7 @@ export async function authRoutes(app: FastifyInstance, deps: Deps) {
       expiresAt: expiresAt.toISOString(),
       resendAfterSec: OTP_RESEND_AFTER_MS / 1000,
       destination: body.channel === 'email' ? maskEmail(body.identifier) : maskPhone(body.identifier),
+      method,
       ...(instant && eligible ? { instantCode: code } : {}),
     };
   });
@@ -147,15 +153,23 @@ export async function authRoutes(app: FastifyInstance, deps: Deps) {
 
     // Attempt counting must survive a wrong code, so it is committed separately.
     const verdict = await withTx(deps.db, async (tx) => {
-      const { rows } = await tx.query<{ id: string; user_id: string | null; identifier: string; code_hash: Buffer; attempts: number; expires_at: Date; consumed_at: Date | null }>(
-        `select id, user_id, identifier, code_hash, attempts, expires_at, consumed_at from otp_challenges where id = $1 for update`,
+      const { rows } = await tx.query<{ id: string; user_id: string | null; identifier: string; code_hash: Buffer; attempts: number; expires_at: Date; consumed_at: Date | null; method: string }>(
+        `select id, user_id, identifier, code_hash, attempts, expires_at, consumed_at, method from otp_challenges where id = $1 for update`,
         [body.challengeId],
       );
       const c = rows[0];
       if (!c) return { error: new ApiError(400, 'OTP_EXPIRED') };
       if (c.consumed_at || c.expires_at.getTime() <= deps.clock()) return { error: new ApiError(400, 'OTP_EXPIRED') };
       if (c.attempts >= OTP_MAX_ATTEMPTS) return { error: new ApiError(429, 'OTP_LOCKED') };
-      const ok = timingSafeEqual(deps.hash('otp', `${c.identifier}:${body.code}`), c.code_hash) && c.user_id !== null;
+      let ok = false;
+      if (c.method === 'authenticator' && c.user_id) {
+        const u = (await tx.query<{ totp_secret_enc: Buffer | null; totp_last_step: string | null }>('select totp_secret_enc, totp_last_step from users where id = $1 for update', [c.user_id])).rows[0];
+        const step = u?.totp_secret_enc ? verifyTotp(box.open(u.totp_secret_enc), body.code, deps.clock(), u.totp_last_step === null ? null : Number(u.totp_last_step)) : null;
+        if (step !== null) {
+          await tx.query('update users set totp_last_step = $2 where id = $1', [c.user_id, step]);
+          ok = true;
+        }
+      } else ok = timingSafeEqual(deps.hash('otp', `${c.identifier}:${body.code}`), c.code_hash) && c.user_id !== null;
       if (!ok) {
         await tx.query('update otp_challenges set attempts = attempts + 1 where id = $1', [c.id]);
         const left = OTP_MAX_ATTEMPTS - c.attempts - 1;

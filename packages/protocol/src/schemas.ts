@@ -68,6 +68,8 @@ export const OtpRequestResponse = z.object({
   expiresAt: IsoDate,
   resendAfterSec: z.number().int().nonnegative(),
   destination: z.string(),
+  /** Where the code comes from: an email/SMS we send, or the person's authenticator app. */
+  method: z.enum(['email', 'authenticator']).default('email'),
   /** Demo servers only: the code itself, so the app can sign straight in without asking for it. */
   instantCode: z.string().regex(/^[0-9]{6}$/).optional(),
 });
@@ -279,3 +281,20 @@ export const MarkResponse = z.object({
   course: z.object({ before: z.number().nullable(), after: z.number().nullable() }),
 });
 export type MarkResponse = z.infer<typeof MarkResponse>;
+
+// ───────────────────────────── authenticator app ─────────────────────────────
+
+/** A new authenticator secret to add to Google Authenticator (scan the QR, open the link, or type the key). */
+export const AuthenticatorSetup = z.object({
+  secret: z.string(),
+  otpauthUrl: z.string(),
+  issuer: z.string(),
+  account: z.string(),
+  /** Admin-issued setups are live at once; self-service ones wait for the first code. */
+  active: z.boolean(),
+});
+export type AuthenticatorSetup = z.infer<typeof AuthenticatorSetup>;
+export const AuthenticatorStatus = z.object({ enabled: z.boolean(), enabledAt: IsoDate.nullable() });
+export type AuthenticatorStatus = z.infer<typeof AuthenticatorStatus>;
+export const AuthenticatorCodeBody = z.object({ code: z.string().regex(/^[0-9]{6}$/, 'Enter the 6-digit code') });
+export type AuthenticatorCodeBody = z.infer<typeof AuthenticatorCodeBody>;
