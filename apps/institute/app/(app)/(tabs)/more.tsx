@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Switch, View } from 'react-native';
 import { router, type Href } from 'expo-router';
-import { Bell, Building2, CalendarDays, CalendarRange, ChevronRight, Clock4, Inbox, KeyRound, Library, Lock, LogOut, MapPin, Play, Plus, ShieldAlert, Smartphone, Trash2, UserPlus, Users, UsersRound, Wand2 } from 'lucide-react-native';
+import { AlarmClock, Bell, Building2, CalendarDays, CalendarRange, ChevronRight, Clock4, Inbox, KeyRound, Library, Lock, LogOut, MapPin, Play, Plus, ShieldAlert, Smartphone, Trash2, UserPlus, Users, UsersRound, Wand2 } from 'lucide-react-native';
 import { Screen } from '@kit/components/Screen';
 import { SyncBanner } from '@kit/components/SyncBanner';
 import { Avatar, Badge, Button, Card, Divider, InfoRow, SectionLabel, Text } from '@kit/components/ui';
@@ -83,6 +83,7 @@ export default function More() {
               ]
             : []),
           { icon: <Bell color={colors.text} size={18} />, label: 'Notifications', href: '/notifications' },
+          { icon: <AlarmClock color={colors.text} size={18} />, label: 'Class reminders', href: '/reminders' },
           { icon: <KeyRound color={colors.text} size={18} />, label: 'Sign-in security', href: '/security' },
           { icon: <Lock color={colors.text} size={18} />, label: 'Permissions', href: '/permissions' },
         ]}

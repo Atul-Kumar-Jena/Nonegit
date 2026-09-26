@@ -1,6 +1,7 @@
 import { Redirect, Stack } from 'expo-router';
 import { useSession } from '@kit/state/session';
 import { colors } from '@kit/theme';
+import { ReminderRunner } from '@/components/ReminderRunner';
 
 export default function AppLayout() {
   const { phase } = useSession();
@@ -8,9 +9,12 @@ export default function AppLayout() {
   if (phase === 'identity-error') return <Redirect href="/identity" />;
   if (phase !== 'signed-in') return <Redirect href="/login" />;
   return (
-    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg }, animation: 'slide_from_right' }}>
+    <>
+      <ReminderRunner />
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg }, animation: 'slide_from_right' }}>
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="live/[id]" options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom', gestureEnabled: false }} />
-    </Stack>
+      </Stack>
+    </>
   );
 }

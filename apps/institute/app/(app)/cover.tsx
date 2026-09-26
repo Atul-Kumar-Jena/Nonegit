@@ -6,7 +6,7 @@ import { CheckCircle2, Hand, Inbox, UserRound, XOctagon } from 'lucide-react-nat
 import type { Availability, StaffSession } from '@attendly/protocol';
 import { Screen } from '@kit/components/Screen';
 import { Avatar, Badge, Card, ErrorState, Loading, Notice, SectionLabel, Text } from '@kit/components/ui';
-import { dayLabel, initials, zoned, clock } from '@kit/lib/format';
+import { clock, dayLabel, initials, to12h, zoned } from '@kit/lib/format';
 import { useApi } from '@kit/state/session';
 import { colors, fonts } from '@kit/theme';
 import { Empty, Header, addDays } from '@/components/forms';
@@ -41,8 +41,11 @@ export default function Cover() {
   const meId = me.data?.user.id;
   const nowMs = api.serverNow();
   const nowHm = zoned(nowMs, tz).hm;
+  const clockHm = (iso: string) => zoned(iso, tz).hm;
 
   const [picked, setPicked] = useState<string | null>(null); // tap-to-assign alternative
+  /** A class tapped first: every teacher then shows whether they're free at its time. */
+  const [selected, setSelected] = useState<string | null>(null);
   const [allTeachers, setAllTeachers] = useState(false);
   const [sheet, setSheet] = useState<{ session: StaffSession; teacherId: string | null } | null>(null);
   const [toast, setToast] = useState<{ tone: 'red' | 'green' | 'amber'; text: string } | null>(null);
@@ -71,11 +74,11 @@ export default function Cover() {
             ? `${blocks.length} ${blocks.length === 1 ? 'class' : 'classes'} that day`
             : 'Free all day'
           : current
-            ? `In ${current.courseCode} till ${current.end}`
+            ? `In ${current.courseCode} till ${to12h(current.end)}`
             : next
-              ? `Free now · next ${next.start}`
+              ? `Free now · next ${to12h(next.start)}`
               : 'Free now · done for the day';
-      return { t, free: offset === 0 ? !current : blocks.length === 0, status };
+      return { t, free: offset === 0 ? !current : blocks.length === 0, status, blocks };
     });
     return list.sort((a, b) => Number(b.free) - Number(a.free) || a.t.name.localeCompare(b.t.name));
   }, [avail.data, date, offset, nowHm]);
@@ -222,6 +225,7 @@ export default function Cover() {
     );
 
   const pickedTeacher = teachers.find((x) => x.t.id === picked)?.t;
+  const selectedClass = classes.find((c) => c.id === selected) ?? null;
   const incoming = (reqs.data?.incoming ?? []).filter((r) => r.status === 'pending').length;
   const sent = (reqs.data?.outgoing ?? []).filter((r) => r.status === 'pending').length;
 
@@ -254,23 +258,40 @@ export default function Cover() {
         <SectionLabel right={<Text variant="monoSmall">{offset === 0 ? `now ${nowHm}` : dayLabel(`${date}T12:00:00Z`, 'UTC')}</Text>}>Teachers</SectionLabel>
         {/* A plain wrapped grid (no scrolling parent), so a scroll view can never steal the finger mid-drag. */}
         <View style={styles.tray}>
-          {(allTeachers ? teachers : teachers.slice(0, 6)).map(({ t, free, status }) => (
+          {(selectedClass
+            ? [...teachers].sort((a, b) => Number(verdict(b.t, selectedClass).ok) - Number(verdict(a.t, selectedClass).ok))
+            : allTeachers
+              ? teachers
+              : teachers.slice(0, 6)
+          ).map(({ t, free, status, blocks }) => {
+            const v = selectedClass ? verdict(t, selectedClass) : null;
+            return (
             <TeacherChip
               key={t.id}
               t={t}
-              free={free}
-              status={status}
+              free={v ? v.ok : free}
+              status={v ? (v.ok ? `Free for ${selectedClass!.courseCode} ✓` : v.text.replace(`${t.name} `, '')) : status}
+              blocks={blocks}
+              highlight={selectedClass ? { start: clockHm(selectedClass.scheduledStart), end: clockHm(selectedClass.scheduledEnd) } : null}
               me={t.id === meId}
               picked={picked === t.id}
               dragging={drag?.t.id === t.id}
-              onTap={() => setPicked((p) => (p === t.id ? null : t.id))}
+              onTap={() => {
+                if (selectedClass) {
+                  const vv = verdict(t, selectedClass);
+                  if (!vv.ok) return setToast({ tone: 'red', text: vv.text });
+                  setSheet({ session: selectedClass, teacherId: t.id });
+                  setSelected(null);
+                } else setPicked((p) => (p === t.id ? null : t.id));
+              }}
               onStart={onStart}
               onMove={onMove}
               onEnd={onEnd}
               onCancel={onCancel}
             />
-          ))}
-          {teachers.length > 6 ? (
+            );
+          })}
+          {!selectedClass && teachers.length > 6 ? (
             <Pressable onPress={() => setAllTeachers((v) => !v)} accessibilityRole="button" style={[styles.chip, { borderColor: colors.border }]}>
               <Text variant="small" color={colors.text}>
                 {allTeachers ? 'Show fewer' : `+${teachers.length - 6} more`}
@@ -281,7 +302,11 @@ export default function Cover() {
         <View style={[styles.row, { marginTop: 8 }]}>
           <Hand color={colors.textDim} size={13} />
           <Text variant="small" style={{ flex: 1 }}>
-            {pickedTeacher ? `Now tap a class to give it to ${pickedTeacher.name}.` : 'Long-press a teacher and drop them on a class — or tap a teacher, then a class.'}
+            {selectedClass
+              ? `${selectedClass.courseCode} ${clock(selectedClass.scheduledStart, tz)} selected — tap a free (green) teacher to ask them.`
+              : pickedTeacher
+                ? `Now tap a class to give it to ${pickedTeacher.name}.`
+                : 'Hold a teacher and drop them on a class — or tap a class to see who’s free then.'}
           </Text>
         </View>
         {toast ? (
@@ -315,6 +340,9 @@ export default function Cover() {
               ) : (
                 classes.map((s) => {
                   const o = over?.id === s.id ? over.v : null;
+                  // While a teacher is being dragged, every class says at once whether they're free for it.
+                  const live = drag && !o ? verdict(drag.t, s) : null;
+                  const isSel = selected === s.id;
                   const waiting = pendingBySession.get(s.id);
                   return (
                     <Pressable
@@ -329,7 +357,7 @@ export default function Cover() {
                           if (!v.ok) return setToast({ tone: 'red', text: v.text });
                           setSheet({ session: s, teacherId: pickedTeacher.id });
                           setPicked(null);
-                        } else setSheet({ session: s, teacherId: null });
+                        } else setSelected((cur) => (cur === s.id ? null : s.id));
                       }}
                       accessibilityRole="button"
                       accessibilityLabel={`${s.courseCode} ${clock(s.scheduledStart, tz)}. ${waiting ? `Waiting for ${waiting}. ` : ''}Tap to choose who covers it.`}
@@ -338,7 +366,8 @@ export default function Cover() {
                         style={[
                           styles.classCard,
                           o ? { borderColor: o.ok ? colors.green : colors.red, borderWidth: 2, backgroundColor: o.ok ? 'rgba(52,211,153,0.08)' : 'rgba(248,113,113,0.08)' } : null,
-                          drag && !o ? { borderStyle: 'dashed', borderColor: colors.borderHi } : null,
+                          live ? { borderStyle: 'dashed', borderColor: live.ok ? 'rgba(74,222,128,0.6)' : 'rgba(248,113,113,0.5)', opacity: live.ok ? 1 : 0.6 } : null,
+                          isSel ? { borderColor: colors.text, borderWidth: 2 } : null,
                         ]}
                       >
                         <View style={styles.time}>
@@ -360,6 +389,20 @@ export default function Cover() {
                                 {o.ok ? `Drop to ask ${drag?.t.name ?? ''}` : o.text}
                               </Text>
                             </View>
+                          ) : live ? (
+                            <View style={styles.row}>
+                              {live.ok ? <CheckCircle2 color={colors.green} size={13} /> : <XOctagon color={colors.red} size={13} />}
+                              <Text variant="small" color={live.ok ? colors.green : colors.red} style={{ flex: 1 }} numberOfLines={1}>
+                                {live.ok ? 'Free then' : live.text.replace(`${drag!.t.name} `, '')}
+                              </Text>
+                            </View>
+                          ) : isSel ? (
+                            <Text variant="small" color={colors.text}>
+                              Selected — pick a green teacher above, or{' '}
+                              <Text variant="small" color={colors.text} style={{ textDecorationLine: 'underline' }} onPress={() => setSheet({ session: s, teacherId: null })}>
+                                choose from a list
+                              </Text>
+                            </Text>
                           ) : waiting ? (
                             <Badge label={`Waiting for ${waiting}`} tone="amber" />
                           ) : s.change?.kind === 'substitute' ? (
@@ -401,10 +444,29 @@ export default function Cover() {
   );
 }
 
+/** 8 AM → 6 PM strip with the teacher's classes drawn in (and the selected class outlined). */
+function DayStrip({ blocks, highlight }: { blocks: { start: string; end: string }[]; highlight: { start: string; end: string } | null }) {
+  const toMin = (hm: string) => Number(hm.slice(0, 2)) * 60 + Number(hm.slice(3, 5));
+  const from = 8 * 60;
+  const span = 10 * 60;
+  const pct = (m: number) => `${Math.max(0, Math.min(100, ((m - from) / span) * 100))}%` as const;
+  const w = (a: string, b: string) => `${Math.max(2, ((Math.min(toMin(b), from + span) - Math.max(toMin(a), from)) / span) * 100)}%` as const;
+  return (
+    <View style={styles.strip}>
+      {blocks.map((b, i) => (
+        <View key={i} style={[styles.stripBusy, { left: pct(toMin(b.start)), width: w(b.start, b.end) }]} />
+      ))}
+      {highlight ? <View style={[styles.stripSel, { left: pct(toMin(highlight.start)), width: w(highlight.start, highlight.end) }]} /> : null}
+    </View>
+  );
+}
+
 function TeacherChip({
   t,
   free,
   status,
+  blocks,
+  highlight,
   me,
   picked,
   dragging,
@@ -417,6 +479,8 @@ function TeacherChip({
   t: Teacher;
   free: boolean;
   status: string;
+  blocks: { start: string; end: string }[];
+  highlight: { start: string; end: string } | null;
   me: boolean;
   picked: boolean;
   dragging: boolean;
@@ -451,6 +515,7 @@ function TeacherChip({
         <Text variant="small" color={free ? colors.green : colors.amber} numberOfLines={1}>
           {status}
         </Text>
+        <DayStrip blocks={blocks} highlight={highlight} />
       </View>
     </View>
   );
@@ -461,6 +526,9 @@ const styles = StyleSheet.create({
   day: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bgRaised },
   dayOn: { borderColor: colors.cyan, backgroundColor: colors.cyanSoft },
   tray: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  strip: { height: 5, width: 120, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.08)', marginTop: 5, overflow: 'hidden' },
+  stripBusy: { position: 'absolute', top: 0, bottom: 0, backgroundColor: colors.amber, borderRadius: 2 },
+  stripSel: { position: 'absolute', top: 0, bottom: 0, borderWidth: 1, borderColor: colors.text, borderRadius: 2 },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 16, borderWidth: 1.5, backgroundColor: colors.card },
   inbox: { padding: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.border, marginBottom: 10 },
   classCard: { flexDirection: 'row', gap: 12, alignItems: 'center', borderWidth: 1, borderColor: colors.border },
