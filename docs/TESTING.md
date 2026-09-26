@@ -85,7 +85,7 @@ APKs: `…/releases/latest/download/attendly-institute.apk` and `…/attendly-st
 |---|---|---|
 | 41 | Phone A (admin): **More → Batches → New** → name `CSE-2A` → add students (pick or paste roll numbers) → tick **CS-101** → **Save** | The batch; its students are now enrolled in CS-101 (Classes → CS-101 → Students) |
 | 42 | Remove a student from the batch | They leave CS-101 too (unless they were enrolled directly) |
-| 43 | **Timetable → Who's busy** → today | Each teacher and room with their classes on a timeline; "Free at" filters |
+| 43 | **Timetable → Who's busy where** → today | Each teacher and room with their classes on a timeline; "Free at" filters |
 | 44 | Phone A (teacher): open an upcoming class → **Move** → a new time → **Confirm & notify** | "Done · N people notified" |
 | 45 | Phone B (student) | Within seconds while open (or ≤ 15 min while closed): a **system notification with sound**; the bell shows 1; the class says "Moved from …" |
 | 46 | Phone A: **Move** a class onto a time when the same teacher already teaches | Refused, with the clash in words |

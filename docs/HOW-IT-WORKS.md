@@ -103,7 +103,7 @@ Classes move. Attendly makes every change **checked, published and announced**.
 4. **Review & publish**: a list of every change in words ("CS-101 Tue 10:00 → Wed 14:00, LH-101"), plus any clash. Publishing applies everything in **one transaction**: all of it or nothing.
 5. You can also change the **weekly pattern** there ("from next week on, every Monday…"), not only one week.
 
-**Who's busy** (Timetable → Who's busy): for any day, each teacher's and each room's classes on a timeline, and a "free at 11:00" filter. It's the view for finding a substitute.
+**Who's busy** (Timetable → Who's busy where): for any day, each teacher's and each room's classes on a timeline, and a "free at 11:00" filter. It's the view for finding a substitute.
 
 **Students are notified** after every published change: moved, cancelled (with the reason), substitute teacher, extra class, weekly slot changed. Each affected person gets **one** grouped notification, never a flood:
 
