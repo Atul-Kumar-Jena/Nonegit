@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
-import { ClipboardList, CloudOff, MapPin, QrCode, ShieldAlert, XCircle } from 'lucide-react-native';
+import { ClipboardList, CloudOff, MapPin, Monitor, QrCode, ShieldAlert, XCircle } from 'lucide-react-native';
 import { randomToken, type FeedEntry, type SessionMode, type StartSessionBody } from '@attendly/protocol';
 import { Screen } from '@kit/components/Screen';
 import { Badge, Button, Card, ErrorState, InfoRow, Loading, Notice, SectionLabel, Text } from '@kit/components/ui';
@@ -13,6 +13,7 @@ import { outbox } from '@kit/lib/outbox';
 import { useApi } from '@kit/state/session';
 import { colors } from '@kit/theme';
 import { staffApi } from '@/api';
+import { BigScreenSheet } from '@/components/BigScreen';
 import { Chips, Field, Header, confirmAction } from '@/components/forms';
 import { StatusBadge } from '@/components/SessionCard';
 import { localSessions } from '@/local-sessions';
@@ -53,6 +54,7 @@ export default function SessionScreen() {
   const [busy, setBusy] = useState<null | 'start' | 'end' | 'cancel'>(null);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [bigScreen, setBigScreen] = useState(false);
 
   if (!s) {
     if (query.isPending) return <Screen scroll={false}><Header title="Class" /><Loading /></Screen>;
@@ -275,7 +277,11 @@ export default function SessionScreen() {
       {s.status === 'live' ? (
         <View style={{ gap: 10, marginTop: 18 }}>
           {s.mode === 'qr' ? (
-            <Button title="Show the QR code" onPress={() => router.push({ pathname: '/live/[id]', params: { id: s.id } })} icon={<QrCode color="#03141c" size={18} />} />
+            <>
+              <Button title="Show the QR code" onPress={() => router.push({ pathname: '/live/[id]', params: { id: s.id } })} icon={<QrCode color="#03141c" size={18} />} />
+              <Button title="Show on a big screen" kind="secondary" onPress={() => setBigScreen(true)} icon={<Monitor color={colors.text} size={16} />} />
+              <BigScreenSheet sessionId={s.id} courseLabel={s.courseCode} open={bigScreen} onClose={() => setBigScreen(false)} />
+            </>
           ) : null}
           <Button title={s.mode === 'qr' ? 'Mark someone by hand' : 'Open the register'} kind="secondary" onPress={() => router.push({ pathname: '/register/[id]', params: { id: s.id } })} icon={<ClipboardList color={colors.text} size={16} />} />
           <Button title="End class" kind="danger" onPress={end} loading={busy === 'end'} />

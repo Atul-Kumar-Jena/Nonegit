@@ -13,6 +13,7 @@ import {
   ManualResponse,
   OfflinePack,
   OkResponse,
+  PresentScreen,
   Overview,
   Person,
   Room,
@@ -80,6 +81,12 @@ export const staffApi = {
   feed: (api: ApiClient, id: string) => api.authed('GET', `/v1/staff/sessions/${enc(id)}/feed`, SessionFeed),
   register: (api: ApiClient, id: string, b: ManualBody) => api.authed('POST', `/v1/staff/sessions/${enc(id)}/register`, ManualResponse, b),
   offlinePack: (api: ApiClient) => api.authed('GET', '/v1/staff/offline-pack', OfflinePack),
+
+  presentLookup: (api: ApiClient, code: string) => api.authed('POST', '/v1/staff/present/lookup', PresentScreen, { code }),
+  screens: (api: ApiClient, sessionId: string) => api.authed('GET', `/v1/staff/sessions/${enc(sessionId)}/screens`, z.array(PresentScreen)),
+  connectScreen: (api: ApiClient, sessionId: string, code: string) => api.authed('POST', `/v1/staff/sessions/${enc(sessionId)}/screens`, z.array(PresentScreen), { code }),
+  disconnectScreen: (api: ApiClient, sessionId: string, pairingId: string) =>
+    api.authed('POST', `/v1/staff/sessions/${enc(sessionId)}/screens/${enc(pairingId)}/disconnect`, z.array(PresentScreen), {}),
 
   flags: (api: ApiClient, status?: string) => api.authed('GET', `/v1/staff/flags${qs({ status })}`, z.array(FlagEntry)),
   reviewFlag: (api: ApiClient, id: number, action: 'valid' | 'blocked' | 'dismissed') => api.authed('POST', `/v1/staff/flags/${id}`, FlagEntry, { action }),

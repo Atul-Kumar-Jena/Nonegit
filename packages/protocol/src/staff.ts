@@ -411,3 +411,27 @@ export const SubjectDetailResponse = z.object({
   history: z.array(HistoryItem),
 });
 export type SubjectDetailResponse = z.infer<typeof SubjectDetailResponse>;
+
+// ───────────────────────────── big-screen pairing ─────────────────────────────
+
+/** Unambiguous alphabet for codes typed by hand (no 0/O, 1/I/L). */
+export const PRESENT_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+/** "KXF7-M2QD", "kxf7m2qd", "KXF7 M2QD" → "KXF7M2QD" (or null if it can't be a code). */
+export function normalizePresentCode(input: unknown): string | null {
+  if (typeof input !== 'string') return null;
+  const c = input.toUpperCase().replace(/[\s-]/g, '');
+  if (c.length !== 8) return null;
+  for (const ch of c) if (!PRESENT_CODE_ALPHABET.includes(ch)) return null;
+  return c;
+}
+export const PresentCodeBody = z.object({ code: z.string().max(20).transform((v, ctx) => normalizePresentCode(v) ?? (ctx.addIssue({ code: 'custom', message: 'Enter the 8-character code shown on the screen' }), z.NEVER)) });
+
+export const PresentScreen = z.object({
+  id: uuid,
+  device: z.string(),
+  ip: z.string().nullable(),
+  requestedAt: IsoDate,
+  approvedAt: IsoDate.nullable(),
+  approvedBy: z.string().nullable(),
+});
+export type PresentScreen = z.infer<typeof PresentScreen>;

@@ -12,6 +12,7 @@ import { createServerSigner } from './lib/keys';
 import { makeHasher } from './lib/secrets';
 import { attendanceRoutes } from './routes/attendance';
 import { authRoutes } from './routes/auth';
+import { presentRoutes } from './routes/present';
 import { devRoutes } from './routes/dev';
 import { metaRoutes } from './routes/meta';
 import { studentRoutes } from './routes/student';
@@ -124,6 +125,7 @@ export async function buildApp(opts: BuildOptions): Promise<{ app: FastifyInstan
   await app.register(async (s) => staffAdminRoutes(s, deps));
   await app.register(async (s) => staffAcademicRoutes(s, deps));
   await app.register(async (s) => staffSessionRoutes(s, deps));
+  await app.register(async (s) => presentRoutes(s, deps));
   await app.register(async (s) => devRoutes(s, deps));
 
   return { app, deps };

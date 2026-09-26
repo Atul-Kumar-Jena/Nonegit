@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useKeepAwake } from 'expo-keep-awake';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { useQueryClient } from '@tanstack/react-query';
-import { ClipboardList, CloudOff, Users, X } from 'lucide-react-native';
+import { ClipboardList, CloudOff, Monitor, Users, X } from 'lucide-react-native';
 import { currentQrSeq, encodeQrToken, fromB64url, msUntilNextRotation, randomToken, seqLabel } from '@attendly/protocol';
 import { Screen } from '@kit/components/Screen';
 import { Badge, Button, IconButton, Notice, Text } from '@kit/components/ui';
@@ -12,6 +12,7 @@ import { outbox } from '@kit/lib/outbox';
 import { useApi } from '@kit/state/session';
 import { colors, fonts } from '@kit/theme';
 import { staffApi } from '@/api';
+import { BigScreenSheet, useScreens } from '@/components/BigScreen';
 import { confirmAction } from '@/components/forms';
 import { QrCode } from '@/components/QrCode';
 import { localSessions } from '@/local-sessions';
@@ -23,8 +24,23 @@ import { useSessionView } from '@/session-view';
  * on this phone from the class key and the server-synced clock, so it keeps
  * working with no internet. Screenshots are blocked; the screen stays on.
  */
+/** Keeps the screen on while the QR is showing (best effort: never crashes if the platform refuses). */
+function useScreenOn() {
+  useEffect(() => {
+    const tag = 'attendly-live-qr';
+    activateKeepAwakeAsync(tag).catch(() => undefined);
+    return () => {
+      try {
+        void Promise.resolve(deactivateKeepAwake(tag)).catch(() => undefined);
+      } catch {
+        /* not active yet */
+      }
+    };
+  }, []);
+}
+
 export default function LiveQr() {
-  useKeepAwake();
+  useScreenOn();
   const { id: rawId } = useLocalSearchParams<{ id: string }>();
   const id = String(rawId ?? '');
   const api = useApi();
@@ -35,6 +51,8 @@ export default function LiveQr() {
   const [now, setNow] = useState(() => api.serverNow());
   const [ending, setEnding] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [bigScreen, setBigScreen] = useState(false);
+  const screens = useScreens(id, true);
 
   useEffect(() => {
     const t = setInterval(() => setNow(api.serverNow()), 250);
@@ -148,10 +166,19 @@ export default function LiveQr() {
       )}
 
       {error ? <Notice tone="red" message={error} onDismiss={() => setError(null)} /> : null}
+      <Button
+        title={screens.data?.length ? `Big screen · ${screens.data.length} connected` : 'Show on a big screen'}
+        kind="secondary"
+        onPress={() => setBigScreen(true)}
+        disabled={!s || s.status !== 'live'}
+        icon={<Monitor color={colors.text} size={16} />}
+        style={{ alignSelf: 'stretch', marginTop: 12 }}
+      />
       <View style={styles.actions}>
         <Button title="Register" kind="secondary" onPress={() => router.push({ pathname: '/register/[id]', params: { id } })} icon={<ClipboardList color={colors.text} size={16} />} style={{ flex: 1 }} />
         <Button title="End class" kind="danger" onPress={end} loading={ending} disabled={!s || s.status !== 'live'} style={{ flex: 1 }} />
       </View>
+      {s ? <BigScreenSheet sessionId={id} courseLabel={s.courseCode} open={bigScreen} onClose={() => setBigScreen(false)} /> : null}
     </Screen>
   );
 }
@@ -165,5 +192,5 @@ const styles = StyleSheet.create({
   seq: { fontFamily: fonts.monoMedium, fontSize: 18, color: colors.text },
   count: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 18 },
   countText: { fontFamily: fonts.bold, fontSize: 26, color: colors.text },
-  actions: { flexDirection: 'row', gap: 10, alignSelf: 'stretch', marginTop: 12 },
+  actions: { flexDirection: 'row', gap: 10, alignSelf: 'stretch', marginTop: 10 },
 });
