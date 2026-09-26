@@ -79,7 +79,15 @@ export const DraftOp = z.discriminatedUnion('op', [
   z.object({ op: z.literal('reschedule'), sessionId: uuid, ...when, roomId: uuid.nullable().optional() }),
   z.object({ op: z.literal('cancel'), sessionId: uuid, reason }),
   /** Another teacher takes this one class (null = back to the course's own teacher). */
-  z.object({ op: z.literal('substitute'), sessionId: uuid, teacherId: uuid.nullable() }),
+  z.object({
+    op: z.literal('substitute'),
+    sessionId: uuid,
+    teacherId: uuid.nullable(),
+    /** Shown to the teacher who is asked to take the class. */
+    noteToTeacher: z.string().trim().max(300).optional(),
+    /** Shown to the students once the teacher accepts. */
+    noteToStudents: z.string().trim().max(300).optional(),
+  }),
   /** A one-off class (make-up / extra), optionally by another teacher. */
   z.object({ op: z.literal('extra'), tempId, courseId: uuid, ...when, roomId: uuid.nullable().optional(), teacherId: uuid.nullable().optional(), mode: SessionMode.optional() }),
   /** Permanent: the weekly slot moves (every week from now on). */

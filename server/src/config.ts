@@ -64,7 +64,15 @@ const EnvSchema = z
     DEV_TOOLS_TOKEN: z.string().optional(),
     ALLOW_WEB_CLIENTS: bool,
     ALLOW_EMULATORS: bool,
-    SEED_DEMO: bool,
+    /** Unset: follows DEMO_INSTANT_LOGIN (a demo server gets the demo institute). */
+    SEED_DEMO: z.enum(['1', '0', 'true', 'false', 'yes', 'no']).optional(),
+    /**
+     * Demo mode, for the seeded demo institute's accounts (@demo.attendly.app) only: no sign-in code
+     * (the app signs straight in) and they may move between phones freely. Real accounts are never
+     * affected. Unset: on while no real code delivery is configured (production with
+     * OTP_DELIVERY=console); it switches off by itself once email (smtp) is set up.
+     */
+    DEMO_INSTANT_LOGIN: z.enum(['1', '0', 'true', 'false', 'yes', 'no']).optional(),
     MIN_APP_VERSION: z.string().default('1.0.0'),
     LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   })
@@ -103,6 +111,7 @@ export interface Config {
   allowWebClients: boolean;
   allowEmulators: boolean;
   seedDemo: boolean;
+  demoInstantLogin: boolean;
   minAppVersion: string;
   logLevel: string;
 }
@@ -119,6 +128,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   }
   const e = parsed.data;
   const seed = decodeKey(e.SERVER_SIGNING_KEY);
+  const flag = (v: string | undefined) => (v === undefined ? undefined : v === '1' || v === 'true' || v === 'yes');
+  const otpDelivery = e.OTP_DELIVERY ?? 'console';
+  const demoInstantLogin = flag(e.DEMO_INSTANT_LOGIN) ?? (e.NODE_ENV === 'production' && otpDelivery === 'console');
   return {
     env: e.NODE_ENV,
     host: e.HOST,
@@ -147,7 +159,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
         : null,
     serverSigningSeed: seed.slice(0, 32),
     tokenPepper: decodeKey(e.TOKEN_PEPPER),
-    otpDelivery: e.OTP_DELIVERY ?? 'console',
+    otpDelivery,
     smtpUrl: e.SMTP_URL,
     smtpFrom: e.SMTP_FROM,
     smsDelivery: e.SMS_DELIVERY ?? (e.NODE_ENV === 'production' ? 'disabled' : 'console'),
@@ -163,7 +175,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     devToolsToken: e.DEV_TOOLS_TOKEN || undefined,
     allowWebClients: e.ALLOW_WEB_CLIENTS,
     allowEmulators: e.ALLOW_EMULATORS,
-    seedDemo: e.SEED_DEMO,
+    seedDemo: flag(e.SEED_DEMO) ?? demoInstantLogin,
+    demoInstantLogin,
     minAppVersion: e.MIN_APP_VERSION,
     logLevel: e.LOG_LEVEL,
   };

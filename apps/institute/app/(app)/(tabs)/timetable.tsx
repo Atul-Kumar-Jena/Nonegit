@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
-import { CalendarRange, ChevronRight, ClipboardList, Clock4, Plus, QrCode } from 'lucide-react-native';
+import { CalendarRange, ChevronRight, ClipboardList, Clock4, Plus, QrCode, UserPlus } from 'lucide-react-native';
 import { Screen } from '@kit/components/Screen';
 import { Badge, Button, Card, ErrorState, Loading, SectionLabel, Text } from '@kit/components/ui';
 import { dayLabel } from '@kit/lib/format';
@@ -77,7 +77,10 @@ export default function Timetable() {
       {admin ? (
         <Button title="Open the planner (drag & drop)" onPress={() => router.push('/planner')} icon={<CalendarRange color="#03141c" size={16} />} style={{ marginTop: 12 }} />
       ) : null}
-      <Button title="Who’s busy where" kind="ghost" compact onPress={() => router.push('/busy')} icon={<Clock4 color={colors.text} size={14} />} style={{ marginTop: 6, alignSelf: 'flex-start' }} />
+      <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
+        <Button title="Who’s busy where" kind="ghost" compact onPress={() => router.push('/busy')} icon={<Clock4 color={colors.text} size={14} />} />
+        <Button title="Cover a class (drag a free teacher)" kind="ghost" compact onPress={() => router.push('/cover')} icon={<UserPlus color={colors.text} size={14} />} />
+      </View>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.days} style={{ marginTop: 16, marginHorizontal: -20 }}>
         {WEEKDAYS.map(({ value: d, label }) => {

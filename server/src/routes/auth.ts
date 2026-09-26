@@ -23,8 +23,10 @@ import type { Deps } from '../deps';
 import { isUniqueViolation, withTx } from '../db';
 import { appendAudit } from '../lib/audit';
 import { issueTokens, requireDevice, rotateRefreshToken } from '../lib/auth';
+import { isDemoEmail } from '../lib/demo';
 import { ApiError } from '../lib/errors';
 import { generateOtpCode, maskEmail, maskPhone, randomToken } from '../lib/secrets';
+import { revokeActiveDevice } from './staff-admin';
 import { loadActiveDevice, loadUser, toDeviceSummary, toUserSummary, type DeviceRow } from '../lib/users';
 
 export const OTP_TTL_MS = 5 * 60_000;
@@ -92,6 +94,9 @@ export async function authRoutes(app: FastifyInstance, deps: Deps) {
     );
     const user = u.rows[0];
     const institution = user?.tenant_name ?? 'your institution';
+    // Demo mode skips the code only for the seeded demo accounts; real accounts always get one.
+    const instant = deps.config.demoInstantLogin && body.channel === 'email' && isDemoEmail(body.identifier);
+    if (instant && !user) throw new ApiError(404, 'NOT_FOUND', 'That demo account does not exist on this server. Tap one of the listed demo accounts.');
 
     // Throttle per identifier (in addition to the per-IP limiter).
     const recent = await deps.db.query<{ n: number; last: Date | null }>(
@@ -99,8 +104,8 @@ export async function authRoutes(app: FastifyInstance, deps: Deps) {
       [body.identifier, new Date(now - 3_600_000)],
     );
     const r = recent.rows[0]!;
-    if (r.n >= OTP_MAX_PER_HOUR) throw new ApiError(429, 'RATE_LIMITED', 'Too many codes requested. Try again in an hour.');
-    if (r.last && now - r.last.getTime() < OTP_RESEND_AFTER_MS)
+    if (!instant && r.n >= OTP_MAX_PER_HOUR) throw new ApiError(429, 'RATE_LIMITED', 'Too many codes requested. Try again in an hour.');
+    if (!instant && r.last && now - r.last.getTime() < OTP_RESEND_AFTER_MS)
       throw new ApiError(429, 'RATE_LIMITED', 'Please wait a few seconds before requesting another code.', {
         retryAfterSec: Math.ceil((OTP_RESEND_AFTER_MS - (now - r.last.getTime())) / 1000),
       });
@@ -115,7 +120,7 @@ export async function authRoutes(app: FastifyInstance, deps: Deps) {
       [eligible ? user!.id : null, body.channel, body.identifier, deps.hash('otp', `${body.identifier}:${code}`), expiresAt, req.ip, new Date(now)],
     );
     const challengeId = rows[0]!.id;
-    if (eligible) {
+    if (eligible && !instant) {
       // Not awaited: response time must not reveal whether the account exists.
       deps.sender
         .send({ channel: body.channel, to: body.identifier, code, institution })
@@ -126,6 +131,7 @@ export async function authRoutes(app: FastifyInstance, deps: Deps) {
       expiresAt: expiresAt.toISOString(),
       resendAfterSec: OTP_RESEND_AFTER_MS / 1000,
       destination: body.channel === 'email' ? maskEmail(body.identifier) : maskPhone(body.identifier),
+      ...(instant && eligible ? { instantCode: code } : {}),
     };
   });
 
@@ -162,7 +168,13 @@ export async function authRoutes(app: FastifyInstance, deps: Deps) {
 
     const pk = Buffer.from(fromB64url(body.device.publicKey));
     return withTx(deps.db, async (tx): Promise<OtpVerifyResponse> => {
-      const bound = await loadActiveDevice(tx, user.id);
+      let bound = await loadActiveDevice(tx, user.id);
+      // Demo accounts hop between test phones: the new phone simply takes over.
+      if (bound && !bound.public_key.equals(pk) && deps.config.demoInstantLogin && isDemoEmail(user.email)) {
+        await revokeActiveDevice(tx, user.id, 'demo: signed in on another phone', new Date(deps.clock()));
+        await appendAudit(tx, { tenantId: user.tenant_id, actorType: 'user', actorId: user.id, action: 'device.demo_handover', subject: `device:${bound.id}` });
+        bound = undefined;
+      }
       if (!bound) {
         const ticket = await createTicket(tx, deps, 'bind', user.id, body.device);
         return { status: 'bind_required', ticket, user: toUserSummary(user) };
@@ -208,6 +220,15 @@ export async function authRoutes(app: FastifyInstance, deps: Deps) {
         const user = await loadUser(tx, t.user_id);
         if (!user || user.status !== 'active' || user.tenant_status !== 'active') throw new ApiError(403, 'ACCOUNT_SUSPENDED');
         if (await loadActiveDevice(tx, user.id)) throw new ApiError(409, 'CONFLICT', 'Another device was bound to this account in the meantime.');
+        if (deps.config.demoInstantLogin && isDemoEmail(user.email)) {
+          // Demo: this phone may have been used for another demo account; free it.
+          const other = await tx.query<{ user_id: string; email: string | null }>(
+            `select d.user_id, u.email from devices d join users u on u.id = d.user_id where d.public_key = $1 and d.status = 'active'`,
+            [t.public_key],
+          );
+          const o = other.rows[0];
+          if (o && isDemoEmail(o.email)) await revokeActiveDevice(tx, o.user_id, 'demo: phone used for another demo account', new Date(deps.clock()));
+        }
         const info = t.device_info;
         const { rows } = await tx.query<DeviceRow>(
           `insert into devices(user_id, public_key, fingerprint, platform, model, os_version, app_version, status, bound_at, last_seen_at)

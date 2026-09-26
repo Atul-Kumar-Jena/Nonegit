@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { ActivityIndicator, Pressable, View } from 'react-native';
 import { Redirect, router } from 'expo-router';
 import { ArrowRight, Mail, Phone } from 'lucide-react-native';
 import { EmailIdentifier, PhoneIdentifier, type Channel } from '@attendly/protocol';
@@ -18,7 +18,8 @@ const CHANNELS = [
 
 /** 02 · Login · OTP — institution-issued ID. */
 export default function Login() {
-  const { server, requestOtp, notice, clearNotice, pendingOtp, audience } = useSession();
+  const { server, requestOtp, verifyOtp, notice, clearNotice, pendingOtp, audience } = useSession();
+  const [demoBusy, setDemoBusy] = useState<string | null>(null);
   const [channel, setChannel] = useState<Channel>(pendingOtp?.channel === 'phone' && server?.channels.includes('phone') ? 'phone' : 'email');
   const [value, setValue] = useState(pendingOtp?.identifier ?? '');
   const [busy, setBusy] = useState(false);
@@ -35,7 +36,11 @@ export default function Login() {
     }
     setBusy(true);
     try {
-      await requestOtp(channel, parsed.data);
+      const p = await requestOtp(channel, parsed.data);
+      if (p.instantCode) {
+        go(await verifyOtp(p.instantCode, p));
+        return;
+      }
       router.push('/verify');
     } catch (err) {
       if (err instanceof ApiRequestError && err.code === 'RATE_LIMITED' && pendingOtp && pendingOtp.identifier === parsed.data) {
@@ -47,6 +52,34 @@ export default function Login() {
       setBusy(false);
     }
   }
+
+  function go(next: 'signed-in' | 'bind' | 'mismatch') {
+    if (next === 'signed-in') router.replace('/home');
+    else if (next === 'bind') router.replace('/bind');
+    else router.replace('/mismatch');
+  }
+
+  /** Demo server: one tap signs in as a demo account (no code needed). */
+  async function demoSignIn(email: string) {
+    if (demoBusy) return;
+    setError(null);
+    clearNotice();
+    setDemoBusy(email);
+    try {
+      const p = await requestOtp('email', email);
+      if (!p.instantCode) {
+        router.push('/verify');
+        return;
+      }
+      go(await verifyOtp(p.instantCode, p));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not sign in.');
+    } finally {
+      setDemoBusy(null);
+    }
+  }
+
+  const demoAccounts = (server.demo?.accounts ?? []).filter((a) => audience.allowedRoles.includes(a.role));
 
   return (
     <Screen keyboard contentStyle={{ paddingTop: 28 }}>
@@ -105,6 +138,39 @@ export default function Login() {
         </View>
       ) : null}
       <Button title="Send OTP" onPress={() => void submit()} loading={busy} disabled={!value.trim()} style={{ marginTop: 22 }} icon={<ArrowRight color="#03141c" size={18} />} />
+      {demoAccounts.length ? (
+        <View style={{ marginTop: 26, gap: 8 }}>
+          <Text variant="label">Demo accounts{server.demo?.institution ? ` · ${server.demo.institution}` : ''}</Text>
+          <Text variant="small">Tap one to sign in straight away — no code needed on this demo server.</Text>
+          {demoAccounts.map((a) => (
+            <Pressable
+              key={a.email}
+              onPress={() => void demoSignIn(a.email)}
+              disabled={!!demoBusy}
+              accessibilityRole="button"
+              accessibilityLabel={`Sign in as ${a.name}, ${a.title}`}
+              style={({ pressed }) => ({
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 12,
+                padding: 12,
+                borderRadius: 14,
+                borderWidth: 1,
+                borderColor: colors.border,
+                backgroundColor: pressed ? colors.cardHi : colors.card,
+                opacity: demoBusy && demoBusy !== a.email ? 0.5 : 1,
+              })}
+            >
+              <View style={{ flex: 1 }}>
+                <Text variant="bodyStrong">{a.name}</Text>
+                <Text variant="small">{a.title}</Text>
+                <Text variant="monoSmall">{a.email}</Text>
+              </View>
+              {demoBusy === a.email ? <ActivityIndicator color={colors.cyan} /> : <ArrowRight color={colors.textDim} size={18} />}
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
       <Text variant="body" style={{ marginTop: 22, color: colors.text }}>
         By continuing you agree to your institution’s attendance policy and privacy terms.
       </Text>

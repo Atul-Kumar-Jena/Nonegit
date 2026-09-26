@@ -13,6 +13,7 @@ const AUDIENCE = {
   appName: 'Attendly Institute',
   allowedRoles: ['teacher', 'admin'] as const,
   wrongRoleMessage: 'This app is for teachers and administrators. Students use the Attendly app.',
+  requestsRoute: '/inbox',
 };
 
 /** Offline class state belongs to the signed-in account: forget it on sign-out. */

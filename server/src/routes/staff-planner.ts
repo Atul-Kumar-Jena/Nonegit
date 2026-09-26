@@ -5,6 +5,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import {
+  type DraftOp,
   AdjustBody,
   BatchBody,
   BatchUpdateBody,
@@ -25,6 +26,7 @@ import {
   type PlannerWeek,
   type PublishResponse,
 } from '@attendly/protocol';
+import type { PoolClient } from 'pg';
 import type { Deps } from '../deps';
 import { withTx, type Queryable } from '../db';
 import { STAFF, loadSessionFor, requireAdmin } from '../lib/access';
@@ -32,6 +34,7 @@ import { requireDevice, requireDeviceKeyOnly, type AuthContext } from '../lib/au
 import { reconcileBatchEnrollments } from '../lib/batches';
 import { ApiError } from '../lib/errors';
 import { loadPlannerWeek, localNow, publishOps } from '../lib/planner-server';
+import { createCoverRequest, needsApproval } from '../lib/requests';
 import { localDayBounds } from '../lib/staff-sessions';
 import { materializeTimetable } from '../lib/timetable';
 import { loadInstitution, staffAudit } from './staff-admin';
@@ -93,6 +96,45 @@ const summary = (d: Draft): DraftSummary => {
 };
 
 export async function staffPlannerRoutes(app: FastifyInstance, deps: Deps) {
+  /**
+   * Publishes changes, except that handing a class to another teacher becomes a request that
+   * teacher has to accept (see lib/requests). Everything is validated together first, and it is
+   * all-or-nothing: a request that can't be sent rolls the whole publish back.
+   */
+  async function publishWithApprovals(
+    tx: PoolClient,
+    auth: AuthContext,
+    ops: DraftOp[],
+    opts: { acceptWarnings: boolean; note: string | null },
+    onPublished?: () => Promise<void>,
+  ) {
+    const check = await publishOps(tx, deps, auth, ops, { dryRun: true, acceptWarnings: opts.acceptWarnings });
+    const refused = check.errors.length > 0 || check.conflicts.some((c) => c.severity === 'error') || (check.conflicts.length > 0 && !opts.acceptWarnings);
+    if (refused) return check;
+    const asks: Extract<DraftOp, { op: 'substitute' }>[] = [];
+    const direct: DraftOp[] = [];
+    for (const o of ops) {
+      if (o.op === 'substitute' && (await needsApproval(tx, auth, o))) asks.push(o);
+      else direct.push(o);
+    }
+    const r = direct.length
+      ? await publishOps(tx, deps, auth, direct, { acceptWarnings: true, note: opts.note })
+      : { ...check, published: true, applied: 0, notified: 0, created: {}, slotsToMaterialize: [] as string[] };
+    for (const o of asks) {
+      const c = await createCoverRequest(tx, deps, auth, {
+        sessionId: o.sessionId,
+        teacherId: o.teacherId!,
+        noteToTeacher: o.noteToTeacher,
+        noteToStudents: o.noteToStudents || opts.note || undefined,
+        acceptWarnings: true,
+      });
+      if (c.status === 'refused') throw new ApiError(409, 'CONFLICT', c.errors[0]?.message ?? c.conflicts[0]?.message ?? 'A teacher could not be asked to take a class.');
+      r.notified += c.notified;
+    }
+    if (onPublished) await onPublished();
+    return { ...r, published: true, requested: asks.length };
+  }
+
   const now = () => new Date(deps.clock());
 
   // ───────────── batches ─────────────
@@ -241,9 +283,11 @@ export async function staffPlannerRoutes(app: FastifyInstance, deps: Deps) {
     const { id } = IdParam.parse(req.params);
     return withTx(deps.db, async (tx) => {
       const d = await loadDraft(tx, auth, id);
-      if (!d.ops.length) return { published: false, applied: 0, notified: 0, conflicts: [], errors: [] };
+      if (!d.ops.length) return { published: false, applied: 0, notified: 0, conflicts: [], errors: [], requested: 0 };
       const { published, applied, notified, conflicts, errors } = await publishOps(tx, deps, auth, d.ops, { dryRun: true, acceptWarnings: true });
-      return { published, applied, notified, conflicts, errors };
+      let requested = 0;
+      for (const o of d.ops) if (await needsApproval(tx, auth, o)) requested++;
+      return { published, applied, notified, conflicts, errors, requested };
     });
   });
 
@@ -256,14 +300,13 @@ export async function staffPlannerRoutes(app: FastifyInstance, deps: Deps) {
       const d = await loadDraft(tx, auth, id, true);
       if (d.status !== 'draft') throw new ApiError(409, 'CONFLICT', `This draft was already ${d.status}.`);
       if (d.version !== b.version) throw new ApiError(409, 'CONFLICT', 'The draft changed since you last saw it. Reload it before publishing.');
-      const r = await publishOps(tx, deps, auth, d.ops, { acceptWarnings: b.acceptWarnings, note: b.note ?? null });
-      if (r.published)
+      return publishWithApprovals(tx, auth, d.ops, { acceptWarnings: b.acceptWarnings, note: b.note ?? null }, async () => {
         await tx.query(`update timetable_drafts set status = 'published', published_at = $2, published_by = $3, note = $4, updated_at = $2 where id = $1`, [id, now(), auth.userId, b.note ?? null]);
-      return r;
+      });
     });
     if (result.slotsToMaterialize.length) for (const slotId of result.slotsToMaterialize) await materializeTimetable(deps.db, { slotId });
-    const { published, applied, notified, conflicts, errors } = result;
-    return { published, applied, notified, conflicts, errors };
+    const { published, applied, notified, conflicts, errors, requested } = result;
+    return { published, applied, notified, conflicts, errors, requested };
   });
 
   app.post('/v1/staff/drafts/:id/discard', async (req): Promise<DraftSummary> => {
@@ -287,10 +330,10 @@ export async function staffPlannerRoutes(app: FastifyInstance, deps: Deps) {
     if (!('sessionId' in b.change) || b.change.sessionId !== id) throw new ApiError(400, 'BAD_REQUEST', 'The change must be for this class.');
     const r = await withTx(deps.db, async (tx) => {
       await loadSessionFor(tx, auth, id); // outside the caller's scope → 404, never "exists but refused"
-      return publishOps(tx, deps, auth, [b.change], { acceptWarnings: b.acceptWarnings });
+      return publishWithApprovals(tx, auth, [b.change], { acceptWarnings: b.acceptWarnings, note: b.note ?? null });
     });
-    const { published, applied, notified, conflicts, errors } = r;
-    return { published, applied, notified, conflicts, errors };
+    const { published, applied, notified, conflicts, errors, requested } = r;
+    return { published, applied, notified, conflicts, errors, requested };
   });
 
   // ───────────── who is busy where ─────────────

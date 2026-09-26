@@ -14,6 +14,7 @@ import { useApi } from '@kit/state/session';
 import { colors } from '@kit/theme';
 import { staffApi } from '@/api';
 import { AdjustSheet } from '@/components/Adjust';
+import { CoverSheet } from '@/components/Requests';
 import { BigScreenSheet } from '@/components/BigScreen';
 import { Chips, Field, Header, confirmAction } from '@/components/forms';
 import { StatusBadge } from '@/components/SessionCard';
@@ -284,7 +285,8 @@ export default function SessionScreen() {
               You’re taking this class as a substitute. Only its own teacher or an admin can move or cancel it.
             </Text>
           )}
-          <AdjustSheet session={s} tz={tz} mode={adjust} onClose={() => setAdjust(null)} />
+          <AdjustSheet session={s} tz={tz} mode={adjust === 'substitute' ? null : adjust} onClose={() => setAdjust(null)} />
+          {adjust === 'substitute' ? <CoverSheet session={s} teacherId={null} tz={tz} meId={me.data?.user.id} onClose={() => setAdjust(null)} /> : null}
         </>
       ) : null}
 

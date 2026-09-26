@@ -39,6 +39,15 @@ export const MetaResponse = z.object({
   minAppVersion: z.string(),
   /** Sign-in channels this server can deliver codes over. */
   channels: z.array(z.enum(['email', 'phone'])).min(1),
+  /** Present only on a demo server: sign-in codes are skipped, and these accounts can be tapped to sign in. */
+  demo: z
+    .object({
+      instantLogin: z.boolean(),
+      institution: z.string().nullable(),
+      accounts: z.array(z.object({ role: Role, name: z.string(), email: z.string(), title: z.string() })).max(40),
+    })
+    .nullable()
+    .default(null),
 });
 export type MetaResponse = z.infer<typeof MetaResponse>;
 
@@ -59,6 +68,8 @@ export const OtpRequestResponse = z.object({
   expiresAt: IsoDate,
   resendAfterSec: z.number().int().nonnegative(),
   destination: z.string(),
+  /** Demo servers only: the code itself, so the app can sign straight in without asking for it. */
+  instantCode: z.string().regex(/^[0-9]{6}$/).optional(),
 });
 export type OtpRequestResponse = z.infer<typeof OtpRequestResponse>;
 

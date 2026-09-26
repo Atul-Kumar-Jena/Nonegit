@@ -445,6 +445,9 @@ function ClassSheet({
   const [roomId, setRoomId] = useState<string | null>(item.roomId);
   const [teacherId, setTeacherId] = useState<string | null>(item.substitute ? item.teacherId : null);
   const [reason, setReason] = useState('');
+  const existingSub = ops.find((o) => o.op === 'substitute' && o.sessionId === item.sessionId) as Extract<DraftOp, { op: 'substitute' }> | undefined;
+  const [noteToTeacher, setNoteToTeacher] = useState(existingSub?.noteToTeacher ?? '');
+  const [noteToStudents, setNoteToStudents] = useState(existingSub?.noteToStudents ?? '');
   const dur = hmToMin(item.end) - hmToMin(item.start);
   const weeklyOnly = scope === 'weekly' && !!item.slotId;
 
@@ -525,11 +528,27 @@ function ClassSheet({
             excludeSessionId={item.sessionId ?? undefined}
             courseTeacherId={course?.instructorId ?? null}
           />
+          {!newOp && teacherId && teacherId !== course?.instructorId ? (
+            <>
+              <Input value={noteToTeacher} onChangeText={setNoteToTeacher} placeholder="Note to the teacher (optional)" maxLength={300} />
+              <Input value={noteToStudents} onChangeText={setNoteToStudents} placeholder="Note to the students (optional)" maxLength={300} />
+              <Text variant="small">On publish, the teacher is asked first. The class becomes theirs, and the students are told, when they accept.</Text>
+            </>
+          ) : null}
           <Button
             title="Use this teacher"
             onPress={() => {
               if (newOp && newOp.op === 'extra') onChange(ops.map((o) => (o === newOp ? { ...newOp, teacherId } : o)));
-              else if (item.sessionId) onChange(upsertOp(ops, { op: 'substitute', sessionId: item.sessionId, teacherId }));
+              else if (item.sessionId)
+                onChange(
+                  upsertOp(ops, {
+                    op: 'substitute',
+                    sessionId: item.sessionId,
+                    teacherId,
+                    ...(noteToTeacher.trim() ? { noteToTeacher: noteToTeacher.trim() } : {}),
+                    ...(noteToStudents.trim() ? { noteToStudents: noteToStudents.trim() } : {}),
+                  }),
+                );
               onClose();
             }}
           />
@@ -695,7 +714,12 @@ function ReviewSheet({
   if (result?.published)
     return (
       <Sheet open onClose={onClose} title="Published">
-        <Notice tone="green" message={`${result.applied} ${result.applied === 1 ? 'change is' : 'changes are'} live. ${result.notified} ${result.notified === 1 ? 'person was' : 'people were'} notified — students see it on their timetable now.`} />
+        <Notice
+          tone="green"
+          message={`${result.applied} ${result.applied === 1 ? 'change is' : 'changes are'} live. ${result.notified} ${result.notified === 1 ? 'person was' : 'people were'} notified — students see it on their timetable now.${
+            result.requested ? ` ${result.requested} ${result.requested === 1 ? 'teacher was' : 'teachers were'} asked to take a class; those change when they accept (see Requests).` : ''
+          }`}
+        />
         <Button title="Done" onPress={onClose} style={{ marginTop: 14 }} />
       </Sheet>
     );

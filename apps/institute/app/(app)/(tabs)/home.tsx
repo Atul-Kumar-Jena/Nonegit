@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
-import { ChevronRight, CloudDownload, Plus, Radio, ShieldAlert, Smartphone, UserCheck, Wand2 } from 'lucide-react-native';
+import { ChevronRight, CloudDownload, Plus, Radio, ShieldAlert, Smartphone, UserCheck, UserPlus, Wand2 } from 'lucide-react-native';
 import { NotificationBell } from '@kit/components/NotificationBell';
 import { Screen } from '@kit/components/Screen';
 import { usePermissionsOnboarding } from '@kit/lib/notifications';
@@ -12,7 +12,8 @@ import { colors, fonts, toneColor, type Tone } from '@kit/theme';
 import { SessionCard } from '@/components/SessionCard';
 import { Empty } from '@/components/forms';
 import { useLocalSessions, withLocal } from '@/local-sessions';
-import { useMe, useOfflinePack, useOverview } from '@/queries';
+import { useChangeRequests, useMe, useOfflinePack, useOverview } from '@/queries';
+import { RequestsBanner } from '@/components/Requests';
 import { useSetupProgress } from '@/setup';
 import { ymdIn } from '@/time';
 import { useApi } from '@kit/state/session';
@@ -24,6 +25,7 @@ export default function Today() {
   const q = useOverview();
   const pack = useOfflinePack();
   const local = useLocalSessions();
+  const reqs = useChangeRequests();
 
   const api = useApi();
   const tz = q.data?.timezone ?? pack.data?.timezone;
@@ -51,6 +53,7 @@ export default function Today() {
         void q.refetch();
         void pack.refetch();
         void me.refetch();
+        void reqs.refetch();
       }}
       refreshing={q.isRefetching}
     >
@@ -69,6 +72,8 @@ export default function Today() {
       </View>
 
       {admin ? <SetupNudge /> : null}
+
+      <RequestsBanner requests={reqs.data?.incoming ?? []} tz={tz} />
 
       <SyncBanner />
 
@@ -111,7 +116,10 @@ export default function Today() {
           ))}
         </View>
       )}
-      <Button title="Add an extra class" kind="secondary" onPress={() => router.push('/extra-class')} icon={<Plus color={colors.text} size={16} />} style={{ marginTop: 14 }} />
+      <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
+        <Button title="Extra class" kind="secondary" onPress={() => router.push('/extra-class')} icon={<Plus color={colors.text} size={16} />} style={{ flex: 1 }} />
+        <Button title="Cover a class" kind="secondary" onPress={() => router.push('/cover')} icon={<UserPlus color={colors.text} size={16} />} style={{ flex: 1 }} />
+      </View>
     </Screen>
   );
 }

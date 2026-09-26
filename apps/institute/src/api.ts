@@ -4,6 +4,11 @@
  */
 import { z } from 'zod';
 import {
+  ChangeRequest,
+  CoverResponse,
+  DecisionResponse,
+  RequestsResponse,
+  type CoverRequestBody,
   Availability,
   Batch,
   BatchDetail,
@@ -88,8 +93,14 @@ export const staffApi = {
   start: (api: ApiClient, id: string, b: StartSessionBody) => api.authed('POST', `/v1/staff/sessions/${enc(id)}/start`, SessionWithSecret, b),
   end: (api: ApiClient, id: string, b: EndSessionBody) => api.authed('POST', `/v1/staff/sessions/${enc(id)}/end`, StaffSession, b),
   cancel: (api: ApiClient, id: string, reason?: string) => api.authed('POST', `/v1/staff/sessions/${enc(id)}/cancel`, StaffSession, reason ? { reason } : {}),
-  adjust: (api: ApiClient, id: string, change: DraftOp, acceptWarnings = false) =>
-    api.authed('POST', `/v1/staff/sessions/${enc(id)}/adjust`, PublishResponse, { change, acceptWarnings }),
+  adjust: (api: ApiClient, id: string, change: DraftOp, acceptWarnings = false, note?: string) =>
+    api.authed('POST', `/v1/staff/sessions/${enc(id)}/adjust`, PublishResponse, { change, acceptWarnings, ...(note ? { note } : {}) }),
+  coverRequest: (api: ApiClient, b: CoverRequestBody) => api.authed('POST', '/v1/staff/cover-requests', CoverResponse, b),
+  requests: (api: ApiClient) => api.authed('GET', '/v1/staff/requests', RequestsResponse),
+  acceptRequest: (api: ApiClient, id: string, reply?: string, acceptWarnings = false) =>
+    api.authed('POST', `/v1/staff/requests/${enc(id)}/accept`, DecisionResponse, { acceptWarnings, ...(reply ? { reply } : {}) }),
+  declineRequest: (api: ApiClient, id: string, reply?: string) => api.authed('POST', `/v1/staff/requests/${enc(id)}/decline`, DecisionResponse, reply ? { reply } : {}),
+  cancelRequest: (api: ApiClient, id: string) => api.authed('POST', `/v1/staff/requests/${enc(id)}/cancel`, ChangeRequest, {}),
   availability: (api: ApiClient, date: string, days = 1) => api.authed('GET', `/v1/staff/availability${qs({ date, days })}`, Availability),
 
   batches: (api: ApiClient) => api.authed('GET', '/v1/staff/batches', z.array(Batch)),

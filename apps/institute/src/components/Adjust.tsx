@@ -48,6 +48,7 @@ export function TeacherPicker({
   onChange,
   excludeSessionId,
   courseTeacherId,
+  onlyId,
 }: {
   date: string;
   start: string;
@@ -56,6 +57,8 @@ export function TeacherPicker({
   onChange: (id: string | null) => void;
   excludeSessionId?: string;
   courseTeacherId: string | null;
+  /** Show just this teacher (already chosen); tapping it lets you choose again. */
+  onlyId?: string;
 }) {
   const avail = useAvailability(date);
   const rows = useMemo(() => {
@@ -67,9 +70,15 @@ export function TeacherPicker({
       .sort((a, b) => Number(!!a.clash) - Number(!!b.clash) || a.name.localeCompare(b.name));
   }, [avail.data, date, start, end, excludeSessionId]);
   if (avail.isPending) return <Loading />;
+  const shown = onlyId ? rows.filter((t) => t.id === onlyId) : rows;
   return (
     <View style={{ gap: 6 }}>
-      {rows.map((t) => {
+      {onlyId ? (
+        <Text variant="small" color={colors.cyan}>
+          Tap to choose someone else
+        </Text>
+      ) : null}
+      {shown.map((t) => {
         const on = value === t.id || (value === null && t.id === courseTeacherId);
         return (
           <Pressable key={t.id} onPress={() => onChange(t.id === courseTeacherId ? null : t.id)} accessibilityRole="radio" accessibilityState={{ selected: on }} style={[styles.teacher, on && styles.teacherOn]}>
@@ -107,6 +116,7 @@ export function AdjustSheet({ session: s, tz, mode, onClose }: { session: StaffS
   const [roomId, setRoomId] = useState<string | null>(s.room?.id ?? null);
   const [teacherId, setTeacherId] = useState<string | null>(s.substitute?.id ?? null);
   const [reason, setReason] = useState('');
+  const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<PublishResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -125,7 +135,7 @@ export function AdjustSheet({ session: s, tz, mode, onClose }: { session: StaffS
     setBusy(true);
     setError(null);
     try {
-      const r = await staffApi.adjust(api, s.id, change, acceptWarnings);
+      const r = await staffApi.adjust(api, s.id, change, acceptWarnings, mode === 'reschedule' ? note.trim() || undefined : undefined);
       setResult(r);
       if (r.published) {
         void qc.invalidateQueries({ queryKey: ['staff'] });
@@ -168,6 +178,9 @@ export function AdjustSheet({ session: s, tz, mode, onClose }: { session: StaffS
           <Field label="Room">
             <Select title="Room" value={roomId} onChange={setRoomId} allowNone="No room" options={(rooms.data ?? []).filter((r) => r.active).map((r) => ({ value: r.id, label: r.name }))} />
           </Field>
+          <Field label="Note to students (optional)" hint="Shown on the class and in their notification.">
+            <Input value={note} onChangeText={setNote} placeholder="e.g. Moved because of the fest — same room" maxLength={300} />
+          </Field>
         </>
       ) : mode === 'substitute' ? (
         <View style={{ marginTop: 12 }}>
@@ -195,7 +208,10 @@ export function AdjustSheet({ session: s, tz, mode, onClose }: { session: StaffS
       ) : null}
       {result?.published ? (
         <View style={{ marginTop: 14 }}>
-          <Notice tone="green" message={`Done · ${result.notified} ${result.notified === 1 ? 'person' : 'people'} notified.`} />
+          <Notice
+            tone="green"
+            message={result.requested ? 'Request sent — the class changes when the teacher accepts.' : `Done · ${result.notified} ${result.notified === 1 ? 'person' : 'people'} notified.`}
+          />
         </View>
       ) : null}
       {error ? (

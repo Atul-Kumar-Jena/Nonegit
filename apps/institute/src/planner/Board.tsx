@@ -43,7 +43,7 @@ interface Geometry {
  * Long-press to pick up, drag, release to drop. A quick tap opens the class.
  * Movement before the long-press lets the surrounding list scroll normally.
  */
-function useDrag(opts: { disabled: boolean; onTap: () => void; onStart: (x: number, y: number) => void; onMove: (x: number, y: number) => void; onEnd: (x: number, y: number) => void; onCancel: () => void }) {
+export function useDrag(opts: { disabled: boolean; onTap: () => void; onStart: (x: number, y: number) => void; onMove: (x: number, y: number) => void; onEnd: (x: number, y: number) => void; onCancel: () => void }) {
   const ref = useRef(opts);
   ref.current = opts;
   const state = useRef({ active: false, cancelled: false, t0: 0, timer: null as ReturnType<typeof setTimeout> | null, x: 0, y: 0 });

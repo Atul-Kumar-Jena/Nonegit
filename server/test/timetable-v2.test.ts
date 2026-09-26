@@ -153,9 +153,13 @@ describe('one-off adjustments by a teacher', () => {
     expect(busy).toMatchObject({ published: false, conflicts: [{ kind: 'teacher', severity: 'error' }] });
 
     const free = await scheduled(seed.courseId, 6, '10:00', r1);
-    expect(ok(await t1.call('POST', `/v1/staff/sessions/${free.id}/adjust`, { change: { op: 'substitute', sessionId: free.id, teacherId: t2Id } })).published).toBe(true);
+    // Handing it over is a request: nothing changes until Rao accepts.
+    expect(ok(await t1.call('POST', `/v1/staff/sessions/${free.id}/adjust`, { change: { op: 'substitute', sessionId: free.id, teacherId: t2Id } }))).toMatchObject({ published: true, requested: 1, applied: 0 });
     const n = await notificationsOf(t2);
-    expect(n.items[0]!.body).toContain('You’re taking CS-301');
+    expect(n.items[0]!.title).toBe('Can you take CS-301?');
+    expect(ok(await t1.call("GET", `/v1/staff/sessions/${free.id}`)).session.substitute).toBeNull();
+    const req = ok(await t2.call('GET', '/v1/staff/requests')).incoming.find((r: { session: { id: string } }) => r.session.id === free.id);
+    expect(ok(await t2.call('POST', `/v1/staff/requests/${req.id}/accept`, {})).request.status).toBe('accepted');
     expect(ok(await t2.call('GET', `/v1/staff/sessions/${free.id}`)).session).toMatchObject({ substitute: { id: t2Id }, change: { kind: 'substitute' } });
     const theirList = ok(await t2.call('GET', `/v1/staff/sessions?date=${free.ymd}`));
     expect(theirList.map((x: { id: string }) => x.id)).toContain(free.id);

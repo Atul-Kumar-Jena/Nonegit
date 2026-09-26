@@ -9,6 +9,7 @@ const AUDIENCE = {
   appName: 'Attendly',
   allowedRoles: ['student'] as const,
   wrongRoleMessage: 'This is the student app. Staff accounts sign in with the Attendly Institute app.',
+  requestsRoute: '/requests',
 };
 
 export default function RootLayout() {

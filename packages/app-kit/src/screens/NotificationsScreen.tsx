@@ -6,10 +6,12 @@ import { Screen } from '../components/Screen';
 import { Button, Card, ErrorState, IconButton, Loading, Notice, Text } from '../components/ui';
 import { timeAgo } from '../lib/format';
 import { enablePhoneNotifications, phoneNotificationStatus, useMarkRead, useNotifications } from '../lib/notifications';
+import { useSession } from '../state/session';
 import { colors } from '../theme';
 
 /** Every timetable change sent to this person, newest first. */
 export default function NotificationsScreen() {
+  const { audience } = useSession();
   const q = useNotifications();
   const markRead = useMarkRead();
   const [phone, setPhone] = useState<'granted' | 'denied' | 'unavailable' | null>(null);
@@ -59,7 +61,7 @@ export default function NotificationsScreen() {
           <CalendarClock color={colors.textDim} size={28} />
           <Text variant="bodyStrong">Nothing yet</Text>
           <Text variant="small" style={{ textAlign: 'center' }}>
-            When a class is moved, cancelled, taken by another teacher, or an extra class is added, you’ll see it here.
+            When a class is moved, cancelled, taken by another teacher, an extra class is added, or someone sends you a request, you’ll see it here.
           </Text>
         </View>
       ) : (
@@ -70,7 +72,7 @@ export default function NotificationsScreen() {
               key={n.id}
               onPress={() => {
                 if (!n.read) void markRead([n.id]);
-                router.push('/timetable');
+                router.push((n.kind === 'request' && audience.requestsRoute) || '/timetable');
               }}
               accessibilityRole="button"
               accessibilityLabel={`${n.read ? '' : 'Unread. '}${n.title}. ${n.body}`}

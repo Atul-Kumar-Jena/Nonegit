@@ -69,6 +69,8 @@ export const PublishResponse = z.object({
   notified: z.number().int(),
   conflicts: z.array(PlannerConflict),
   errors: z.array(OpError),
+  /** Substitutions sent to teachers for approval (they apply when accepted). */
+  requested: z.number().int().default(0),
 });
 export type PublishResponse = z.infer<typeof PublishResponse>;
 
@@ -76,6 +78,8 @@ export type PublishResponse = z.infer<typeof PublishResponse>;
 export const AdjustBody = z.object({
   change: DraftOp,
   acceptWarnings: z.boolean().default(false),
+  /** A note for the students (shown on the class and in their notification). */
+  note: z.string().trim().max(300).optional(),
 });
 export type AdjustBody = z.infer<typeof AdjustBody>;
 

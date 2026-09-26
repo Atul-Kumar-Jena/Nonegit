@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
-import { ChevronRight, ClipboardList, MapPin } from 'lucide-react-native';
+import { ChevronRight, ClipboardList, MapPin, MessageSquareText } from 'lucide-react-native';
 import type { StudentSlot, UpcomingSession } from '@attendly/protocol';
 import { NotificationBell } from '@kit/components/NotificationBell';
 import { Screen } from '@kit/components/Screen';
@@ -9,7 +9,8 @@ import { Badge, Card, ErrorState, Loading, SectionLabel, Text } from '@kit/compo
 import { dayLabel, timeRange, zoned } from '@kit/lib/format';
 import { colors, fonts, radius } from '@kit/theme';
 import { ChangeNote } from '@/components/ChangeNote';
-import { useTimetable } from '@/state/queries';
+import { AskTeacherSheet } from '@/components/AskTeacher';
+import { useMyRequests, useTimetable } from '@/state/queries';
 
 const DAYS = [
   { d: 1, label: 'Mon' },
@@ -25,6 +26,10 @@ const DAYS = [
 export default function Timetable() {
   const q = useTimetable();
   const [day, setDay] = useState(() => new Date().getDay());
+  const [ask, setAsk] = useState<UpcomingSession | null>(null);
+  const requests = useMyRequests();
+  const waiting = (requests.data?.outgoing ?? []).filter((r) => r.status === 'pending').length;
+  const answered = (requests.data?.outgoing ?? []).filter((r) => r.status === 'accepted' || r.status === 'declined').length;
 
   const bySlotDay = useMemo(() => {
     const m = new Map<number, StudentSlot[]>();
@@ -68,6 +73,13 @@ export default function Timetable() {
       <Text variant="small" style={{ marginTop: 4 }}>
         Always up to date: moved, cancelled and extra classes appear here the moment they’re published.
       </Text>
+      <Pressable onPress={() => router.push('/requests')} accessibilityRole="button" style={styles.requests}>
+        <MessageSquareText color={waiting ? colors.amber : colors.textDim} size={15} />
+        <Text variant="small" style={{ flex: 1 }}>
+          {waiting ? `${waiting} request${waiting === 1 ? '' : 's'} waiting for a reply` : answered ? 'My requests · see replies' : 'Ask a teacher to move a class or hold an extra one'}
+        </Text>
+        <ChevronRight color={colors.textDim} size={16} />
+      </Pressable>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.days} style={{ marginTop: 16, marginHorizontal: -20 }}>
         {DAYS.map(({ d, label }) => {
@@ -143,7 +155,17 @@ export default function Timetable() {
                       </View>
                       <ChangeNote change={u.change} tz={q.data!.timezone} />
                     </View>
-                    <StatusBadge u={u} />
+                    <View style={{ alignItems: 'flex-end', gap: 6 }}>
+                      <StatusBadge u={u} />
+                      {u.status === 'scheduled' && !u.marked ? (
+                        <Pressable onPress={() => setAsk(u)} accessibilityRole="button" accessibilityLabel={`Ask the teacher about ${u.courseCode}`} hitSlop={8} style={styles.ask}>
+                          <MessageSquareText color={colors.cyan} size={12} />
+                          <Text variant="small" color={colors.cyan}>
+                            Ask
+                          </Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
                   </Card>
                 </Pressable>
               ))}
@@ -151,6 +173,18 @@ export default function Timetable() {
           ))}
         </View>
       )}
+      {ask ? (
+        <AskTeacherSheet
+          session={{
+            sessionId: ask.sessionId,
+            courseCode: ask.courseCode,
+            courseTitle: ask.courseTitle,
+            when: `${dayLabel(ask.scheduledStart, q.data!.timezone)} ${timeRange(ask.scheduledStart, ask.scheduledEnd, q.data!.timezone)}`,
+            teacher: ask.change?.teacher ?? null,
+          }}
+          onClose={() => setAsk(null)}
+        />
+      ) : null}
     </Screen>
   );
 }
@@ -164,6 +198,8 @@ function StatusBadge({ u }: { u: UpcomingSession }) {
 }
 
 const styles = StyleSheet.create({
+  requests: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.border },
+  ask: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, paddingHorizontal: 8, borderRadius: 999, borderWidth: 1, borderColor: colors.cyanLine },
   days: { paddingHorizontal: 20, gap: 8 },
   day: { width: 54, paddingVertical: 10, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, alignItems: 'center', gap: 2 },
   dayOn: { borderColor: 'rgba(34,211,238,0.5)', backgroundColor: 'rgba(34,211,238,0.08)' },

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { router, type Href } from 'expo-router';
-import { Bell, Building2, CalendarRange, ChevronRight, Clock4, Lock, LogOut, MapPin, ShieldAlert, Smartphone, Trash2, Users, UsersRound, Wand2 } from 'lucide-react-native';
+import { Bell, Building2, CalendarRange, ChevronRight, Clock4, Lock, LogOut, MapPin, ShieldAlert, Smartphone, Trash2, Users, UsersRound, Wand2, Inbox, UserPlus } from 'lucide-react-native';
 import { Screen } from '@kit/components/Screen';
 import { SyncBanner } from '@kit/components/SyncBanner';
 import { Avatar, Badge, Button, Card, Divider, InfoRow, SectionLabel, Text } from '@kit/components/ui';
@@ -54,6 +54,8 @@ export default function More() {
         {admin ? <Item icon={<Wand2 color={colors.violet} size={18} />} label="Setup checklist" href="/setup" /> : null}
         {admin ? <Item icon={<CalendarRange color={colors.cyan} size={18} />} label="Timetable planner" sub="Drag & drop changes, then publish" href="/planner" /> : null}
         <Item icon={<Clock4 color={colors.green} size={18} />} label="Who’s busy where" sub="Teachers and rooms, hour by hour" href="/busy" />
+        <Item icon={<UserPlus color={colors.violet} size={18} />} label="Cover a class" sub="Drag a free teacher onto a class; they accept, students are told" href="/cover" />
+        <Item icon={<Inbox color={colors.amber} size={18} />} label="Requests" sub="Cover requests and students’ questions" href="/inbox" />
         <Item icon={<Bell color={colors.amber} size={18} />} label="Notifications" href="/notifications" />
         <Item icon={<Lock color={colors.textMuted} size={18} />} label="Permissions" sub="Location and notifications" href="/permissions" />
         {admin ? <Item icon={<Users color={colors.cyan} size={18} />} label="People" sub="Students, teachers, admins" href="/people" /> : null}

@@ -1,9 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 import { API_VERSION, type MetaResponse } from '@attendly/protocol';
 import type { Deps } from '../deps';
+import { listDemoAccounts } from '../lib/demo';
 
 export async function metaRoutes(app: FastifyInstance, deps: Deps) {
   app.get('/v1/meta', async (): Promise<MetaResponse> => ({
+    demo: deps.config.demoInstantLogin ? { instantLogin: true, ...(await listDemoAccounts(deps.db, deps.clock()).catch(() => ({ institution: null, accounts: [] }))) } : null,
     name: 'Attendly',
     apiVersion: API_VERSION,
     serverTime: deps.clock(),

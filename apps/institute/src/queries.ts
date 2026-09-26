@@ -28,6 +28,7 @@ export const qk = {
   planner: (week: string) => ['staff', 'planner', week] as const,
   drafts: ['staff', 'drafts'] as const,
   draft: (id: string) => ['staff', 'draft', id] as const,
+  changeRequests: ['staff', 'change-requests'] as const,
 };
 
 const isId = (id: string) => /^[0-9a-f-]{36}$/i.test(id);
@@ -158,4 +159,10 @@ export function usePlannerWeek(week: string) {
 export function useDrafts() {
   const api = useApi();
   return useQuery({ queryKey: qk.drafts, queryFn: () => staffApi.drafts(api) });
+}
+
+/** Cover requests (to and from me) and students' questions to me. Refreshes every 30 s. */
+export function useChangeRequests() {
+  const api = useApi();
+  return useQuery({ queryKey: qk.changeRequests, queryFn: () => staffApi.requests(api), refetchInterval: 30_000 });
 }

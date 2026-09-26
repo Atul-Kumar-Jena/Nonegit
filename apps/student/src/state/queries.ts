@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { SubjectDetailResponse, TimetableResponse } from '@attendly/protocol';
+import { RequestsResponse, SubjectDetailResponse, TimetableResponse } from '@attendly/protocol';
 import { useApi } from '@kit/state/session';
 
 export const qk = {
@@ -8,6 +8,7 @@ export const qk = {
   profile: ['profile'] as const,
   timetable: ['timetable'] as const,
   subject: (id: string) => ['subject', id] as const,
+  requests: ['requests'] as const,
 };
 
 export function useDashboard() {
@@ -39,5 +40,11 @@ export function useSubjectDetail(courseId: string) {
   });
 }
 
+/** My questions to teachers, with their replies. */
+export function useMyRequests() {
+  const api = useApi();
+  return useQuery({ queryKey: qk.requests, queryFn: () => api.authed('GET', '/v1/me/requests', RequestsResponse), refetchInterval: 60_000 });
+}
+
 /** Every student query — refreshed together after a scan or a sync. */
-export const studentQueryKeys = [qk.dashboard, qk.subjects, qk.profile, qk.timetable, ['subject']];
+export const studentQueryKeys = [qk.dashboard, qk.subjects, qk.profile, qk.timetable, ['subject'], qk.requests];

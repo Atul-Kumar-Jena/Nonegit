@@ -26,6 +26,8 @@ export interface PendingOtp {
   destination: string;
   expiresAt: string;
   resendAt: number;
+  /** Demo accounts on a demo server: the code, so no one has to type it. */
+  instantCode?: string;
 }
 
 export type PendingDevice =
@@ -43,7 +45,7 @@ interface SessionValue {
   suggestedServerUrl: string;
   connect(url: string): Promise<void>;
   requestOtp(channel: Channel, identifier: string): Promise<PendingOtp>;
-  verifyOtp(code: string): Promise<'signed-in' | 'bind' | 'mismatch'>;
+  verifyOtp(code: string, otp?: PendingOtp): Promise<'signed-in' | 'bind' | 'mismatch'>;
   bindDevice(): Promise<void>;
   requestRebind(reason: string): Promise<void>;
   signOut(): Promise<void>;
@@ -61,6 +63,8 @@ export interface AppAudience {
   allowedRoles: readonly Role[];
   /** Shown when someone signs in to the wrong app, e.g. a teacher in the student app. */
   wrongRoleMessage: string;
+  /** Where a "request" notification opens (cover requests / questions to teachers). */
+  requestsRoute?: string;
 }
 
 const CLOCK_KEY = 'clock.offset.v1';
@@ -178,15 +182,8 @@ export function SessionProvider({ children, audience }: { children: ReactNode; a
         let cfg = await loadServerConfig();
         if (cancelled) return;
         if (!cfg) {
-          if (DEFAULT_SERVER_URL) {
-            try {
-              await connect(DEFAULT_SERVER_URL);
-              return;
-            } catch (err) {
-              if (err instanceof ServerIdentityError) throw err;
-              setNotice(err instanceof Error ? err.message : 'Could not reach the server.');
-            }
-          }
+          // The connect screen connects to the built-in server by itself (with a
+          // "waking up" message and retries), so the splash never hangs on a sleeping server.
           setPhase('needs-server');
           return;
         }
@@ -215,7 +212,7 @@ export function SessionProvider({ children, audience }: { children: ReactNode; a
           .meta()
           .then(async (meta) => {
             const fresh = checkServerIdentity(cfg.url, meta, cfg);
-            if (!cancelled && fresh.channels.join() !== cfg.channels.join()) {
+            if (!cancelled && (fresh.channels.join() !== cfg.channels.join() || JSON.stringify(fresh.demo) !== JSON.stringify(cfg.demo))) {
               await saveServerConfig(fresh);
               setServer(fresh);
             }
@@ -253,6 +250,7 @@ export function SessionProvider({ children, audience }: { children: ReactNode; a
       destination: r.destination,
       expiresAt: r.expiresAt,
       resendAt: Date.now() + r.resendAfterSec * 1000,
+      ...(r.instantCode ? { instantCode: r.instantCode } : {}),
     };
     setPendingOtp(p);
     setNotice(null);
@@ -260,11 +258,12 @@ export function SessionProvider({ children, audience }: { children: ReactNode; a
   }, []);
 
   const verifyOtp = useCallback(
-    async (code: string) => {
+    async (code: string, otp?: PendingOtp) => {
       const client = apiRef.current;
-      if (!client || !pendingOtp) throw new Error('Request a new code.');
+      const pending = otp ?? pendingOtp;
+      if (!client || !pending) throw new Error('Request a new code.');
       const info = await collectDeviceInfo();
-      const res = await client.verifyOtp(pendingOtp.challengeId, code, info);
+      const res = await client.verifyOtp(pending.challengeId, code, info);
       if (!audience.allowedRoles.includes(res.user.role)) {
         // Wrong app for this account: never bind this phone, and drop any session just issued.
         if (res.status === 'ok') await client.logout().catch(() => tokenStore.clear());

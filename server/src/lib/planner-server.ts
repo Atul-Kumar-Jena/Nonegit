@@ -201,6 +201,8 @@ interface PublishOpts {
   note?: string | null;
   /** Only validate: never writes anything. */
   dryRun?: boolean;
+  /** Someone who already knows (e.g. the teacher who just accepted a cover request). */
+  skipNotifyUserId?: string;
 }
 
 export interface PublishResult extends PublishResponse {
@@ -289,7 +291,7 @@ export async function publishOps(
     if ('roomId' in o && o.roomId && !firstWeek?.rooms.some((r) => r.id === o.roomId)) errors.push({ index: ops.indexOf(o), message: 'That room doesn’t exist or is hidden.' });
 
   const blocked = errors.length > 0 || conflicts.some((c) => c.severity === 'error') || (conflicts.length > 0 && !opts.acceptWarnings);
-  const empty = { applied: 0, notified: 0, created: {}, slotsToMaterialize: [] as string[] };
+  const empty = { applied: 0, notified: 0, created: {}, slotsToMaterialize: [] as string[], requested: 0 };
   if (blocked || opts.dryRun) return { published: false, conflicts, errors: errors.sort((a, b) => a.index - b.index), ...empty };
 
   // ── apply ──
@@ -297,6 +299,7 @@ export async function publishOps(
   const t = new Date(deps.clock());
   const lines: ChangeLine[] = [];
   const staffLines = new Map<string, ChangeLine[]>();
+  const noted = (text: string, note?: string | null) => (note ? `${text} — “${note}”` : text);
   const tellStaff = (userId: string | null | undefined, l: ChangeLine) => {
     if (userId && userId !== auth.userId) staffLines.set(userId, [...(staffLines.get(userId) ?? []), l]);
   };
@@ -332,7 +335,7 @@ export async function publishOps(
           [o.sessionId, start, end, o.roomId !== undefined, room?.id ?? null, room?.name ?? null, room?.lat ?? null, room?.lng ?? null, room?.radius_m ?? null, opts.note ?? null, t, auth.userId],
         );
         const c = await courseInfo(s.course_id);
-        const l: ChangeLine = { kind: 'rescheduled', courseId: s.course_id, courseCode: c.code, sessionId: o.sessionId, text: `${c.code} moved: ${fmtWhen(s.scheduled_start, tz)} → ${fmtWhen(start, tz)}${room ? ` · ${room.name}` : ''}` };
+        const l: ChangeLine = { kind: 'rescheduled', courseId: s.course_id, courseCode: c.code, sessionId: o.sessionId, text: noted(`${c.code} moved: ${fmtWhen(s.scheduled_start, tz)} → ${fmtWhen(start, tz)}${room ? ` · ${room.name}` : ''}`, opts.note) };
         lines.push(l);
         tellStaff(s.substitute_id ?? c.instructor_id, l);
         break;
@@ -350,14 +353,15 @@ export async function publishOps(
         const s = (await tx.query<{ course_id: string; scheduled_start: Date; substitute_id: string | null; change_kind: string | null }>('select course_id, scheduled_start, substitute_id, change_kind from class_sessions where id = $1', [o.sessionId])).rows[0]!;
         const c = await courseInfo(s.course_id);
         const next = o.teacherId && o.teacherId !== c.instructor_id ? o.teacherId : null;
+        const note = o.noteToStudents || opts.note || null;
         await tx.query(
           `update class_sessions set substitute_id = $2,
                   change_kind = case when change_kind is null and $2::uuid is not null then 'substitute' when change_kind = 'substitute' and $2::uuid is null then null else change_kind end,
-                  changed_at = $3, changed_by = $4 where id = $1`,
-          [o.sessionId, next, t, auth.userId],
+                  change_note = coalesce($5, change_note), changed_at = $3, changed_by = $4 where id = $1`,
+          [o.sessionId, next, t, auth.userId, note],
         );
         const who = (await nameOf(next ?? c.instructor_id)) ?? 'the usual teacher';
-        const l: ChangeLine = { kind: 'substitute', courseId: s.course_id, courseCode: c.code, sessionId: o.sessionId, text: `${c.code} on ${fmtWhen(s.scheduled_start, tz)} will be taken by ${who}` };
+        const l: ChangeLine = { kind: 'substitute', courseId: s.course_id, courseCode: c.code, sessionId: o.sessionId, text: noted(`${c.code} on ${fmtWhen(s.scheduled_start, tz)} will be taken by ${who}`, note) };
         lines.push(l);
         tellStaff(next, { ...l, text: `You’re taking ${c.code} on ${fmtWhen(s.scheduled_start, tz)} (adjustment)` });
         tellStaff(s.substitute_id, l);
@@ -392,7 +396,7 @@ export async function publishOps(
           changedAt: t,
         });
         created[o.tempId] = s.id;
-        const l: ChangeLine = { kind: 'extra', courseId: o.courseId, courseCode: c.code, sessionId: s.id, text: `Extra ${c.code} class: ${fmtWhen(start, tz)}${room ? ` · ${room.name}` : ''}` };
+        const l: ChangeLine = { kind: 'extra', courseId: o.courseId, courseCode: c.code, sessionId: s.id, text: noted(`Extra ${c.code} class: ${fmtWhen(start, tz)}${room ? ` · ${room.name}` : ''}`, opts.note) };
         lines.push(l);
         tellStaff(sub ?? c.instructor_id, l);
         break;
@@ -449,7 +453,7 @@ export async function publishOps(
     }
   }
 
-  const notified = await deliverChanges(tx, auth.tenantId, lines, staffLines);
+  const notified = await deliverChanges(tx, auth.tenantId, lines, staffLines, { skipUserId: opts.skipNotifyUserId });
   await staffAudit(tx, auth, 'timetable.publish', `tenant:${auth.tenantId}`, {
     ops: ops.map((o) => o.op),
     sessions: [...sessionIds],
@@ -457,5 +461,5 @@ export async function publishOps(
     notified,
     warningsAccepted: conflicts.length,
   });
-  return { published: true, applied: ops.length, notified, conflicts, errors: [], created, slotsToMaterialize };
+  return { published: true, applied: ops.length, notified, conflicts, errors: [], created, slotsToMaterialize, requested: 0 };
 }
