@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import * as Location from 'expo-location';
 
 export interface LocationFix {
@@ -50,7 +51,14 @@ export async function getFreshFix(timeoutMs = 15_000): Promise<LocationFix> {
   if (perm !== 'granted') throw new LocationError('permission-denied', 'Location permission is needed to prove you are in the classroom.');
   if (!(await Location.hasServicesEnabledAsync())) throw new LocationError('services-off', 'Turn on Location (GPS) to mark attendance.');
   try {
-    const pos = await withTimeout(Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest, mayShowUserSettingsDialog: true }), timeoutMs);
+    // expo-location's web shim accepts cached positions of any age (maximumAge: Infinity);
+    // on the web we ask the browser directly for a fresh fix instead.
+    const pos =
+      Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.geolocation
+        ? await new Promise<{ coords: GeolocationCoordinates; timestamp: number; mocked?: boolean }>((resolve, reject) =>
+            navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, maximumAge: 0, timeout: timeoutMs }),
+          )
+        : await withTimeout(Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest, mayShowUserSettingsDialog: true }), timeoutMs);
     return {
       lat: pos.coords.latitude,
       lng: pos.coords.longitude,
