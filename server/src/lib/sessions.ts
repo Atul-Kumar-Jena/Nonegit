@@ -21,6 +21,12 @@ export interface NewSession {
   mode?: 'qr' | 'manual';
   slotId?: string | null;
   roomId?: string | null;
+  /** Local calendar day of a timetable occurrence (one per slot per day). */
+  slotDate?: string | null;
+  substituteId?: string | null;
+  changeKind?: 'rescheduled' | 'substitute' | 'extra' | 'cancelled' | null;
+  changeNote?: string | null;
+  changedAt?: Date;
 }
 
 function shortCode(bytes: number): string {
@@ -42,8 +48,9 @@ export async function createSession(tx: PoolClient, s: NewSession): Promise<{ id
     try {
       const { rows } = await tx.query<{ id: string }>(
         `insert into class_sessions(tenant_id, course_id, short_code, lecture_no, room, lat, lng, radius_m, rotation_s, qr_secret, status,
-                                    scheduled_start, scheduled_end, started_at, ended_at, created_by, mode, slot_id, room_id)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19) returning id`,
+                                    scheduled_start, scheduled_end, started_at, ended_at, created_by, mode, slot_id, room_id,
+                                    slot_date, substitute_id, change_kind, change_note, changed_at, changed_by)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25) returning id`,
         [
           s.tenantId,
           s.courseId,
@@ -64,6 +71,12 @@ export async function createSession(tx: PoolClient, s: NewSession): Promise<{ id
           s.mode ?? 'qr',
           s.slotId ?? null,
           s.roomId ?? null,
+          s.slotDate ?? null,
+          s.substituteId ?? null,
+          s.changeKind ?? null,
+          s.changeNote ?? null,
+          s.changeKind ? (s.changedAt ?? new Date()) : null,
+          s.changeKind ? (s.createdBy ?? null) : null,
         ],
       );
       await tx.query('release savepoint new_session');

@@ -33,6 +33,8 @@ import { ApiError } from '../lib/errors';
 import { signReceipt } from '../lib/receipts';
 import { assignLectureNo, createSession } from '../lib/sessions';
 import { listStaffSessions, loadStaffSession, localDayBounds } from '../lib/staff-sessions';
+import { deliverChanges, fmtWhen } from '../lib/notify';
+import { publishOps } from '../lib/planner-server';
 import { loadRoster } from './staff-academics';
 import { loadInstitution, revokeActiveDevice, staffAudit } from './staff-admin';
 
@@ -105,8 +107,8 @@ export async function staffSessionRoutes(app: FastifyInstance, deps: Deps) {
       room = r.rows[0];
       if (!room) throw new ApiError(400, 'BAD_REQUEST', 'Unknown room.');
     }
-    const created = await withTx(deps.db, (tx) =>
-      createSession(tx, {
+    const created = await withTx(deps.db, async (tx) => {
+      const c = await createSession(tx, {
         tenantId: auth.tenantId,
         courseId: b.courseId,
         room: room?.name ?? null,
@@ -121,8 +123,17 @@ export async function staffSessionRoutes(app: FastifyInstance, deps: Deps) {
         createdBy: auth.userId,
         mode: b.mode,
         roomId: room?.id ?? null,
-      }),
-    );
+        changeKind: starts.getTime() > now() ? 'extra' : null,
+      });
+      // A future extra class is news for the students of the course.
+      if (starts.getTime() > now()) {
+        const course = await loadCourseFor(tx, auth, b.courseId);
+        await deliverChanges(tx, auth.tenantId, [
+          { kind: 'extra', courseId: b.courseId, courseCode: course.code, sessionId: c.id, text: `Extra ${course.code} class: ${fmtWhen(starts, inst.timezone)}${room ? ` · ${room.name}` : ''}` },
+        ]);
+      }
+      return c;
+    });
     return loadStaffSession(deps.db, created.id);
   });
 
@@ -186,16 +197,29 @@ export async function staffSessionRoutes(app: FastifyInstance, deps: Deps) {
     return loadStaffSession(deps.db, id);
   });
 
+  /** Cancel a class that hasn't happened: students are told why (same engine as the planner). */
   app.post('/v1/staff/sessions/:id/cancel', async (req): Promise<StaffSession> => {
     const auth = await requireDevice(req, deps, STAFF);
     const { id } = IdParam.parse(req.params);
+    const b = z.object({ reason: z.string().trim().min(3).max(200).optional() }).parse(req.body ?? {});
     await withTx(deps.db, async (tx) => {
       const s = await loadSessionFor(tx, auth, id, true);
       if (s.status !== 'scheduled') throw new ApiError(409, 'CONFLICT', 'Only a class that hasn’t started can be cancelled.');
       const marks = await tx.query('select 1 from attendance_records where session_id = $1 limit 1', [id]);
       if (marks.rowCount) throw new ApiError(409, 'CONFLICT', 'This class already has attendance.');
-      await tx.query(`update class_sessions set status = 'cancelled' where id = $1`, [id]);
-      await staffAudit(tx, auth, 'session.cancel', `session:${id}`);
+      if (s.scheduled_start.getTime() <= now()) {
+        // Already past its start: nothing to tell anyone, just mark it.
+        await tx.query(`update class_sessions set status = 'cancelled', change_kind = 'cancelled', change_note = $2, changed_at = $3, changed_by = $4 where id = $1`, [
+          id,
+          b.reason ?? 'Cancelled',
+          new Date(now()),
+          auth.userId,
+        ]);
+        await staffAudit(tx, auth, 'session.cancel', `session:${id}`);
+        return;
+      }
+      const r = await publishOps(tx, deps, auth, [{ op: 'cancel', sessionId: id, reason: b.reason ?? 'Cancelled by the teacher' }], { acceptWarnings: true });
+      if (!r.published) throw new ApiError(409, 'CONFLICT', r.errors[0]?.message ?? 'This class can’t be cancelled.');
     });
     return loadStaffSession(deps.db, id);
   });

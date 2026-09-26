@@ -20,6 +20,7 @@ import type { PoolClient } from 'pg';
 import type { Deps } from '../deps';
 import { isUniqueViolation, withTx, type Queryable } from '../db';
 import { STAFF, instructorFilter, isAdmin, requireAdmin } from '../lib/access';
+import { reconcileBatchEnrollments } from '../lib/batches';
 import { appendAudit } from '../lib/audit';
 import { requireDevice, type AuthContext } from '../lib/auth';
 import { ApiError } from '../lib/errors';
@@ -107,7 +108,8 @@ async function setEnrollments(tx: PoolClient, tenantId: string, userId: string, 
     const ok = await tx.query('select id from courses where tenant_id = $1 and id = any($2::uuid[])', [tenantId, unique]);
     if (ok.rowCount !== unique.length) throw new ApiError(400, 'BAD_REQUEST', 'One or more courses do not exist.');
   }
-  await tx.query('delete from enrollments where user_id = $1 and not (course_id = any($2::uuid[]))', [userId, unique]);
+  // Courses that come from the student's batches are managed on the batch, not here.
+  await tx.query('delete from enrollments where user_id = $1 and batch_id is null and not (course_id = any($2::uuid[]))', [userId, unique]);
   for (const c of unique) await tx.query('insert into enrollments(course_id, user_id) values ($1, $2) on conflict do nothing', [c, userId]);
 }
 
@@ -319,7 +321,12 @@ export async function staffAdminRoutes(app: FastifyInstance, deps: Deps) {
     const auth = await requireDevice(req, deps, STAFF);
     requireAdmin(auth);
     const b = BulkImportBody.parse(req.body);
+    if (b.batchId) {
+      const ok = await deps.db.query('select 1 from batches where id = $1 and tenant_id = $2', [b.batchId, auth.tenantId]);
+      if (ok.rowCount !== 1) throw new ApiError(400, 'BAD_REQUEST', 'Unknown batch.');
+    }
     const skipped: BulkImportResponse['skipped'] = [];
+    const createdIds: string[] = [];
     let created = 0;
     for (let i = 0; i < b.rows.length; i++) {
       const raw = (b.rows[i] && typeof b.rows[i] === 'object' ? b.rows[i] : {}) as Record<string, unknown>;
@@ -330,12 +337,18 @@ export async function staffAdminRoutes(app: FastifyInstance, deps: Deps) {
         continue;
       }
       try {
-        await withTx(deps.db, (tx) => createPerson(tx, auth, parsed.data));
+        const person = await withTx(deps.db, (tx) => createPerson(tx, auth, parsed.data));
+        if (parsed.data.role === 'student') createdIds.push(person);
         created++;
       } catch (err) {
         skipped.push({ row: i + 1, reason: conflictMessage(err) ?? 'could not be saved' });
       }
     }
+    if (b.batchId && createdIds.length)
+      await withTx(deps.db, async (tx) => {
+        await tx.query('insert into batch_members(batch_id, user_id) select $1, unnest($2::uuid[]) on conflict do nothing', [b.batchId, createdIds]);
+        await reconcileBatchEnrollments(tx, auth.tenantId);
+      });
     return { created, skipped };
   });
 

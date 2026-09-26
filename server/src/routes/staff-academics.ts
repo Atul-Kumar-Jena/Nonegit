@@ -22,6 +22,7 @@ import { requireDevice } from '../lib/auth';
 import { ApiError } from '../lib/errors';
 import { loadTenantTerm } from '../lib/stats';
 import { clearFutureOccurrences, materializeTimetable } from '../lib/timetable';
+import { WEEKDAY_NAMES, deliverChanges } from '../lib/notify';
 import { conflictMessage, staffAudit } from './staff-admin';
 
 const IdParam = z.object({ id: z.uuid() });
@@ -49,7 +50,7 @@ export async function loadRoster(db: Queryable, courseId: string): Promise<Roste
   return rows.map((r) => ({ userId: r.id, fullName: r.full_name, rollNo: r.roll_no }));
 }
 
-interface SlotRow {
+export interface SlotRow {
   id: string;
   course_id: string;
   course_code: string;
@@ -67,7 +68,7 @@ interface SlotRow {
   active: boolean;
 }
 
-const SLOT_SELECT = `
+export const SLOT_SELECT = `
   select sl.id, sl.course_id, c.code as course_code, c.title as course_title, i.full_name as instructor, sl.weekday,
          to_char(sl.start_time, 'HH24:MI') as start_time, to_char(sl.end_time, 'HH24:MI') as end_time,
          sl.room_id, r.name as room_name, sl.mode, sl.rotation_s,
@@ -75,7 +76,7 @@ const SLOT_SELECT = `
     from timetable_slots sl join courses c on c.id = sl.course_id
     left join users i on i.id = c.instructor_id left join rooms r on r.id = sl.room_id`;
 
-const toSlot = (r: SlotRow): Slot => ({
+export const toSlot = (r: SlotRow): Slot => ({
   id: r.id,
   courseId: r.course_id,
   courseCode: r.course_code,
@@ -187,7 +188,20 @@ export async function staffAcademicRoutes(app: FastifyInstance, deps: Deps) {
         if (ok.rowCount !== new Set(b.add).size) throw new ApiError(400, 'BAD_REQUEST', 'Only students of this institution can be enrolled.');
         for (const u of new Set(b.add)) await tx.query('insert into enrollments(course_id, user_id) values ($1, $2) on conflict do nothing', [id, u]);
       }
-      if (b.remove.length) await tx.query('delete from enrollments where course_id = $1 and user_id = any($2::uuid[])', [id, b.remove]);
+      if (b.remove.length) {
+        const viaBatch = await tx.query<{ name: string; n: number }>(
+          `select b.name, count(*)::int as n from enrollments e join batches b on b.id = e.batch_id
+            where e.course_id = $1 and e.user_id = any($2::uuid[]) group by b.name`,
+          [id, b.remove],
+        );
+        if (viaBatch.rows.length)
+          throw new ApiError(
+            409,
+            'CONFLICT',
+            `${viaBatch.rows.map((r) => `${r.n} from batch ${r.name}`).join(', ')} are in this course through their batch. Remove them from the batch, or detach the batch from the course.`,
+          );
+        await tx.query('delete from enrollments where course_id = $1 and user_id = any($2::uuid[])', [id, b.remove]);
+      }
       await staffAudit(tx, auth, 'course.enrollments', `course:${id}`, { added: b.add.length, removed: b.remove.length });
     });
     return loadRoster(deps.db, id);
@@ -278,6 +292,7 @@ export async function staffAcademicRoutes(app: FastifyInstance, deps: Deps) {
       if (busy.rows[0]) throw new ApiError(409, 'CONFLICT', `This course’s teacher already teaches ${busy.rows[0].code} at an overlapping time that day.`);
     }
     const slotId = await withTx(deps.db, async (tx) => {
+      const before = id ? (await tx.query<SlotRow>(`${SLOT_SELECT} where sl.id = $1 and sl.tenant_id = $2`, [id, auth.tenantId])).rows[0] : undefined;
       const params = [auth.tenantId, b.courseId, b.weekday, b.start, b.end, b.roomId ?? null, b.mode, b.rotationS, b.validFrom ?? null, b.validUntil ?? null, b.active];
       const { rows } = id
         ? await tx.query<{ id: string }>(
@@ -293,6 +308,21 @@ export async function staffAcademicRoutes(app: FastifyInstance, deps: Deps) {
           );
       if (!rows[0]) throw new ApiError(404, 'NOT_FOUND', 'Timetable entry not found.');
       if (id) await clearFutureOccurrences(tx, id, now());
+      // Tell the students (and the teacher) what changed in their week.
+      const course = await loadCourseFor(tx, auth, b.courseId);
+      const roomName = b.roomId ? ((await tx.query<{ name: string }>('select name from rooms where id = $1', [b.roomId])).rows[0]?.name ?? null) : null;
+      const at = `every ${WEEKDAY_NAMES[b.weekday]} ${b.start}${roomName ? ` · ${roomName}` : ''}`;
+      let text: string | null = null;
+      if (!before) text = b.active ? `New weekly ${course.code} class: ${at}` : null;
+      else if (before.active && !b.active) text = `${course.code}’s ${WEEKDAY_NAMES[before.weekday]} ${before.start_time} class is paused`;
+      else if (!before.active && b.active) text = `${course.code} weekly class is back: ${at}`;
+      else if (before.weekday !== b.weekday || before.start_time !== b.start || before.end_time !== b.end || before.room_id !== (b.roomId ?? null) || before.course_id !== b.courseId)
+        text = `${course.code} weekly class: every ${WEEKDAY_NAMES[before.weekday]} ${before.start_time} → ${at}`;
+      if (text) {
+        const line = { kind: 'weekly' as const, courseId: b.courseId, courseCode: course.code, text };
+        const staff = course.instructor_id ? new Map([[course.instructor_id, [line]]]) : undefined;
+        await deliverChanges(tx, auth.tenantId, [line], staff, { skipUserId: auth.userId });
+      }
       await staffAudit(tx, auth, id ? 'timetable.update' : 'timetable.create', `slot:${rows[0].id}`, {
         course: b.courseId,
         weekday: b.weekday,
@@ -326,6 +356,11 @@ export async function staffAcademicRoutes(app: FastifyInstance, deps: Deps) {
       const r = await tx.query('select 1 from timetable_slots where id = $1 and tenant_id = $2', [id, auth.tenantId]);
       if (r.rowCount !== 1) throw new ApiError(404, 'NOT_FOUND', 'Timetable entry not found.');
       await clearFutureOccurrences(tx, id, now());
+      const before = (await tx.query<SlotRow>(`${SLOT_SELECT} where sl.id = $1`, [id])).rows[0]!;
+      if (before.active)
+        await deliverChanges(tx, auth.tenantId, [
+          { kind: 'weekly', courseId: before.course_id, courseCode: before.course_code, text: `${before.course_code}’s ${WEEKDAY_NAMES[before.weekday]} ${before.start_time} class is removed from the timetable` },
+        ]);
       // Past classes keep their history; the slot link is cleared by the FK.
       await tx.query('delete from timetable_slots where id = $1', [id]);
       await staffAudit(tx, auth, 'timetable.delete', `slot:${id}`);

@@ -68,17 +68,26 @@ export interface SessionAccessRow {
   rotation_s: number;
   room_id: string | null;
   qr_secret: Buffer;
+  substitute_id: string | null;
+  slot_id: string | null;
+  change_kind: string | null;
 }
 
 export async function loadSessionFor(db: Queryable, auth: AuthContext, sessionId: string, forUpdate = false): Promise<SessionAccessRow> {
   const { rows } = await db.query<SessionAccessRow>(
     `select s.id, s.tenant_id, s.course_id, c.instructor_id, s.status, s.mode, s.scheduled_start, s.scheduled_end, s.started_at, s.ended_at,
-            s.started_by, s.lat, s.lng, s.radius_m, s.rotation_s, s.room_id, s.qr_secret
+            s.started_by, s.lat, s.lng, s.radius_m, s.rotation_s, s.room_id, s.qr_secret, s.substitute_id, s.slot_id, s.change_kind
        from class_sessions s join courses c on c.id = s.course_id
       where s.id = $1 and s.tenant_id = $2${forUpdate ? ' for update of s' : ''}`,
     [sessionId, auth.tenantId],
   );
   const s = rows[0];
-  if (!s || (!isAdmin(auth) && s.instructor_id !== auth.userId)) throw new ApiError(404, 'NOT_FOUND', 'Class not found.');
+  // A teacher reaches their own courses' classes, and any class they are substituting.
+  if (!s || (!isAdmin(auth) && s.instructor_id !== auth.userId && s.substitute_id !== auth.userId)) throw new ApiError(404, 'NOT_FOUND', 'Class not found.');
   return s;
+}
+
+/** The course's own teacher (or an admin) — substitutes run a class but don't reorganise it. */
+export function isOwnerOf(auth: AuthContext, s: Pick<SessionAccessRow, 'instructor_id'>): boolean {
+  return isAdmin(auth) || s.instructor_id === auth.userId;
 }

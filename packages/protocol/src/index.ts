@@ -7,3 +7,5 @@ export * from './attendance';
 export * from './errors';
 export * from './schemas';
 export * from './staff';
+export * from './planner';
+export * from './timetable';

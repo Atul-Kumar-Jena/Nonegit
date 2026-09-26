@@ -18,6 +18,7 @@ import { isUniqueViolation, withTx } from '../db';
 import { appendAudit } from '../lib/audit';
 import { perDeviceKey, requireDevice, type AuthContext } from '../lib/auth';
 import { ApiError } from '../lib/errors';
+import { sessionChange } from '../lib/staff-sessions';
 import { courseStats, loadTenantTerm } from '../lib/stats';
 import { loadDevice, loadUser, toDeviceSummary, toUserSummary } from '../lib/users';
 
@@ -48,13 +49,18 @@ export async function studentRoutes(app: FastifyInstance, deps: Deps) {
         scheduled_start: Date;
         scheduled_end: Date;
         marked: boolean;
+        change_kind: 'rescheduled' | 'substitute' | 'extra' | 'cancelled' | null;
+        change_note: string | null;
+        original_start: Date | null;
+        substitute_name: string | null;
       }>(
         `select s.id, c.code, c.title, coalesce(r.name, s.room) as room, s.status, s.mode, s.scheduled_start, s.scheduled_end,
-                exists(select 1 from attendance_records a where a.session_id = s.id and a.user_id = $1 and a.revoked_at is null) as marked
+                exists(select 1 from attendance_records a where a.session_id = s.id and a.user_id = $1 and a.revoked_at is null) as marked, s.change_kind, s.change_note, s.original_start, su.full_name as substitute_name
            from class_sessions s
            join courses c on c.id = s.course_id
            join enrollments e on e.course_id = c.id and e.user_id = $1
            left join rooms r on r.id = s.room_id
+           left join users su on su.id = s.substitute_id
           where (s.scheduled_start at time zone $2)::date = (now() at time zone $2)::date
              or s.status = 'live'
           order by (s.status = 'live') desc, s.scheduled_start`,
@@ -90,6 +96,7 @@ export async function studentRoutes(app: FastifyInstance, deps: Deps) {
         scheduledStart: r.scheduled_start.toISOString(),
         scheduledEnd: r.scheduled_end.toISOString(),
         marked: r.marked,
+        change: sessionChange(r),
       })),
       timezone: term.timezone,
       serverTime: deps.clock(),
@@ -187,13 +194,18 @@ export async function studentRoutes(app: FastifyInstance, deps: Deps) {
         scheduled_start: Date;
         scheduled_end: Date;
         marked: boolean;
+        change_kind: 'rescheduled' | 'substitute' | 'extra' | 'cancelled' | null;
+        change_note: string | null;
+        original_start: Date | null;
+        substitute_name: string | null;
       }>(
         `select s.id, c.id as course_id, c.code, c.title, coalesce(r.name, s.room) as room, s.status, s.mode, s.scheduled_start, s.scheduled_end,
-                exists(select 1 from attendance_records a where a.session_id = s.id and a.user_id = $1 and a.revoked_at is null) as marked
+                exists(select 1 from attendance_records a where a.session_id = s.id and a.user_id = $1 and a.revoked_at is null) as marked, s.change_kind, s.change_note, s.original_start, su.full_name as substitute_name
            from class_sessions s
            join courses c on c.id = s.course_id
            join enrollments e on e.course_id = c.id and e.user_id = $1
            left join rooms r on r.id = s.room_id
+           left join users su on su.id = s.substitute_id
           where s.scheduled_end > now() - interval '1 hour' and s.scheduled_start < now() + interval '7 days'
           order by s.scheduled_start limit 200`,
         [auth.userId],
@@ -223,6 +235,7 @@ export async function studentRoutes(app: FastifyInstance, deps: Deps) {
         scheduledStart: r.scheduled_start.toISOString(),
         scheduledEnd: r.scheduled_end.toISOString(),
         marked: r.marked,
+        change: sessionChange(r),
       })),
     };
   });
@@ -245,11 +258,16 @@ export async function studentRoutes(app: FastifyInstance, deps: Deps) {
         source: 'scan' | 'manual' | 'import' | 'review' | null;
         offline: boolean | null;
         marked_at: Date | null;
+        change_kind: 'rescheduled' | 'substitute' | 'extra' | 'cancelled' | null;
+        change_note: string | null;
+        original_start: Date | null;
+        substitute_name: string | null;
       }>(
         `select s.id, s.scheduled_start, s.lecture_no, coalesce(r.name, s.room) as room, s.status,
-                a.id as rec_id, a.source, a.offline, a.marked_at
+                a.id as rec_id, a.source, a.offline, a.marked_at, s.change_kind, s.change_note, s.original_start, su.full_name as substitute_name
            from class_sessions s
            left join rooms r on r.id = s.room_id
+           left join users su on su.id = s.substitute_id
            left join attendance_records a on a.session_id = s.id and a.user_id = $2 and a.revoked_at is null
           where s.course_id = $1 and s.scheduled_start >= ($3::date::timestamp at time zone $4)
             and (s.status <> 'scheduled' or s.scheduled_start < now() + interval '14 days')
@@ -292,6 +310,7 @@ export async function studentRoutes(app: FastifyInstance, deps: Deps) {
         source: h.source,
         offline: !!h.offline,
         markedAt: h.marked_at?.toISOString() ?? null,
+        change: sessionChange(h),
       })),
     };
   });

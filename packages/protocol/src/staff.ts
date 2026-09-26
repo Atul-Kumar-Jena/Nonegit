@@ -3,7 +3,7 @@
  * Shared by the server (request validation) and the apps (response validation).
  */
 import { z } from 'zod';
-import { DeviceSummary, EmailIdentifier, IsoDate, PhoneIdentifier, SessionStatus, SubjectStat, UserSummary } from './schemas';
+import { DeviceSummary, EmailIdentifier, IsoDate, PhoneIdentifier, SessionChange, SessionStatus, SubjectStat, UserSummary } from './schemas';
 
 const uuid = z.uuid();
 const text = (max: number) => z.string().trim().min(1).max(max);
@@ -18,7 +18,10 @@ const optText = (max: number) =>
 /** Local wall-clock time "HH:MM" (24h). */
 export const HHMM = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Time must be HH:MM (24h)');
 /** Calendar date "YYYY-MM-DD". */
-export const YMD = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/, 'Date must be YYYY-MM-DD');
+export const YMD = z
+  .string()
+  .regex(/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/, 'Date must be YYYY-MM-DD')
+  .refine((v) => new Date(`${v}T00:00:00Z`).toISOString().slice(0, 10) === v, 'That date doesn’t exist');
 export const SessionMode = z.enum(['qr', 'manual']);
 export type SessionMode = z.infer<typeof SessionMode>;
 export const CourseKind = z.enum(['theory', 'lab']);
@@ -126,7 +129,7 @@ export const PersonUpdateBody = z.object({
 });
 export type PersonUpdateBody = z.infer<typeof PersonUpdateBody>;
 
-export const BulkImportBody = z.object({ rows: z.array(z.unknown()).min(1).max(500), courseIds: z.array(uuid).max(50).default([]) });
+export const BulkImportBody = z.object({ rows: z.array(z.unknown()).min(1).max(500), courseIds: z.array(uuid).max(50).default([]), batchId: uuid.optional() });
 export const BulkImportResponse = z.object({
   created: z.number().int(),
   skipped: z.array(z.object({ row: z.number().int(), reason: z.string() })),
@@ -223,6 +226,10 @@ export const StaffSession = z.object({
   marked: z.number().int(),
   enrolled: z.number().int(),
   flagged: z.number().int(),
+  /** The course's own teacher, and who is actually taking this class if someone else is. */
+  teacher: z.object({ id: uuid, name: z.string() }).nullable().default(null),
+  substitute: z.object({ id: uuid, name: z.string() }).nullable().default(null),
+  change: SessionChange.nullable().default(null),
 });
 export type StaffSession = z.infer<typeof StaffSession>;
 
@@ -385,6 +392,7 @@ export const UpcomingSession = z.object({
   scheduledStart: IsoDate,
   scheduledEnd: IsoDate,
   marked: z.boolean(),
+  change: SessionChange.nullable().default(null),
 });
 export type UpcomingSession = z.infer<typeof UpcomingSession>;
 
@@ -400,6 +408,7 @@ export const HistoryItem = z.object({
   source: z.enum(['scan', 'manual', 'import', 'review']).nullable(),
   offline: z.boolean(),
   markedAt: IsoDate.nullable(),
+  change: SessionChange.nullable().default(null),
 });
 export type HistoryItem = z.infer<typeof HistoryItem>;
 

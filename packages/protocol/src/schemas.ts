@@ -146,6 +146,15 @@ export type RefreshBody = z.infer<typeof RefreshBody>;
 export const SessionStatus = z.enum(['scheduled', 'live', 'closed', 'cancelled']);
 export type SessionStatus = z.infer<typeof SessionStatus>;
 
+/** What changed about a class after the timetable was set (shown to students and teachers). */
+export const SessionChange = z.object({
+  kind: z.enum(['rescheduled', 'substitute', 'extra', 'cancelled']),
+  note: z.string().nullable(),
+  originalStart: IsoDate.nullable(),
+  teacher: z.string().nullable(),
+});
+export type SessionChange = z.infer<typeof SessionChange>;
+
 export const TodaySession = z.object({
   sessionId: z.uuid(),
   courseCode: z.string(),
@@ -156,6 +165,7 @@ export const TodaySession = z.object({
   scheduledStart: IsoDate,
   scheduledEnd: IsoDate,
   marked: z.boolean(),
+  change: SessionChange.nullable().default(null),
 });
 export type TodaySession = z.infer<typeof TodaySession>;
 

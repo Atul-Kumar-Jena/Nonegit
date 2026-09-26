@@ -19,6 +19,7 @@ interface Occurrence {
   created_by: string | null;
   starts: Date;
   ends: Date;
+  day: string;
 }
 
 /**
@@ -47,10 +48,13 @@ export async function materializeTimetable(db: Db, opts: { tenantId?: string; sl
      )
      select o.id as slot_id, o.tenant_id, o.course_id, o.mode, o.rotation_s, o.room_id, o.room_name, o.lat, o.lng, o.radius_m, o.created_by,
             ((o.day + o.start_time) at time zone o.timezone) as starts,
-            ((o.day + o.end_time) at time zone o.timezone) as ends
+            ((o.day + o.end_time) at time zone o.timezone) as ends,
+            to_char(o.day, 'YYYY-MM-DD') as day
        from occ o
       where ((o.day + o.end_time) at time zone o.timezone) > now()
-        and not exists (select 1 from class_sessions cs where cs.slot_id = o.id and cs.scheduled_start = ((o.day + o.start_time) at time zone o.timezone))`,
+        -- one class per slot per day: an occurrence that was moved, cancelled or
+        -- substituted for that day is never re-created at its old time.
+        and not exists (select 1 from class_sessions cs where cs.slot_id = o.id and cs.slot_date = o.day)`,
     [opts.tenantId ?? null, opts.slotId ?? null, days],
   );
   if (rows.length === 0) return 0;
@@ -76,6 +80,7 @@ export async function materializeTimetable(db: Db, opts: { tenantId?: string; sl
           mode: o.mode,
           slotId: o.slot_id,
           roomId: o.room_id,
+          slotDate: o.day,
         });
         await tx.query('release savepoint occ');
         created++;
@@ -91,12 +96,14 @@ export async function materializeTimetable(db: Db, opts: { tenantId?: string; sl
 
 /**
  * After a slot changes: remove its future occurrences that nobody has used yet
- * (still scheduled, no marks), so they are regenerated with the new details.
+ * (still scheduled, no marks, not individually adjusted), so they are regenerated
+ * with the new details.
  */
 export async function clearFutureOccurrences(tx: PoolClient | Queryable, slotId: string, now: Date): Promise<number> {
   const r = await tx.query(
     `delete from class_sessions s
       where s.slot_id = $1 and s.status = 'scheduled' and s.scheduled_start > $2
+        and s.change_kind is null -- one-off adjustments (moved / substituted) are kept as they are
         and not exists (select 1 from attendance_records a where a.session_id = s.id)`,
     [slotId, now],
   );
