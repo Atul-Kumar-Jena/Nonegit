@@ -30,6 +30,7 @@ The admin signs in to **Attendly Institute** and follows the **Setup checklist**
 | 5 | **Students**: paste a list from Excel or Google Sheets (name, roll no., email, phone…) | Hundreds at once. A header row is used if present; bad rows are listed, never guessed |
 | 6 | **Enrol students in courses** (while importing, or from the course's "Students" button) | Only enrolled students can scan or be ticked |
 | 7 | **Timetable**: weekly slots (day, time, room, QR/register) | Each slot creates the real classes 14 days ahead, in every app automatically |
+| 8 | *(optional)* **Batches**: e.g. "CSE 2nd year · A" with its students and courses | Students added to a batch are enrolled in all its courses automatically, and leave them when removed |
 
 Nothing else is needed: teachers and students sign in with their email and a one-time code, and bind their phone the first time.
 
@@ -88,7 +89,43 @@ Showing a QR on a phone to 60 students doesn't work, so a teacher can put it on 
 
 Codes are single-use, stored only as keyed hashes, and rate-limited. Every approval and disconnect is written to the audit log.
 
-## 6. Security in one screen
+## 6. Changing the timetable (adjustments) — and telling students
+
+Classes move. Attendly makes every change **checked, published and announced**.
+
+**One class, right now (teacher or admin)**: open the class → **Move** (new date, time, room), **Substitute** (another teacher takes it; the list shows who is *free* and who is *busy where*) or **Cancel** (a reason is required and students see it). The change is refused if it creates a clash: the same teacher, room or course twice at once. If it only overlaps another class some of the same students attend, you get a warning and can **Confirm anyway**.
+
+**Many changes at once (admin): the Planner** (Timetable → Planner):
+
+1. Pick a week. Every class of every batch and course is on one board, one column per day.
+2. **Long-press and drag** a class to any day and time. Drop it on another class to **swap** them. Drag a course from the tray to add an **extra class**. Tap a class to change its room or teacher, or cancel it. Filter the board by batch, teacher or room.
+3. Everything goes into a **draft**, saved on the server (and on the phone, if offline). Clashes are outlined in red as you drag; nothing is visible to students yet. Two admins editing the same draft can't overwrite each other: the second save is refused and reloaded.
+4. **Review & publish**: a list of every change in words ("CS-101 Tue 10:00 → Wed 14:00, LH-101"), plus any clash. Publishing applies everything in **one transaction**: all of it or nothing.
+5. You can also change the **weekly pattern** there ("from next week on, every Monday…"), not only one week.
+
+**Who's busy** (Timetable → Who's busy): for any day, each teacher's and each room's classes on a timeline, and a "free at 11:00" filter. It's the view for finding a substitute.
+
+**Students are notified** after every published change: moved, cancelled (with the reason), substitute teacher, extra class, weekly slot changed. Each affected person gets **one** grouped notification, never a flood:
+
+- **In the app**: a bell with an unread count and a list; each class in Home, Timetable and the subject page shows "Moved from Tue 10:00", "Cancelled — faculty meeting", "Taken by Dr. Rao" or "Extra class".
+- **On the phone**: a real system notification with the phone's **default sound**, vibration and lock-screen visibility, on a high-importance channel ("Class changes"). It shows while the app is open, and from a background check about every 15 minutes when it's closed. The background check uses only the phone's key and is read-only, so it can never sign anyone out.
+
+Teachers can change only **their own** classes. Admins can change any class and the weekly pattern. Every publish is written to the audit log.
+
+## 7. Permissions — asked once, explained honestly
+
+The first time each app opens after sign-in, it shows a **Permissions** screen with one card per permission, saying why it's needed:
+
+| App | Permission | Without it |
+|---|---|---|
+| Attendly | **Camera** | Can't scan the class QR, so the teacher must mark you by hand |
+| Attendly | **Location** (while using the app) | Scans are refused: the server has to see you're in the room |
+| Both | **Notifications** | You won't hear about moved, cancelled or extra classes until you open the app |
+| Institute | **Location** | Can't save a room's position or start a class "from this phone" |
+
+Tap **Allow** on each card or **Allow all**. If someone refuses, the app tells them once what will stop working, and that they can change it later in **Settings → Apps → Attendly → Permissions** (the **Open settings** button goes there). The screen can always be reopened from **Profile → Permissions** (student) or **More → Permissions** (institute).
+
+## 8. Security in one screen
 
 - **One person, one phone.** Each phone makes its own signing key, which never leaves it. Switching phones needs an admin's approval, and nobody can approve their own request.
 - **Every request is signed** (method, path, time, random nonce, body hash), so a stolen login token is useless without the phone.

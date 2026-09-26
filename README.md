@@ -2,12 +2,12 @@
 
 | App | Who | What it does |
 |---|---|---|
-| **Attendly Institute** (`apps/institute`) | Admins, teachers | Onboard the institution (rooms, teachers, courses, students by paste, weekly timetable). Run classes with a rotating QR on the phone **or on a laptop/smartboard paired from the app**, or a paper-style register with a clear manual warning. Live feed, corrections, reports + CSV, phone approvals, suspicious-scan review. App lock, screenshots blocked. |
-| **Attendly** (`apps/student`) | Students | Telegram-style QR scanner (finds the code anywhere, tap-to-focus, zoom), signed receipts, attendance per subject, "how many can I miss", a **plan-ahead** calculator, history, weekly timetable, offline scans. |
+| **Attendly Institute** (`apps/institute`) | Admins, teachers | Onboard the institution (rooms, teachers, courses, batches, students by paste, weekly timetable). **Drag-and-drop timetable planner** with drafts → review → publish, one-tap class adjustments (move / substitute / cancel) with clash checks, and a **who's busy** view. Run classes with a rotating QR on the phone **or on a laptop/smartboard paired from the app**, or a paper-style register with a clear manual warning. Live feed, corrections, reports + CSV, phone approvals, suspicious-scan review. App lock, screenshots blocked. |
+| **Attendly** (`apps/student`) | Students | Telegram-style QR scanner (finds the code anywhere, tap-to-focus, zoom), signed receipts, attendance per subject, "how many can I miss", a **plan-ahead** calculator, history, weekly timetable with change notes, **loud notifications** when a class is moved/cancelled/substituted, offline scans. |
 | **Server** (`server/`) | — | The single source of truth, deployed on **Render** with **Supabase** Postgres. |
 
 📥 **Download:** [attendly-institute.apk](https://github.com/atul-kumar-jena/nonegit/releases/latest/download/attendly-institute.apk) · [attendly-student.apk](https://github.com/atul-kumar-jena/nonegit/releases/latest/download/attendly-student.apk)
-📖 **Read next:** [How it works](docs/HOW-IT-WORKS.md) (onboarding → marking, uniqueness, offline, big screen) · [Deploy](docs/DEPLOY.md) (Supabase + Render) · [Test on phones](docs/TESTING.md) (40-step checklist)
+📖 **Read next:** [How it works](docs/HOW-IT-WORKS.md) (onboarding → marking, uniqueness, offline, big screen) · [Deploy](docs/DEPLOY.md) (Supabase + Render) · [Test on phones](docs/TESTING.md) (54-step checklist) · [Handoff](docs/HANDOFF.md) (everything needed to continue the work)
 
 ---
 
@@ -22,7 +22,7 @@
 | Contract | **zod** schemas shared by the server and apps | Every request and response is validated on both sides. A mismatch shows a clean error; it never crashes. |
 | Data fetching | TanStack Query | Caching, retry with backoff, refresh when the app returns to the foreground, offline display. |
 | Offline | Encrypted on-device store (XChaCha20-Poly1305, key in Keystore/Keychain) + an upload queue with one-time IDs | Classes run and scans are captured with no internet, and upload exactly once later. |
-| Tests | Vitest + real PostgreSQL + Playwright | 120+ automated tests, plus a 25-step browser run of both apps together (online and offline). |
+| Tests | Vitest + real PostgreSQL + Playwright | 146 automated tests, plus a 29-step browser run of both apps together (online and offline). |
 | CI | GitHub Actions | Typecheck, all tests, Docker image smoke test, and **both Android APKs** published on every push. |
 
 ## How the apps sync securely
@@ -59,12 +59,13 @@ The test suite also covers what an independent code review found and I fixed: re
 ## Repository layout
 
 ```
-packages/protocol/   shared crypto, QR tokens, geofence + attendance maths, API schemas (+ unit tests)
-packages/app-kit/    shared app code: signed API client, encrypted vault, offline outbox, sign-in screens, UI
+packages/protocol/   shared crypto, QR tokens, geofence + attendance maths, planner engine, API schemas (+ unit tests)
+packages/app-kit/    shared app code: signed API client, encrypted vault, offline outbox, sign-in, notifications, permissions, UI
 server/              Fastify API, SQL migrations, big-screen page (/present), CLI, integration tests
 apps/institute/      Attendly Institute (admins + teachers)
 apps/student/        Attendly (students)
-docs/                HOW-IT-WORKS · DEPLOY · TESTING · PROMPTS
+docs/                HOW-IT-WORKS · DEPLOY · TESTING · HANDOFF · PROMPTS
+e2e/                 29-step two-app browser rehearsal (Playwright)
 .github/workflows/   CI: typecheck, tests, Docker smoke test, both APKs → GitHub Release
 ```
 
@@ -95,9 +96,9 @@ cd apps/student   && EXPO_PUBLIC_API_URL=http://<your-LAN-IP>:4000 npx expo star
 ```bash
 npm run typecheck                 # protocol, server, both apps
 npm test -w packages/protocol     # crypto vectors, OpenSSL interop, malleability, QR epochs, attendance maths
-npm test -w server                # real PostgreSQL: roles, scoping, uniqueness, replays, tampering, offline sync, registers, timetable, big-screen pairing
+npm test -w server                # real PostgreSQL: roles, scoping, uniqueness, replays, tampering, offline sync, registers, timetable, big-screen pairing, batches, adjustments, drafts, notifications
 npm test -w packages/app-kit      # signed API client over HTTP + 20,000 fuzzed server addresses
-npm test -w apps/institute        # spreadsheet-paste parser
+npm test -w apps/institute        # spreadsheet-paste parser, planner layout
 ```
 
 Server tests need Postgres at `postgres://postgres@127.0.0.1:5432/postgres` (override with `TEST_DATABASE_URL`); each file gets a throwaway database. The security checks were verified by mutation testing: removing any of them makes the suite fail.

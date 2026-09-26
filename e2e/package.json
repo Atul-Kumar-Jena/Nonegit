@@ -1,0 +1,6 @@
+{
+  "name": "attendly-e2e",
+  "private": true,
+  "description": "Two-app browser rehearsal (not part of the npm workspaces). See README.md.",
+  "dependencies": { "jsqr": "1.4.0", "pngjs": "7.0.0" }
+}

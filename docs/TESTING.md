@@ -1,6 +1,6 @@
 # Testing both apps on real phones, start to finish
 
-This is the exact journey the automated browser test runs before every release (25 steps, both apps, online and offline). Allow about 40 minutes.
+This is the exact journey the automated browser test runs before every release (29 steps, both apps, online and offline). Allow about an hour.
 
 **You need**
 - The server deployed: [DEPLOY.md](DEPLOY.md), sections 1–3. You'll need your **server address** and your **codes page** (`/dev?token=…`).
@@ -18,7 +18,8 @@ APKs: `…/releases/latest/download/attendly-institute.apk` and `…/attendly-st
 | # | Do this | You should see |
 |---|---|---|
 | 1 | Open **Attendly Institute**, paste the server address, **Connect** | **Sign in** — "for teachers and administrators" |
-| 2 | Enter the admin email → **Send OTP**. Read the code on the laptop codes page and type it | **Bind this device** → **Today**, with a violet **"Finish setting up · 0/7"** card |
+| 2 | Enter the admin email → **Send OTP**. Read the code on the laptop codes page and type it | **Bind this device** → the **Permissions** screen → **Allow all** → **Today**, with a violet **"Finish setting up"** card |
+| 2b | *(once, any phone)* Refuse a permission | A one-time note: what stops working, and "change it later in Settings → Apps → … → Permissions" |
 | 3 | Put the app in the background for 30 s, then reopen it | **Locked** → fingerprint/face/PIN → back where you were |
 | 4 | Try a screenshot | Blocked (black image or "can't take screenshot") |
 | 5 | Tap **Finish setting up** → **1. Check institution settings** → check time zone, term start and minimum % → **Save** | "Saved. Every app picks this up…" |
@@ -78,6 +79,25 @@ APKs: `…/releases/latest/download/attendly-institute.apk` and `…/attendly-st
 | 39 | **More → People → Students →** a student → **Suspend account** | They're signed out everywhere; **Reactivate** restores them |
 | 40 | **More → Suspicious scans** | Refused scans that look like cheating (mock GPS, wrong phone), with Accept / Block / Dismiss |
 
+## Part 6 · Changing the timetable, and the students hear about it
+
+| # | Do this | You should see |
+|---|---|---|
+| 41 | Phone A (admin): **More → Batches → New** → name `CSE-2A` → add students (pick or paste roll numbers) → tick **CS-101** → **Save** | The batch; its students are now enrolled in CS-101 (Classes → CS-101 → Students) |
+| 42 | Remove a student from the batch | They leave CS-101 too (unless they were enrolled directly) |
+| 43 | **Timetable → Who's busy** → today | Each teacher and room with their classes on a timeline; "Free at" filters |
+| 44 | Phone A (teacher): open an upcoming class → **Move** → a new time → **Confirm & notify** | "Done · N people notified" |
+| 45 | Phone B (student) | Within seconds while open (or ≤ 15 min while closed): a **system notification with sound**; the bell shows 1; the class says "Moved from …" |
+| 46 | Phone A: **Move** a class onto a time when the same teacher already teaches | Refused, with the clash in words |
+| 47 | Phone A: **Substitute** → pick a teacher marked "Free at this time" | The substitute now sees the class on their Today; students see "Taken by …" |
+| 48 | Phone A: **Cancel** → reason "Faculty meeting" | Students: "Cancelled — Faculty meeting"; it doesn't count against their % |
+| 49 | Admin: **Timetable → Planner** → long-press a class → drag it to another day → drop | It moves; the draft shows 1 change and a green **Saved** badge |
+| 50 | Drag a class onto another class | They swap |
+| 51 | Drag a course from the tray into an empty time | An extra class appears (dashed) |
+| 52 | Drag a class onto a time where its room is taken | Red outline; **Publish** is blocked until you fix it |
+| 53 | **Review & publish** → **Publish** | **Published**: "1 change is live. N people were notified"; Phone B's timetable shows every change |
+| 54 | Phone B: tap the bell → **Mark all read** | The count clears |
+
 ## Troubleshooting
 
 | Problem | Fix |
@@ -87,11 +107,14 @@ APKs: `…/releases/latest/download/attendly-institute.apk` and `…/attendly-st
 | No code on the codes page | Wait 30 s between requests for the same email; check the email is exactly the one the admin added |
 | E-GEO "Outside geofence" | The room location was saved far from where you are. Rooms → the room → **Update to my location** while standing in it, or choose "This phone, now" when starting the class |
 | "Class not started yet" on the student phone | The teacher's phone started the class offline. The student's scan is saved and submits itself once the teacher's phone is online |
+| No sound on notifications | The phone is on silent/Do not disturb, or "Class changes" was turned down in Settings → Apps → Attendly → Notifications |
+| Notifications only arrive when the app opens | The phone's battery saver stops background checks. Settings → Apps → Attendly → Battery → Unrestricted. (Instant push when the app is fully closed needs Firebase, see HANDOFF.md) |
+| Planner: "… changed this draft at the same time" | Another admin saved the same draft. Their version is loaded; redo your last move |
 | Big screen: "No screen is waiting with that code" | Codes last 5 minutes and work once: reload `/present` for a new one |
 
 ---
 
 ### Verified automatically before every release
 
-- **120+ automated tests**: protocol crypto and maths; the server against real PostgreSQL (roles, scoping, uniqueness, replays, tampering, offline sync, registers, timetable, big-screen pairing); the signed API client; the import parser.
-- **A 25-step two-app browser run** of Parts 1–4 against a production-mode server. It includes both apps offline, and QR codes decoded from the *pixels* of the laptop and teacher screens.
+- **146 automated tests**: protocol crypto, maths and the planner engine (41); the server against real PostgreSQL (82: roles, scoping, uniqueness, replays, tampering, offline sync, registers, timetable, big-screen pairing, batches, adjustments, drafts/publish, notifications); the signed API client (15); the import parser and planner layout (8).
+- **A 29-step two-app browser run** (`e2e/`) of Parts 1–4 and 6 against a production-mode server. It includes both apps offline, and QR codes decoded from the *pixels* of the laptop and teacher screens.
