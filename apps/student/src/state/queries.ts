@@ -9,6 +9,7 @@ export const qk = {
   timetable: ['timetable'] as const,
   subject: (id: string) => ['subject', id] as const,
   requests: ['requests'] as const,
+  report: (courseId?: string) => ['report', courseId ?? 'all'] as const,
 };
 
 export function useDashboard() {
@@ -46,5 +47,11 @@ export function useMyRequests() {
   return useQuery({ queryKey: qk.requests, queryFn: () => api.authed('GET', '/v1/me/requests', RequestsResponse), refetchInterval: 60_000 });
 }
 
+/** My attendance report (kept on the phone, so downloads work offline). */
+export function useMyReport(courseId?: string) {
+  const api = useApi();
+  return useQuery({ queryKey: qk.report(courseId), queryFn: () => api.report(courseId) });
+}
+
 /** Every student query — refreshed together after a scan or a sync. */
-export const studentQueryKeys = [qk.dashboard, qk.subjects, qk.profile, qk.timetable, ['subject'], qk.requests];
+export const studentQueryKeys = [qk.dashboard, qk.subjects, qk.profile, qk.timetable, ['subject'], qk.requests, ['report']];

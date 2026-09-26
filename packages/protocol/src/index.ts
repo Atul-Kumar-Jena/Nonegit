@@ -11,3 +11,4 @@ export * from './planner';
 export * from './timetable';
 export * from './requests';
 export * from './root';
+export * from './reports';

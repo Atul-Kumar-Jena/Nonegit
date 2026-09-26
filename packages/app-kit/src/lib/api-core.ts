@@ -24,6 +24,7 @@ import {
   OtpVerifyResponse,
   ProfileResponse,
   SubjectsResponse,
+  StudentReport,
   bindProofString,
   isRejectionCode,
   loginProofString,
@@ -327,6 +328,11 @@ export class ApiClient {
 
   subjects() {
     return this.authed('GET', '/v1/me/subjects', SubjectsResponse);
+  }
+
+  /** Own attendance report (all subjects, or one with its class-by-class log). */
+  report(courseId?: string) {
+    return this.authed('GET', `/v1/me/report${courseId ? `?courseId=${encodeURIComponent(courseId)}` : ''}`, StudentReport);
   }
 
   profile() {

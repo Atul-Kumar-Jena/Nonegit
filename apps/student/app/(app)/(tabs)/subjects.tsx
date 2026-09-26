@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { router } from "expo-router";
-import { AlertTriangle, ChevronRight } from "lucide-react-native";
+import { AlertTriangle, ChevronRight, Download } from "lucide-react-native";
 import type { SubjectStat } from "@attendly/protocol";
 import { Screen } from "@kit/components/Screen";
 import {
   Badge,
+  Button,
   Card,
   ErrorState,
   IconTile,
@@ -64,9 +65,18 @@ export default function Subjects() {
       <Text variant="label" style={{ marginTop: 4 }}>
         {`${d.termName} · Week ${d.termWeek}`}
       </Text>
-      <Text variant="title" style={{ marginTop: 4 }}>
-        My subjects
-      </Text>
+      <View style={styles.titleRow}>
+        <Text variant="title" style={{ flex: 1 }}>
+          My subjects
+        </Text>
+        <Button
+          title="Download"
+          kind="secondary"
+          compact
+          onPress={() => router.push("/report")}
+          icon={<Download color={colors.text} size={15} />}
+        />
+      </View>
 
       {worst ? (
         <Card tone="amber" style={styles.alert}>
@@ -198,6 +208,7 @@ function SubjectCard({ s, min }: { s: SubjectStat; min: number }) {
 }
 
 const styles = StyleSheet.create({
+  titleRow: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 4 },
   alert: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 16 },
   top: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
   big: { fontFamily: fonts.bold, fontSize: 26, letterSpacing: -0.8 },

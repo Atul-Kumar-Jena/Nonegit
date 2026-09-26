@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
-import { Ban, CheckCircle2, KeyRound, Pencil, Smartphone } from 'lucide-react-native';
+import { Ban, CheckCircle2, FileBarChart, KeyRound, Pencil, Smartphone } from 'lucide-react-native';
 import type { AuthenticatorSetup } from '@attendly/protocol';
 import { QrCode } from '@kit/components/QrCode';
 import { Screen } from '@kit/components/Screen';
@@ -68,6 +68,16 @@ export default function PersonDetail() {
         <Text variant="monoSmall" style={{ marginTop: 4 }}>
           {[p.rollNo, p.department, p.semester ? `Sem ${p.semester}` : null].filter(Boolean).join(' · ') || p.role}
         </Text>
+        {p.role === 'student' ? (
+          <Button
+            title="Attendance & downloads"
+            kind="secondary"
+            compact
+            onPress={() => router.push({ pathname: '/student/[id]', params: { id } })}
+            icon={<FileBarChart color={colors.text} size={15} />}
+            style={{ marginTop: 14 }}
+          />
+        ) : null}
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
           <Badge label={p.role === 'admin' ? 'Admin' : p.role === 'teacher' ? 'Teacher' : 'Student'} tone={p.role === 'admin' ? 'violet' : 'cyan'} dot={false} />
           <Badge label={p.status === 'active' ? 'Active' : 'Suspended'} tone={p.status === 'active' ? 'green' : 'red'} />

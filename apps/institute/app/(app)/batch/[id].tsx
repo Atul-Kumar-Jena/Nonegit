@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
-import { FileUp, Search, UserMinus, UserPlus } from 'lucide-react-native';
+import { ChevronRight, FileBarChart, FileUp, Search, UserMinus, UserPlus } from 'lucide-react-native';
 import type { BatchUpdateBody } from '@attendly/protocol';
 import { Screen } from '@kit/components/Screen';
 import { Button, Card, ErrorState, Input, Loading, Notice, SectionLabel, Segmented, Text } from '@kit/components/ui';
@@ -75,6 +75,14 @@ export default function BatchDetail() {
   return (
     <Screen onRefresh={() => void q.refetch()} refreshing={q.isRefetching} keyboard>
       <Header title={b.name} subtitle={`${b.size} students · ${b.courseIds.length} courses`} />
+      <Button
+        title="Attendance report"
+        kind="secondary"
+        compact
+        onPress={() => router.push({ pathname: '/reports', params: { batchId: id } })}
+        icon={<FileBarChart color={colors.text} size={15} />}
+        style={{ marginTop: 10, alignSelf: 'flex-start' }}
+      />
       {info ? <Notice tone="green" message={info} onDismiss={() => setInfo(null)} /> : null}
       {error ? <Notice tone="red" message={error} onDismiss={() => setError(null)} /> : null}
       <View style={{ marginTop: 10 }}>
@@ -108,10 +116,18 @@ export default function BatchDetail() {
           ) : (
             shownMembers.map((m) => (
               <View key={m.userId} style={styles.row}>
-                <View style={{ flex: 1 }}>
-                  <Text variant="bodyStrong">{m.fullName}</Text>
-                  <Text variant="monoSmall">{m.rollNo ?? 'no roll no.'}</Text>
-                </View>
+                <Pressable
+                  onPress={() => router.push({ pathname: '/student/[id]', params: { id: m.userId } })}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${m.fullName} — attendance`}
+                  style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text variant="bodyStrong">{m.fullName}</Text>
+                    <Text variant="monoSmall">{m.rollNo ?? 'no roll no.'}</Text>
+                  </View>
+                  <ChevronRight color={colors.textDim} size={16} />
+                </Pressable>
                 {admin ? (
                   <Pressable
                     onPress={() =>

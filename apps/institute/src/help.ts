@@ -1,5 +1,22 @@
 /** Short explanations behind the ⓘ buttons. Plain words, one idea per line. */
 export const HELP: Record<string, { title: string; text: string[] }> = {
+  reports: {
+    title: 'Attendance reports',
+    text: [
+      'Pick a batch (or all students), then a subject (or all subjects). You see every student’s %; red = below the minimum.',
+      'Tap a student to open their attendance subject by subject, with every class.',
+      'Download this view as a PDF (to print or send) or an Excel sheet. “All subjects” gives each student’s % per subject plus their cumulative total.',
+      'Every teacher can view and download any batch or student. Without internet the file uses the latest copy saved on this phone.',
+    ],
+  },
+  studentReport: {
+    title: 'A student’s attendance',
+    text: [
+      'Their overall % this term and each subject’s % (attended / held).',
+      'Tap a subject to see every class: date, time, present or absent, and how it was marked.',
+      'Download all subjects (with the cumulative total), or one subject class by class, as PDF or Excel.',
+    ],
+  },
   cover: {
     title: 'Cover a class',
     text: [

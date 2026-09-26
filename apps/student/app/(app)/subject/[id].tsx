@@ -4,16 +4,24 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Minus, Plus } from 'lucide-react-native';
 import { minToAttendOfNext, type HistoryItem } from '@attendly/protocol';
 import { Screen } from '@kit/components/Screen';
+import { DownloadCard } from '@kit/components/Download';
+import { studentReportDoc } from '@kit/lib/export';
+import { useApi } from '@kit/state/session';
+import { useQueryClient } from '@tanstack/react-query';
+import { offlineReport } from '@/lib/report-offline';
 import { Badge, Card, ErrorState, IconButton, Loading, ProgressBar, SectionLabel, Text } from '@kit/components/ui';
 import { dayLabel, pct, zoned, clock } from '@kit/lib/format';
 import { colors, fonts, radius, toneColor } from '@kit/theme';
 import { ChangeNote } from '@/components/ChangeNote';
-import { useSubjectDetail } from '@/state/queries';
+import { qk, useSubjectDetail } from '@/state/queries';
 
 /** Subject detail — standing, "how much to attend" planner, and full history. */
 export default function SubjectDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const q = useSubjectDetail(String(id ?? ''));
+  const courseId = String(id ?? '');
+  const q = useSubjectDetail(courseId);
+  const api = useApi();
+  const qc = useQueryClient();
   const [y, setY] = useState(10);
   const [x, setX] = useState(10);
 
@@ -131,6 +139,17 @@ export default function SubjectDetail() {
           ))}
         </Card>
       )}
+
+      <View style={{ marginTop: 16 }}>
+        <DownloadCard
+          title={`Download ${s.code} attendance`}
+          hint="Every class with the date, time and present / absent"
+          queryKey={qk.report(courseId)}
+          fetch={() => api.report(courseId)}
+          toDoc={studentReportDoc}
+          fallback={() => offlineReport(qc, courseId)}
+        />
+      </View>
     </Screen>
   );
 }

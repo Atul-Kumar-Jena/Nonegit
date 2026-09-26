@@ -29,6 +29,8 @@ export const qk = {
   drafts: ['staff', 'drafts'] as const,
   draft: (id: string) => ['staff', 'draft', id] as const,
   changeRequests: ['staff', 'change-requests'] as const,
+  studentReport: (id: string, courseId?: string) => ['staff', 'student-report', id, courseId ?? 'all'] as const,
+  matrix: (batchId?: string, courseId?: string) => ['staff', 'matrix', batchId ?? 'all', courseId ?? 'all'] as const,
 };
 
 const isId = (id: string) => /^[0-9a-f-]{36}$/i.test(id);
@@ -165,4 +167,16 @@ export function useDrafts() {
 export function useChangeRequests() {
   const api = useApi();
   return useQuery({ queryKey: qk.changeRequests, queryFn: () => staffApi.requests(api), refetchInterval: 30_000 });
+}
+
+/** One student's attendance per subject (any teacher or admin). */
+export function useStudentReport(id: string, courseId?: string, enabled = true) {
+  const api = useApi();
+  return useQuery({ queryKey: qk.studentReport(id, courseId), queryFn: () => staffApi.studentReport(api, id, courseId), enabled: enabled && isId(id) });
+}
+
+/** Students × subjects for a batch and/or a subject (both optional). */
+export function useMatrix(batchId?: string, courseId?: string) {
+  const api = useApi();
+  return useQuery({ queryKey: qk.matrix(batchId, courseId), queryFn: () => staffApi.matrix(api, { batchId, courseId }), placeholderData: (prev) => prev });
 }

@@ -4,7 +4,8 @@
   "private": true,
   "description": "Shared security, network, UI and auth screens for the Attendly apps.",
   "dependencies": {
-    "@attendly/protocol": "*"
+    "@attendly/protocol": "*",
+    "fflate": "0.8.2"
   },
   "scripts": {
     "test": "vitest run"

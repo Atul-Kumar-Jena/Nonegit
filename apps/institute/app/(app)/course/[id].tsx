@@ -10,7 +10,11 @@ import { Empty, Header, WEEKDAY_NAME } from '@/components/forms';
 import { SessionCard } from '@/components/SessionCard';
 import { shareCsv, toCsv } from '@/export-csv';
 import { useLocalSessions, withLocal } from '@/local-sessions';
-import { useCourseSessions, useIsAdmin, useOverview, useReport, useTimetable } from '@/queries';
+import { qk, useCourseSessions, useIsAdmin, useOverview, useReport, useTimetable } from '@/queries';
+import { staffApi } from '@/api';
+import { DownloadCard } from '@kit/components/Download';
+import { matrixReportDoc } from '@kit/lib/export';
+import { useApi } from '@kit/state/session';
 
 type Tab = 'students' | 'classes' | 'schedule';
 const TABS = [
@@ -24,6 +28,7 @@ export default function CourseDetail() {
   const { id: rawId } = useLocalSearchParams<{ id: string }>();
   const id = String(rawId ?? '');
   const admin = useIsAdmin();
+  const api = useApi();
   const report = useReport(id);
   const sessions = useCourseSessions(id);
   const slots = useTimetable();
@@ -105,6 +110,15 @@ export default function CourseDetail() {
         <Button title="CSV" kind="secondary" compact onPress={() => void exportCsv()} loading={exporting} icon={<Download color={colors.text} size={15} />} style={{ flex: 1 }} />
       </View>
       {exportError ? <Notice tone="red" message={exportError} /> : null}
+      <View style={{ marginTop: 12 }}>
+        <DownloadCard
+          title={`Download ${c.code} attendance`}
+          hint="Every student: attended, held, % and status"
+          queryKey={qk.matrix(undefined, id)}
+          fetch={() => staffApi.matrix(api, { courseId: id })}
+          toDoc={matrixReportDoc}
+        />
+      </View>
 
       <View style={{ marginTop: 16 }}>
         <Segmented value={tab} options={TABS} onChange={setTab} />
@@ -142,8 +156,9 @@ export default function CourseDetail() {
                   students.map((s, i) => (
                     <Pressable
                       key={s.userId}
-                      onPress={() => (admin ? router.push({ pathname: '/people/[id]', params: { id: s.userId } }) : undefined)}
-                      disabled={!admin}
+                      onPress={() => router.push({ pathname: '/student/[id]', params: { id: s.userId } })}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${s.fullName} — attendance in every subject`}
                       style={[styles.student, i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}
                     >
                       <View style={{ flex: 1, gap: 4 }}>

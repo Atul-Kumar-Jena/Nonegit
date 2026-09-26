@@ -22,6 +22,8 @@ import {
   type DraftOp,
   BulkImportResponse,
   CourseReport,
+  MatrixReport,
+  StudentReport,
   CourseSummary,
   DeviceRequestItem,
   FlagEntry,
@@ -83,6 +85,10 @@ export const staffApi = {
   roster: (api: ApiClient, courseId: string) => api.authed('GET', `/v1/staff/courses/${enc(courseId)}/roster`, z.array(RosterEntry)),
   enroll: (api: ApiClient, courseId: string, b: EnrollmentBody) => api.authed('POST', `/v1/staff/courses/${enc(courseId)}/enrollments`, z.array(RosterEntry), b),
   report: (api: ApiClient, courseId: string) => api.authed('GET', `/v1/staff/courses/${enc(courseId)}/report`, CourseReport),
+  /** Any student's attendance (every teacher can read it). */
+  studentReport: (api: ApiClient, userId: string, courseId?: string) => api.authed('GET', `/v1/staff/students/${enc(userId)}/report${qs({ courseId })}`, StudentReport),
+  /** Students × subjects for a batch / subject / everyone. */
+  matrix: (api: ApiClient, f: { batchId?: string; courseId?: string }) => api.authed('GET', `/v1/staff/reports/matrix${qs(f)}`, MatrixReport),
   courseSessions: (api: ApiClient, courseId: string) => api.authed('GET', `/v1/staff/courses/${enc(courseId)}/sessions`, z.array(StaffSession)),
 
   timetable: (api: ApiClient) => api.authed('GET', '/v1/staff/timetable', z.array(Slot)),

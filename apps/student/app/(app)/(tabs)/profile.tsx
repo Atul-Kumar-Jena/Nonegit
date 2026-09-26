@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Switch, View } from 'react-native';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { AlarmClock, Bell, BookOpen, CalendarDays, KeyRound, LogOut, MessageSquareText, RefreshCw, ScanLine, Server, ShieldCheck, Smartphone, Trash2 } from 'lucide-react-native';
+import { AlarmClock, Bell, BookOpen, Download, CalendarDays, KeyRound, LogOut, MessageSquareText, RefreshCw, ScanLine, Server, ShieldCheck, Smartphone, Trash2 } from 'lucide-react-native';
 import { Screen } from '@kit/components/Screen';
 import { FeatureGrid, InfoButton } from '@kit/components/Features';
 import { SyncBanner } from '@kit/components/SyncBanner';
@@ -120,6 +120,7 @@ export default function Profile() {
           { icon: <ScanLine color={colors.text} size={18} />, label: 'Scan QR', href: '/scan' },
           { icon: <CalendarDays color={colors.text} size={18} />, label: 'Timetable', href: '/timetable' },
           { icon: <BookOpen color={colors.text} size={18} />, label: 'Subjects', href: '/subjects' },
+          { icon: <Download color={colors.text} size={18} />, label: 'Download attendance', href: '/report' },
           { icon: <MessageSquareText color={colors.text} size={18} />, label: 'My requests', href: '/requests' },
           { icon: <Bell color={colors.text} size={18} />, label: 'Notifications', href: '/notifications' },
           { icon: <AlarmClock color={colors.text} size={18} />, label: 'Class reminders', href: '/reminders' },
