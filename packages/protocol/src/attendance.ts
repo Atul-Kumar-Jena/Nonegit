@@ -34,3 +34,11 @@ export function standing(attended: number, held: number, minPercent: number): At
   if (pct === null) return 'no-data';
   return (attended / held) * 100 >= minPercent ? 'safe' : 'at-risk';
 }
+
+/**
+ * Minimum classes to attend out of the next `upcoming` to finish at or above
+ * `minPercent` (may exceed `upcoming`, meaning the target is out of reach).
+ */
+export function minToAttendOfNext(attended: number, held: number, upcoming: number, minPercent: number): number {
+  return Math.max(0, Math.ceil((minPercent / 100) * (held + upcoming) - attended - 1e-9));
+}

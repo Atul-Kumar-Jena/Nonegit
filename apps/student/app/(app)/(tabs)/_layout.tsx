@@ -3,12 +3,12 @@ import { Tabs, router } from 'expo-router';
 import type { BottomTabBarProps } from 'expo-router/tabs';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BookOpen, House, ScanLine, UserRound } from 'lucide-react-native';
+import { BookOpen, CalendarDays, House, ScanLine, UserRound } from 'lucide-react-native';
 import { Text } from '@kit/components/ui';
 import { colors, gradients } from '@kit/theme';
 
-const ICONS = { home: House, subjects: BookOpen, profile: UserRound } as const;
-const LABELS = { home: 'Home', subjects: 'Subjects', profile: 'Profile' } as const;
+const ICONS = { home: House, timetable: CalendarDays, subjects: BookOpen, profile: UserRound } as const;
+const LABELS = { home: 'Home', timetable: 'Timetable', subjects: 'Subjects', profile: 'Profile' } as const;
 
 function TabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
@@ -43,6 +43,7 @@ function TabBar({ state, navigation }: BottomTabBarProps) {
         </LinearGradient>
       </Pressable>
       {items[2]}
+      {items[3]}
     </View>
   );
 }
@@ -51,6 +52,7 @@ export default function TabsLayout() {
   return (
     <Tabs tabBar={(p) => <TabBar {...p} />} screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: colors.bg } }}>
       <Tabs.Screen name="home" />
+      <Tabs.Screen name="timetable" />
       <Tabs.Screen name="subjects" />
       <Tabs.Screen name="profile" />
     </Tabs>

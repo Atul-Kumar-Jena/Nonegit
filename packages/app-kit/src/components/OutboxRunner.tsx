@@ -4,6 +4,12 @@ import { outbox, type OutboxHandler } from '../lib/outbox';
 import { useSession } from '../state/session';
 
 const INTERVAL_MS = 20_000;
+let registered: Record<string, OutboxHandler> = {};
+
+/** Upload now (e.g. a "Send now" button). */
+export function flushOutboxNow(api: import('../lib/api-core').ApiClient | null) {
+  return outbox.flush(api, registered, { force: true });
+}
 
 /**
  * Keeps the offline outbox moving: tries on start, whenever the app comes to
@@ -13,6 +19,7 @@ export function OutboxRunner({ handlers }: { handlers: Record<string, OutboxHand
   const { api, phase } = useSession();
   const ref = useRef(handlers);
   ref.current = handlers;
+  registered = handlers;
 
   useEffect(() => {
     if (phase !== 'signed-in' || !api) return;

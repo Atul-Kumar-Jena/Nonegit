@@ -74,3 +74,21 @@ describe('attendance maths', () => {
     expect(standing(3, 4, 75)).toBe('safe');
   });
 });
+
+import { minToAttendOfNext } from '../src';
+describe('planner', () => {
+  it('minimum to attend of the next N', () => {
+    expect(minToAttendOfNext(18, 25, 10, 75)).toBe(9); // (18+9)/35 = 77.1%, 8 → 74.3%
+    expect(minToAttendOfNext(24, 28, 10, 75)).toBe(5); // 29/38 = 76.3%
+    expect(minToAttendOfNext(0, 20, 5, 75)).toBe(19); // > 5 → unreachable
+    for (let h = 0; h < 30; h++)
+      for (let a = 0; a <= h; a++)
+        for (const n of [1, 5, 12]) {
+          const k = minToAttendOfNext(a, h, n, 75);
+          if (k <= n) {
+            expect((a + k) / (h + n)).toBeGreaterThanOrEqual(0.75 - 1e-12);
+            if (k > 0) expect((a + k - 1) / (h + n)).toBeLessThan(0.75);
+          }
+        }
+  });
+});
