@@ -4,7 +4,9 @@ WORKDIR /repo
 COPY package.json package-lock.json ./
 COPY packages/protocol/package.json packages/protocol/
 COPY server/package.json server/
+COPY packages/app-kit/package.json packages/app-kit/
 COPY apps/student/package.json apps/student/
+COPY apps/institute/package.json apps/institute/
 RUN npm ci --workspace server --include-workspace-root=false --ignore-scripts
 COPY packages/protocol packages/protocol
 COPY server server

@@ -76,3 +76,25 @@ describe('review regressions', () => {
     expect(r.chains).toBe(rows[0].n);
   });
 });
+
+describe('config from a hosting dashboard', () => {
+  it('treats blank optional variables as unset and prefers a pasted CA over no-verify', async () => {
+    const { loadConfig } = await import('../src/config');
+    const base = {
+      NODE_ENV: 'production',
+      DATABASE_URL: 'postgres://u:p@db.example.com:5432/postgres',
+      SERVER_SIGNING_KEY: Buffer.alloc(32, 1).toString('base64'),
+      TOKEN_PEPPER: Buffer.alloc(32, 2).toString('base64'),
+      OTP_DELIVERY: 'console',
+      DATABASE_SSL: 'no-verify',
+      BOOTSTRAP_DEMO_STUDENT_EMAIL: '',
+      BOOTSTRAP_DEMO_TEACHER_EMAIL: '  ',
+      SMTP_URL: '',
+      DATABASE_SSL_CA: '',
+    };
+    const c = loadConfig(base);
+    expect(c.databaseSsl).toEqual({ rejectUnauthorized: false });
+    const withCa = loadConfig({ ...base, DATABASE_SSL_CA: '-----BEGIN CERTIFICATE-----\\nMIIB\\n-----END CERTIFICATE-----' });
+    expect(withCa.databaseSsl).toMatchObject({ rejectUnauthorized: true, ca: '-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----' });
+  });
+});

@@ -1,9 +1,21 @@
-# One-click TEST deployment of the Attendly API on Render (free tier).
+# Attendly API on Render, with the database on Supabase.
 # Render dashboard → New → Blueprint → pick this repo and branch → Apply.
+# Render then asks for the values marked `sync: false` (see docs/DEPLOY.md):
 #
-# This blueprint is for TESTING: sign-in codes are shown on the /dev console instead of
-# being emailed, and the demo institution is created automatically. For real use, set
-# OTP_DELIVERY=smtp (+ SMTP_URL), remove DEV_TOOLS_TOKEN and SEED_DEMO.
+#   DATABASE_URL                 Supabase → Connect → Session pooler (IPv4) connection string
+#   DATABASE_SSL_CA              optional but recommended: Supabase → Database → SSL certificate (paste the PEM)
+#   BOOTSTRAP_INSTITUTION_NAME   e.g. Green Valley College
+#   BOOTSTRAP_ADMIN_EMAIL        the first admin (you) — signs in to Attendly Institute
+#   BOOTSTRAP_ADMIN_NAME         e.g. Dr. Anita Rao
+#   BOOTSTRAP_DEMO_TEACHER_EMAIL optional demo teacher account (leave empty for none)
+#   BOOTSTRAP_DEMO_STUDENT_EMAIL optional demo student account (leave empty for none)
+#
+# The institution starts EMPTY apart from those accounts: the admin sets up rooms,
+# teachers, courses, students and the timetable from the Institute app.
+#
+# Sign-in codes: until you add an email provider, OTP_DELIVERY=console shows codes on
+# https://<service>.onrender.com/dev?token=<DEV_TOOLS_TOKEN> (copy the token from the
+# Environment tab). For real use set OTP_DELIVERY=smtp + SMTP_URL and delete DEV_TOOLS_TOKEN.
 services:
   - type: web
     name: attendly-api
@@ -17,26 +29,36 @@ services:
       - key: NODE_ENV
         value: production
       - key: DATABASE_URL
-        fromDatabase:
-          name: attendly-db
-          property: connectionString
+        sync: false
+      - key: DATABASE_SSL
+        value: no-verify
+      - key: DATABASE_SSL_CA
+        sync: false
       - key: SERVER_SIGNING_KEY
         generateValue: true
       - key: TOKEN_PEPPER
         generateValue: true
-      - key: DEV_TOOLS_TOKEN
-        generateValue: true
+      - key: TRUST_PROXY
+        value: 'true'
+      - key: BOOTSTRAP_INSTITUTION_NAME
+        sync: false
+      - key: BOOTSTRAP_ADMIN_EMAIL
+        sync: false
+      - key: BOOTSTRAP_ADMIN_NAME
+        sync: false
+      - key: BOOTSTRAP_TIMEZONE
+        value: Asia/Kolkata
+      - key: BOOTSTRAP_DEMO_TEACHER_EMAIL
+        sync: false
+      - key: BOOTSTRAP_DEMO_STUDENT_EMAIL
+        sync: false
       - key: OTP_DELIVERY
         value: console
       - key: SMS_DELIVERY
-        value: console
-      - key: TRUST_PROXY
-        value: 'true'
-      - key: SEED_DEMO
-        value: 'true'
-
-databases:
-  - name: attendly-db
-    plan: free
-    databaseName: attendly
-    user: attendly
+        value: disabled
+      - key: DEV_TOOLS_TOKEN
+        generateValue: true
+      - key: SMTP_URL
+        sync: false
+      - key: SMTP_FROM
+        sync: false

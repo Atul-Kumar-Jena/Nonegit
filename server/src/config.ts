@@ -48,6 +48,7 @@ const EnvSchema = z
     BOOTSTRAP_ADMIN_EMAIL: z.string().trim().toLowerCase().pipe(z.email()).optional(),
     BOOTSTRAP_ADMIN_NAME: z.string().trim().min(1).max(120).optional(),
     BOOTSTRAP_DEMO_STUDENT_EMAIL: z.string().trim().toLowerCase().pipe(z.email()).optional(),
+    BOOTSTRAP_DEMO_TEACHER_EMAIL: z.string().trim().toLowerCase().pipe(z.email()).optional(),
     BOOTSTRAP_TIMEZONE: z.string().trim().default('Asia/Kolkata'),
     SERVER_SIGNING_KEY: b64Key(32),
     TOKEN_PEPPER: b64Key(32),
@@ -88,7 +89,7 @@ export interface Config {
   databaseUrl: string;
   databasePoolMax: number;
   databaseSsl: false | { rejectUnauthorized: boolean; ca?: string };
-  bootstrap: { institutionName: string; adminEmail: string; adminName: string; demoStudentEmail: string | null; timezone: string } | null;
+  bootstrap: { institutionName: string; adminEmail: string; adminName: string; demoStudentEmail: string | null; demoTeacherEmail: string | null; timezone: string } | null;
   serverSigningSeed: Uint8Array;
   tokenPepper: Uint8Array;
   otpDelivery: 'console' | 'smtp';
@@ -109,7 +110,9 @@ export interface Config {
 export class ConfigError extends Error {}
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
-  const parsed = EnvSchema.safeParse(env);
+  // Hosting dashboards often keep optional variables as empty strings: treat blank as unset.
+  const cleaned = Object.fromEntries(Object.entries(env).filter(([, v]) => typeof v === 'string' && v.trim() !== ''));
+  const parsed = EnvSchema.safeParse(cleaned);
   if (!parsed.success) {
     const lines = parsed.error.issues.map((i) => `  • ${i.path.join('.') || '(env)'}: ${i.message}`);
     throw new ConfigError(`Invalid server configuration:\n${lines.join('\n')}`);
@@ -123,11 +126,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     databaseUrl: e.DATABASE_URL,
     databasePoolMax: e.DATABASE_POOL_MAX,
     databaseSsl:
-      e.DATABASE_SSL === 'no-verify'
-        ? { rejectUnauthorized: false }
-        : e.DATABASE_SSL === '1' || e.DATABASE_SSL === 'true' || !!e.DATABASE_SSL_CA
-          ? { rejectUnauthorized: true, ...(e.DATABASE_SSL_CA ? { ca: e.DATABASE_SSL_CA.replace(/\\n/g, '\n') } : {}) }
-          : false,
+      // A pasted CA always wins: full verification. "no-verify" is only the fallback when no CA is given.
+      e.DATABASE_SSL_CA?.trim()
+        ? { rejectUnauthorized: true, ca: e.DATABASE_SSL_CA.replace(/\\n/g, '\n') }
+        : e.DATABASE_SSL === 'no-verify'
+          ? { rejectUnauthorized: false }
+          : e.DATABASE_SSL === '1' || e.DATABASE_SSL === 'true'
+            ? { rejectUnauthorized: true }
+            : false,
     bootstrap:
       e.BOOTSTRAP_INSTITUTION_NAME && e.BOOTSTRAP_ADMIN_EMAIL
         ? {
@@ -135,6 +141,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
             adminEmail: e.BOOTSTRAP_ADMIN_EMAIL,
             adminName: e.BOOTSTRAP_ADMIN_NAME ?? 'Administrator',
             demoStudentEmail: e.BOOTSTRAP_DEMO_STUDENT_EMAIL ?? null,
+            demoTeacherEmail: e.BOOTSTRAP_DEMO_TEACHER_EMAIL ?? null,
             timezone: e.BOOTSTRAP_TIMEZONE,
           }
         : null,

@@ -5,7 +5,7 @@ import { appendAudit } from './lib/audit';
 
 /**
  * Production first-run: creates the institution and its first admin from
- * BOOTSTRAP_* settings (and optionally one demo student). Idempotent — once the
+ * BOOTSTRAP_* settings (and optionally one demo teacher and one demo student). Idempotent — once the
  * admin exists nothing is changed, so it is safe to leave configured.
  * Everything else (teachers, students, rooms, courses, timetable) is created
  * from the Institute app.
@@ -35,6 +35,13 @@ export async function bootstrapInstitution(db: Db, config: Config, log: (m: stri
       ]);
       await appendAudit(tx, { tenantId, actorType: 'system', action: 'institution.bootstrap', subject: `user:${admin.rows[0]!.id}`, data: { slug } });
       log(`created institution "${b.institutionName}" with admin ${b.adminEmail}`);
+    }
+    if (b.demoTeacherEmail) {
+      const t = await tx.query('select 1 from users where email = $1', [b.demoTeacherEmail]);
+      if (!t.rowCount) {
+        await tx.query(`insert into users(tenant_id, role, full_name, email) values ($1, 'teacher', 'Demo Teacher', $2)`, [tenantId, b.demoTeacherEmail]);
+        log(`created demo teacher ${b.demoTeacherEmail}`);
+      }
     }
     if (b.demoStudentEmail) {
       const s = await tx.query('select 1 from users where email = $1', [b.demoStudentEmail]);
