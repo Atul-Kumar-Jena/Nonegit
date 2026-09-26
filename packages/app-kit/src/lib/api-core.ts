@@ -88,6 +88,8 @@ export interface ApiClientOptions {
   timeoutMs?: number;
   /** Called when the session can no longer be recovered (refresh failed). */
   onSessionLost?: (reason: ApiRequestError) => void;
+  /** Called whenever the server clock offset is re-measured (persist it for offline use). */
+  onClockSync?: (offsetMs: number) => void;
   now?: () => number;
 }
 
@@ -105,6 +107,7 @@ export class ApiClient {
   private readonly fetchImpl: typeof fetch;
   private readonly timeoutMs: number;
   private readonly onSessionLost?: (reason: ApiRequestError) => void;
+  private readonly onClockSync?: (offsetMs: number) => void;
   private readonly now: () => number;
   private refreshing: Promise<AuthTokens> | null = null;
   /** serverTime − localTime, measured from the x-server-time header. */
@@ -121,12 +124,18 @@ export class ApiClient {
     this.fetchImpl = o.fetchImpl ?? ((...args) => fetch(...args));
     this.timeoutMs = o.timeoutMs ?? 15_000;
     this.onSessionLost = o.onSessionLost;
+    this.onClockSync = o.onClockSync;
     this.now = o.now ?? Date.now;
   }
 
   /** Current time on the server's clock (best estimate), in whole milliseconds. */
   serverNow(): number {
     return Math.round(this.now() + this.offsetMs);
+  }
+
+  /** Seed the offset from a previous run so offline timestamps are server-aligned from the start. */
+  setClockOffset(offsetMs: number): void {
+    if (!this.offsetKnown && Number.isFinite(offsetMs)) this.offsetMs = offsetMs;
   }
 
   /** Measured device-vs-server clock drift in ms (null until first response). */
@@ -165,6 +174,7 @@ export class ApiClient {
       const rtt = this.now() - sentAt;
       this.offsetMs = serverTime - (sentAt + rtt / 2);
       this.offsetKnown = true;
+      this.onClockSync?.(this.offsetMs);
     }
     let json: unknown = null;
     const text = await res.text().catch(() => '');

@@ -1,0 +1,36 @@
+import { useEffect, useRef } from 'react';
+import { AppState } from 'react-native';
+import { outbox, type OutboxHandler } from '../lib/outbox';
+import { useSession } from '../state/session';
+
+const INTERVAL_MS = 20_000;
+
+/**
+ * Keeps the offline outbox moving: tries on start, whenever the app comes to
+ * the foreground, every 20 s while anything is waiting, and right after sign-in.
+ */
+export function OutboxRunner({ handlers }: { handlers: Record<string, OutboxHandler> }) {
+  const { api, phase } = useSession();
+  const ref = useRef(handlers);
+  ref.current = handlers;
+
+  useEffect(() => {
+    if (phase !== 'signed-in' || !api) return;
+    const run = () => void outbox.flush(api, ref.current).catch(() => undefined);
+    run();
+    const timer = setInterval(() => {
+      if (outbox.snapshot().items.some((i) => i.state === 'pending')) run();
+    }, INTERVAL_MS);
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') run();
+    });
+    const unsub = outbox.subscribe(() => undefined);
+    return () => {
+      clearInterval(timer);
+      sub.remove();
+      unsub();
+    };
+  }, [api, phase]);
+
+  return null;
+}

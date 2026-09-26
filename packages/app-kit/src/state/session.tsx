@@ -14,6 +14,8 @@ import {
   type ServerConfig,
 } from '../lib/server-config';
 import { tokenStore } from '../lib/tokens';
+import { outbox } from '../lib/outbox';
+import { vault } from '../lib/vault';
 
 export type Phase = 'booting' | 'needs-server' | 'signed-out' | 'signed-in' | 'identity-error';
 
@@ -57,6 +59,15 @@ export interface AppAudience {
   allowedRoles: readonly Role[];
   /** Shown when someone signs in to the wrong app, e.g. a teacher in the student app. */
   wrongRoleMessage: string;
+}
+
+const CLOCK_KEY = 'clock.offset.v1';
+let lastClockSave = 0;
+function persistClockOffset(offsetMs: number) {
+  const t = Date.now();
+  if (t - lastClockSave < 60_000) return;
+  lastClockSave = t;
+  void vault.set(CLOCK_KEY, Math.round(offsetMs)).catch(() => undefined);
 }
 
 /** Free-tier servers (e.g. Render) sleep when idle and need up to a minute to wake. */
@@ -106,6 +117,7 @@ export function SessionProvider({ children, audience }: { children: ReactNode; a
         baseUrl: url,
         keys: deviceKeys,
         tokens: tokenStore,
+        onClockSync: persistClockOffset,
         onSessionLost: (err) => {
           queryClient.clear();
           setNotice(
@@ -124,6 +136,8 @@ export function SessionProvider({ children, audience }: { children: ReactNode; a
   const installClient = useCallback((client: ApiClient) => {
     apiRef.current = client;
     setApi(client);
+    // Offline right after launch? Use the last measured clock offset.
+    void vault.get<number>(CLOCK_KEY, (v) => (typeof v === 'number' ? v : NaN)).then((o) => o !== null && client.setClockOffset(o));
     return client;
   }, []);
 
@@ -300,6 +314,7 @@ export function SessionProvider({ children, audience }: { children: ReactNode; a
       await tokenStore.clear();
     }
     queryClient.clear();
+    await outbox.wipe().catch(() => undefined);
     setPendingOtp(null);
     setPendingDevice(null);
     setPhase('signed-out');
@@ -313,6 +328,8 @@ export function SessionProvider({ children, audience }: { children: ReactNode; a
     }
     await tokenStore.clear();
     await destroyDeviceKey();
+    await outbox.wipe().catch(() => undefined);
+    await vault.destroy().catch(() => undefined);
     await clearServerConfig();
     queryClient.clear();
     setServer(null);

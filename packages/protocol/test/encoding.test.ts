@@ -34,3 +34,18 @@ describe('base64url', () => {
     expect(isB64urlOfLength('!!', 1)).toBe(false);
   });
 });
+
+import { utf8Decode, utf8ToBytes } from '../src';
+describe('utf8Decode', () => {
+  it('round-trips all kinds of text, identical to TextDecoder', () => {
+    for (const s of ['', 'abc', 'Attendance, unforgeable.', 'é ñ ü', '₹ 75% · ✓', '日本語', '😀 🎓', 'a\u0000b', JSON.stringify({ x: 'Priya Sharma — 21CS1109' })]) {
+      const b = utf8ToBytes(s);
+      expect(utf8Decode(b)).toBe(s);
+      expect(utf8Decode(b)).toBe(new TextDecoder().decode(b));
+    }
+  });
+  it('rejects malformed input', () => {
+    for (const bad of [[0xff], [0xc3], [0xe2, 0x82], [0xc0, 0x80], [0xed, 0xa0, 0x80], [0xf5, 0x80, 0x80, 0x80], [0x80]])
+      expect(() => utf8Decode(new Uint8Array(bad))).toThrow();
+  });
+});

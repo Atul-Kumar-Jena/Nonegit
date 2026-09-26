@@ -64,3 +64,39 @@ export function isB64urlOfLength(str: unknown, len: number): str is string {
     return false;
   }
 }
+
+/**
+ * Strict UTF-8 decoder that doesn't rely on TextDecoder (absent on some
+ * JavaScript engines). Throws on malformed input.
+ */
+export function utf8Decode(bytes: Uint8Array): string {
+  let out = '';
+  for (let i = 0; i < bytes.length; ) {
+    const b0 = bytes[i]!;
+    let cp: number;
+    let need: number;
+    if (b0 < 0x80) {
+      cp = b0;
+      need = 0;
+    } else if (b0 >= 0xc2 && b0 <= 0xdf) {
+      cp = b0 & 0x1f;
+      need = 1;
+    } else if (b0 >= 0xe0 && b0 <= 0xef) {
+      cp = b0 & 0x0f;
+      need = 2;
+    } else if (b0 >= 0xf0 && b0 <= 0xf4) {
+      cp = b0 & 0x07;
+      need = 3;
+    } else throw new Error('utf8: invalid lead byte');
+    if (i + need >= bytes.length && need > 0) throw new Error('utf8: truncated');
+    for (let k = 1; k <= need; k++) {
+      const b = bytes[i + k];
+      if (b === undefined || (b & 0xc0) !== 0x80) throw new Error('utf8: invalid continuation');
+      cp = (cp << 6) | (b & 0x3f);
+    }
+    if ((need === 2 && cp < 0x800) || (need === 3 && (cp < 0x10000 || cp > 0x10ffff)) || (cp >= 0xd800 && cp <= 0xdfff)) throw new Error('utf8: invalid code point');
+    out += String.fromCodePoint(cp);
+    i += need + 1;
+  }
+  return out;
+}
