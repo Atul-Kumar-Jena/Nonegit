@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Stack, type ErrorBoundaryProps } from 'expo-router';
 import { useSession } from '@kit/state/session';
 import { OutboxRunner } from '@kit/components/OutboxRunner';
+import { NotificationRunner } from '@kit/lib/notifications';
 import { CrashScreen, RootShell } from '@kit/components/RootShell';
 import { colors } from '@kit/theme';
 import { AppLock } from '@/components/AppLock';
@@ -26,6 +27,7 @@ function Housekeeping() {
 export default function RootLayout() {
   return (
     <RootShell audience={AUDIENCE}>
+      <NotificationRunner />
       <OutboxRunner handlers={instituteOutboxHandlers} />
       <Housekeeping />
       <AppLock>

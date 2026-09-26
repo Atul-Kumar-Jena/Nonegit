@@ -277,6 +277,17 @@ export class ApiClient {
     throw new ApiRequestError('INTERNAL', API_ERROR_CODES.INTERNAL);
   }
 
+  /**
+   * Signed by the device key alone (no login token): used only for the read-only
+   * background notification check, so it can never race the app's token refresh.
+   */
+  async keySigned<T>(path: string, schema: z.ZodType<T>): Promise<T> {
+    const headers = { 'x-attendly-key': toB64url(await this.keys.publicKey()), ...(await this.signedHeaders('GET', path, '')) };
+    const { status, json } = await this.send('GET', path, undefined, headers);
+    if (status < 200 || status >= 300) throw this.toError(status, json);
+    return this.parse(schema, json, status);
+  }
+
   // ───────────────────────────── endpoints ─────────────────────────────
 
   /** `timeoutMs` lets the first connect wait for a sleeping free-tier server to wake up. */

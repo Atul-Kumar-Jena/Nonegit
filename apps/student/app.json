@@ -32,7 +32,8 @@
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.USE_BIOMETRIC",
-        "android.permission.USE_FINGERPRINT"
+        "android.permission.USE_FINGERPRINT",
+        "android.permission.POST_NOTIFICATIONS"
       ],
       "blockedPermissions": [
         "android.permission.RECORD_AUDIO",
@@ -86,7 +87,14 @@
           "faceIDPermission": "Attendly can require Face ID before each attendance scan."
         }
       ],
-      "expo-font"
+      "expo-font",
+      [
+        "expo-notifications",
+        {
+          "color": "#22d3ee"
+        }
+      ],
+      "expo-background-task"
     ],
     "experiments": {
       "typedRoutes": false

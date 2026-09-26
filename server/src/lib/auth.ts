@@ -217,6 +217,34 @@ export async function requireDevice(req: FastifyRequest, deps: Deps, roles?: rea
   };
 }
 
+/**
+ * Device-key-only authentication, for one read-only purpose: a phone checking for
+ * new notifications in the background, without touching login tokens (so it can
+ * never race the app's own token refresh). The request must be signed by an
+ * active device key whose owner is still signed in on it.
+ */
+export async function requireDeviceKeyOnly(req: FastifyRequest, deps: Deps): Promise<{ userId: string; tenantId: string; deviceId: string }> {
+  const keyB64 = header(req, 'x-attendly-key');
+  if (!keyB64 || !isB64urlOfLength(keyB64, 32)) throw unauthenticated();
+  const { rows } = await deps.db.query<{ id: string; public_key: Buffer; user_id: string; tenant_id: string; user_status: string; tenant_status: string }>(
+    `select d.id, d.public_key, d.user_id, u.tenant_id, u.status as user_status, t.status as tenant_status
+       from devices d join users u on u.id = d.user_id join tenants t on t.id = u.tenant_id
+      where d.public_key = $1 and d.status = 'active'`,
+    [Buffer.from(fromB64url(keyB64))],
+  );
+  const d = rows[0];
+  if (!d) throw unauthenticated();
+  await verifyDeviceSignature(deps.db, deps, req, { id: d.id, publicKey: d.public_key });
+  if (d.user_status !== 'active' || d.tenant_status !== 'active') throw new ApiError(403, 'ACCOUNT_SUSPENDED');
+  const now = new Date(deps.clock());
+  const live = await deps.db.query(
+    `select 1 from auth_sessions where device_id = $1 and user_id = $2 and revoked_at is null and family_expires_at > $3 and refresh_expires_at > $3 limit 1`,
+    [d.id, d.user_id, now],
+  );
+  if (!live.rowCount) throw unauthenticated('Signed out on this phone.');
+  return { userId: d.user_id, tenantId: d.tenant_id, deviceId: d.id };
+}
+
 interface RefreshRow extends SessionRow {
   refresh_expires_at: Date;
   family_expires_at: Date;

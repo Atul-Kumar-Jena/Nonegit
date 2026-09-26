@@ -3,10 +3,12 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { ChevronRight, ClipboardList, MapPin } from 'lucide-react-native';
 import type { StudentSlot, UpcomingSession } from '@attendly/protocol';
+import { NotificationBell } from '@kit/components/NotificationBell';
 import { Screen } from '@kit/components/Screen';
 import { Badge, Card, ErrorState, Loading, SectionLabel, Text } from '@kit/components/ui';
 import { dayLabel, timeRange, zoned } from '@kit/lib/format';
 import { colors, fonts, radius } from '@kit/theme';
+import { ChangeNote } from '@/components/ChangeNote';
 import { useTimetable } from '@/state/queries';
 
 const DAYS = [
@@ -57,8 +59,14 @@ export default function Timetable() {
       <Text variant="label" style={{ marginTop: 4 }}>
         Weekly
       </Text>
-      <Text variant="title" style={{ marginTop: 4 }}>
-        Timetable
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <Text variant="title" style={{ marginTop: 4, flex: 1 }}>
+          Timetable
+        </Text>
+        <NotificationBell />
+      </View>
+      <Text variant="small" style={{ marginTop: 4 }}>
+        Always up to date: moved, cancelled and extra classes appear here the moment they’re published.
       </Text>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.days} style={{ marginTop: 16, marginHorizontal: -20 }}>
@@ -133,6 +141,7 @@ export default function Timetable() {
                           {u.room ? ` · ${u.room}` : ''}
                         </Text>
                       </View>
+                      <ChangeNote change={u.change} tz={q.data!.timezone} />
                     </View>
                     <StatusBadge u={u} />
                   </Card>

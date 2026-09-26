@@ -2,7 +2,9 @@ import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { ChevronRight, CloudDownload, Plus, Radio, ShieldAlert, Smartphone, UserCheck, Wand2 } from 'lucide-react-native';
+import { NotificationBell } from '@kit/components/NotificationBell';
 import { Screen } from '@kit/components/Screen';
+import { useAskForPhoneNotificationsOnce } from '@kit/lib/notifications';
 import { SyncBanner } from '@kit/components/SyncBanner';
 import { Avatar, Badge, Button, Card, ErrorState, Loading, SectionLabel, Text } from '@kit/components/ui';
 import { dayLabel, greeting, initials, timeAgo } from '@kit/lib/format';
@@ -17,6 +19,7 @@ import { useApi } from '@kit/state/session';
 
 /** Today — what's running, what's next, and anything that needs you. */
 export default function Today() {
+  useAskForPhoneNotificationsOnce();
   const me = useMe();
   const q = useOverview();
   const pack = useOfflinePack();
@@ -62,6 +65,7 @@ export default function Today() {
           </Text>
         </View>
         {user ? <Badge label={admin ? 'Admin' : 'Teacher'} tone={admin ? 'violet' : 'cyan'} dot={false} /> : null}
+        <NotificationBell />
       </View>
 
       {admin ? <SetupNudge /> : null}

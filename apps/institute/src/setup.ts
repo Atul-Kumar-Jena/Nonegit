@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { vault } from '@kit/lib/vault';
-import { useCourses, useIsAdmin, usePeople, useRooms, useTimetable } from './queries';
+import { useBatches, useCourses, useIsAdmin, usePeople, useRooms, useTimetable } from './queries';
 
 const REVIEWED_KEY = 'setup.institution-reviewed.v1';
 let reviewed: boolean | null = null;
@@ -43,6 +43,7 @@ export function useSetupProgress() {
   const teachers = usePeople({ role: 'teacher' });
   const students = usePeople({ role: 'student' });
   const slots = useTimetable();
+  const batches = useBatches();
   const inst = useInstitutionReviewed();
 
   const loaded = !!(rooms.data && courses.data && teachers.data && students.data && slots.data);
@@ -51,6 +52,7 @@ export function useSetupProgress() {
     { key: 'rooms', title: 'Add classrooms', why: 'Save each room’s location once, so QR classes know where students must be.', done: !!rooms.data?.some((r) => r.lat !== null), href: '/rooms' },
     { key: 'teachers', title: 'Add teachers', why: 'Each teacher signs in with their own email and runs their own classes.', done: (teachers.data?.length ?? 0) > 0, href: '/people?role=teacher', optional: true },
     { key: 'courses', title: 'Create courses', why: 'A course is a subject (e.g. CS-301) with one teacher.', done: (courses.data?.length ?? 0) > 0, href: '/course-form' },
+    { key: 'batches', title: 'Group students into batches', why: 'Sections like “CSE-A”: attach a batch to courses and all its students are enrolled.', done: (batches.data?.length ?? 0) > 0, href: '/batches', optional: true },
     { key: 'students', title: 'Add students', why: 'Paste a list from a spreadsheet: name, roll no., email.', done: (students.data?.length ?? 0) > 0, href: '/import' },
     { key: 'enrol', title: 'Put students in courses', why: 'Only enrolled students can be marked in a course.', done: !!courses.data?.some((c) => c.studentCount > 0), href: '/classes' },
     { key: 'timetable', title: 'Build the timetable', why: 'Weekly slots create every class automatically, for every app.', done: (slots.data?.length ?? 0) > 0, href: '/slot-form' },

@@ -4,6 +4,15 @@
  */
 import { z } from 'zod';
 import {
+  Availability,
+  Batch,
+  BatchDetail,
+  Draft,
+  DraftSummary,
+  PlannerWeek,
+  PublishResponse,
+  type BatchUpdateBody,
+  type DraftOp,
   BulkImportResponse,
   CourseReport,
   CourseSummary,
@@ -59,7 +68,8 @@ export const staffApi = {
   person: (api: ApiClient, id: string) => api.authed('GET', `/v1/staff/people/${enc(id)}`, Person),
   createPerson: (api: ApiClient, b: PersonBody) => api.authed('POST', '/v1/staff/people', Person, b),
   updatePerson: (api: ApiClient, id: string, b: PersonUpdateBody) => api.authed('POST', `/v1/staff/people/${enc(id)}`, Person, b),
-  importPeople: (api: ApiClient, rows: unknown[], courseIds: string[]) => api.authed('POST', '/v1/staff/people/import', BulkImportResponse, { rows, courseIds }),
+  importPeople: (api: ApiClient, rows: unknown[], courseIds: string[], batchId?: string | null) =>
+    api.authed('POST', '/v1/staff/people/import', BulkImportResponse, { rows, courseIds, ...(batchId ? { batchId } : {}) }),
 
   courses: (api: ApiClient) => api.authed('GET', '/v1/staff/courses', z.array(CourseSummary)),
   saveCourse: (api: ApiClient, id: string | null, b: CourseBody) => api.authed('POST', id ? `/v1/staff/courses/${enc(id)}` : '/v1/staff/courses', CourseSummary, b),
@@ -77,7 +87,26 @@ export const staffApi = {
   session: (api: ApiClient, id: string) => api.authed('GET', `/v1/staff/sessions/${enc(id)}`, SessionWithSecret),
   start: (api: ApiClient, id: string, b: StartSessionBody) => api.authed('POST', `/v1/staff/sessions/${enc(id)}/start`, SessionWithSecret, b),
   end: (api: ApiClient, id: string, b: EndSessionBody) => api.authed('POST', `/v1/staff/sessions/${enc(id)}/end`, StaffSession, b),
-  cancel: (api: ApiClient, id: string) => api.authed('POST', `/v1/staff/sessions/${enc(id)}/cancel`, StaffSession, {}),
+  cancel: (api: ApiClient, id: string, reason?: string) => api.authed('POST', `/v1/staff/sessions/${enc(id)}/cancel`, StaffSession, reason ? { reason } : {}),
+  adjust: (api: ApiClient, id: string, change: DraftOp, acceptWarnings = false) =>
+    api.authed('POST', `/v1/staff/sessions/${enc(id)}/adjust`, PublishResponse, { change, acceptWarnings }),
+  availability: (api: ApiClient, date: string, days = 1) => api.authed('GET', `/v1/staff/availability${qs({ date, days })}`, Availability),
+
+  batches: (api: ApiClient) => api.authed('GET', '/v1/staff/batches', z.array(Batch)),
+  batch: (api: ApiClient, id: string) => api.authed('GET', `/v1/staff/batches/${enc(id)}`, BatchDetail),
+  createBatch: (api: ApiClient, name: string) => api.authed('POST', '/v1/staff/batches', Batch, { name }),
+  updateBatch: (api: ApiClient, id: string, b: Partial<BatchUpdateBody>) => api.authed('POST', `/v1/staff/batches/${enc(id)}`, BatchDetail, b),
+
+  plannerWeek: (api: ApiClient, week: string) => api.authed('GET', `/v1/staff/planner${qs({ week })}`, PlannerWeek),
+  drafts: (api: ApiClient) => api.authed('GET', '/v1/staff/drafts', z.array(DraftSummary)),
+  draft: (api: ApiClient, id: string) => api.authed('GET', `/v1/staff/drafts/${enc(id)}`, Draft),
+  createDraft: (api: ApiClient, title: string, weekStart: string) => api.authed('POST', '/v1/staff/drafts', Draft, { title, weekStart }),
+  saveDraft: (api: ApiClient, id: string, version: number, ops: DraftOp[], title?: string) =>
+    api.authed('POST', `/v1/staff/drafts/${enc(id)}`, Draft, { version, ops, ...(title ? { title } : {}) }),
+  checkDraft: (api: ApiClient, id: string) => api.authed('POST', `/v1/staff/drafts/${enc(id)}/check`, PublishResponse, {}),
+  publishDraft: (api: ApiClient, id: string, version: number, acceptWarnings: boolean, note?: string) =>
+    api.authed('POST', `/v1/staff/drafts/${enc(id)}/publish`, PublishResponse, { version, acceptWarnings, ...(note ? { note } : {}) }),
+  discardDraft: (api: ApiClient, id: string) => api.authed('POST', `/v1/staff/drafts/${enc(id)}/discard`, DraftSummary, {}),
   feed: (api: ApiClient, id: string) => api.authed('GET', `/v1/staff/sessions/${enc(id)}/feed`, SessionFeed),
   register: (api: ApiClient, id: string, b: ManualBody) => api.authed('POST', `/v1/staff/sessions/${enc(id)}/register`, ManualResponse, b),
   offlinePack: (api: ApiClient) => api.authed('GET', '/v1/staff/offline-pack', OfflinePack),

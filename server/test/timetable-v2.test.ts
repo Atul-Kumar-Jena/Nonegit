@@ -175,6 +175,29 @@ describe('one-off adjustments by a teacher', () => {
   });
 });
 
+describe('background notification check (device key only)', () => {
+  const poll = (d: TestDevice, url: string, key = d.publicKeyB64) =>
+    ctx.app.inject({ method: 'GET', url, headers: { ...d.signedHeaders('GET', url, ''), 'x-attendly-key': key } });
+
+  it('returns new unread notifications without any login token', async () => {
+    const r = await poll(aarav, '/v1/notifications/poll?after=0');
+    expect(r.statusCode).toBe(200);
+    const body = r.json();
+    expect(body.unread).toBeGreaterThan(0);
+    const last = body.items.at(-1).id;
+    expect((await poll(aarav, `/v1/notifications/poll?after=${last}`)).json().items.every((i: { id: number }) => i.id > last)).toBe(true);
+  });
+
+  it('refuses a key that isn’t this phone’s, a bad signature, and a signed-out phone', async () => {
+    expect((await poll(aarav, '/v1/notifications/poll', priya.publicKeyB64)).statusCode).toBe(401);
+    const url = '/v1/notifications/poll';
+    const forged = await ctx.app.inject({ method: 'GET', url, headers: { ...aarav.signedHeaders('GET', url, '', { key: priya.keys.secretKey }), 'x-attendly-key': aarav.publicKeyB64 } });
+    expect(forged.statusCode).toBe(401);
+    ok(await priya.call('POST', '/v1/auth/logout', {}));
+    expect((await poll(priya, url)).statusCode).toBe(401);
+  });
+});
+
 describe('the admin planner: drafts → publish', () => {
   it('saves drafts with version checks, validates, publishes weekly moves, keeps one-off changes', async () => {
     // A weekly slot two days ahead, with its classes generated.

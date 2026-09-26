@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { router, type Href } from 'expo-router';
-import { Building2, ChevronRight, Lock, LogOut, MapPin, ShieldAlert, Smartphone, Trash2, Users, Wand2 } from 'lucide-react-native';
+import { Bell, Building2, CalendarRange, ChevronRight, Clock4, Lock, LogOut, MapPin, ShieldAlert, Smartphone, Trash2, Users, UsersRound, Wand2 } from 'lucide-react-native';
 import { Screen } from '@kit/components/Screen';
 import { SyncBanner } from '@kit/components/SyncBanner';
 import { Avatar, Badge, Button, Card, Divider, InfoRow, SectionLabel, Text } from '@kit/components/ui';
@@ -52,7 +52,11 @@ export default function More() {
       <SectionLabel>Manage</SectionLabel>
       <Card padded={false}>
         {admin ? <Item icon={<Wand2 color={colors.violet} size={18} />} label="Setup checklist" href="/setup" /> : null}
+        {admin ? <Item icon={<CalendarRange color={colors.cyan} size={18} />} label="Timetable planner" sub="Drag & drop changes, then publish" href="/planner" /> : null}
+        <Item icon={<Clock4 color={colors.green} size={18} />} label="Who’s busy where" sub="Teachers and rooms, hour by hour" href="/busy" />
+        <Item icon={<Bell color={colors.amber} size={18} />} label="Notifications" href="/notifications" />
         {admin ? <Item icon={<Users color={colors.cyan} size={18} />} label="People" sub="Students, teachers, admins" href="/people" /> : null}
+        <Item icon={<UsersRound color={colors.violet} size={18} />} label="Batches" sub="Sections and the courses they take" href="/batches" />
         <Item icon={<MapPin color={colors.green} size={18} />} label="Rooms" sub="Classroom locations" href="/rooms" />
         <Item
           icon={<Smartphone color={colors.violet} size={18} />}

@@ -8,21 +8,23 @@ import { Badge, Button, Card, Notice, SectionLabel, Text } from '@kit/components
 import { useApi } from '@kit/state/session';
 import { colors, fonts, radius } from '@kit/theme';
 import { staffApi } from '@/api';
-import { Checkbox, Chips, Header } from '@/components/forms';
+import { Checkbox, Chips, Field, Header, Select } from '@/components/forms';
 import { parseRows } from '@/import-parse';
-import { useCourses } from '@/queries';
+import { useBatches, useCourses } from '@/queries';
 
 const EXAMPLE = 'Aarav Sharma, 21CS1001, aarav@college.edu\nDiya Patel, 21CS1002, diya@college.edu, +919876543210';
 
 /** Paste a class list from Excel / Google Sheets / a PDF and add everyone at once. */
 export default function Import() {
-  const params = useLocalSearchParams<{ role?: string }>();
+  const params = useLocalSearchParams<{ role?: string; batchId?: string }>();
   const api = useApi();
   const qc = useQueryClient();
   const courses = useCourses();
   const [role, setRole] = useState<'student' | 'teacher'>(params.role === 'teacher' ? 'teacher' : 'student');
   const [text, setText] = useState('');
   const [courseIds, setCourseIds] = useState<Set<string>>(new Set());
+  const batches = useBatches();
+  const [batchId, setBatchId] = useState<string | null>(params.batchId ? String(params.batchId) : null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<BulkImportResponse | null>(null);
@@ -38,7 +40,7 @@ export default function Import() {
       // The server takes up to 500 rows per request.
       for (let i = 0; i < parsed.rows.length; i += 500) {
         const chunk = parsed.rows.slice(i, i + 500);
-        const r = await staffApi.importPeople(api, chunk, role === 'student' ? [...courseIds] : []);
+        const r = await staffApi.importPeople(api, chunk, role === 'student' ? [...courseIds] : [], role === 'student' ? batchId : null);
         all.created += r.created;
         all.skipped.push(...r.skipped.map((s) => ({ ...s, row: s.row + i })));
       }
@@ -90,6 +92,17 @@ export default function Import() {
         </Card>
       ) : null}
 
+      {role === 'student' ? (
+        <Field label="Batch (optional)" hint="They’re enrolled in every course the batch takes.">
+          <Select
+            title="Batch"
+            value={batchId}
+            onChange={setBatchId}
+            allowNone="No batch"
+            options={(batches.data ?? []).filter((b) => b.active).map((b) => ({ value: b.id, label: b.name, sub: `${b.size} students · ${b.courseIds.length} courses` }))}
+          />
+        </Field>
+      ) : null}
       {role === 'student' && (courses.data ?? []).some((c) => c.active) ? (
         <>
           <SectionLabel>Also enrol them in</SectionLabel>

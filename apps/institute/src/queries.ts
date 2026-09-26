@@ -22,6 +22,12 @@ export const qk = {
   pack: ['staff', 'offline-pack'] as const,
   flags: (status?: string) => ['staff', 'flags', status ?? 'all'] as const,
   requests: ['staff', 'device-requests'] as const,
+  availability: (date: string, days: number) => ['staff', 'availability', date, days] as const,
+  batches: ['staff', 'batches'] as const,
+  batch: (id: string) => ['staff', 'batch', id] as const,
+  planner: (week: string) => ['staff', 'planner', week] as const,
+  drafts: ['staff', 'drafts'] as const,
+  draft: (id: string) => ['staff', 'draft', id] as const,
 };
 
 const isId = (id: string) => /^[0-9a-f-]{36}$/i.test(id);
@@ -127,4 +133,29 @@ export function useFlags(status?: string) {
 export function useDeviceRequests() {
   const api = useApi();
   return useQuery({ queryKey: qk.requests, queryFn: () => staffApi.deviceRequests(api) });
+}
+
+export function useAvailability(date: string, days = 1, enabled = true) {
+  const api = useApi();
+  return useQuery({ queryKey: qk.availability(date, days), queryFn: () => staffApi.availability(api, date, days), enabled: enabled && /^\d{4}-\d{2}-\d{2}$/.test(date) });
+}
+
+export function useBatches() {
+  const api = useApi();
+  return useQuery({ queryKey: qk.batches, queryFn: () => staffApi.batches(api) });
+}
+
+export function useBatch(id: string) {
+  const api = useApi();
+  return useQuery({ queryKey: qk.batch(id), queryFn: () => staffApi.batch(api, id), enabled: isId(id) });
+}
+
+export function usePlannerWeek(week: string) {
+  const api = useApi();
+  return useQuery({ queryKey: qk.planner(week), queryFn: () => staffApi.plannerWeek(api, week), placeholderData: (prev) => prev, refetchInterval: 60_000 });
+}
+
+export function useDrafts() {
+  const api = useApi();
+  return useQuery({ queryKey: qk.drafts, queryFn: () => staffApi.drafts(api) });
 }

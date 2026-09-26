@@ -7,6 +7,7 @@ import { Screen } from '@kit/components/Screen';
 import { Badge, Card, ErrorState, IconButton, Loading, ProgressBar, SectionLabel, Text } from '@kit/components/ui';
 import { dayLabel, pct, zoned } from '@kit/lib/format';
 import { colors, fonts, radius, toneColor } from '@kit/theme';
+import { ChangeNote } from '@/components/ChangeNote';
 import { useSubjectDetail } from '@/state/queries';
 
 /** Subject detail — standing, "how much to attend" planner, and full history. */
@@ -146,6 +147,7 @@ function HistoryRow({ h, tz, first }: { h: HistoryItem; tz: string; first: boole
           {dayLabel(h.scheduledStart, tz)} · {zoned(h.scheduledStart, tz).hm}
         </Text>
         <Text variant="small">{[h.lectureNo ? `Lecture ${h.lectureNo}` : null, h.room, how].filter(Boolean).join(' · ') || ' '}</Text>
+        <ChangeNote change={h.change} tz={tz} />
       </View>
       <Badge label={label} tone={tone} dot={false} />
     </View>

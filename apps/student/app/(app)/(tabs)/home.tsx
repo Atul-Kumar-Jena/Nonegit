@@ -3,18 +3,22 @@ import { Linking, Pressable, StyleSheet, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { CalendarDays, ChevronRight, ClipboardList, Clock3, MapPin, ScanLine, ShieldCheck, Smartphone, TrendingDown, TrendingUp } from 'lucide-react-native';
 import type { DashboardResponse, TodaySession } from '@attendly/protocol';
+import { NotificationBell } from '@kit/components/NotificationBell';
 import { Screen } from '@kit/components/Screen';
+import { useAskForPhoneNotificationsOnce } from '@kit/lib/notifications';
 import { SyncBanner } from '@kit/components/SyncBanner';
 import { Avatar, Badge, Card, ErrorState, Loading, ProgressBar, SectionLabel, Text } from '@kit/components/ui';
 import { dayLabel, drift, greeting, initials, pct, shortFingerprint, timeRange } from '@kit/lib/format';
 import { integrityReport } from '@kit/lib/device-info';
 import { ensureLocationPermission, locationStatus } from '@kit/lib/location';
+import { ChangeNote } from '@/components/ChangeNote';
 import { useDashboard } from '@/state/queries';
 import { useApi } from '@kit/state/session';
 import { colors, fonts, toneColor } from '@kit/theme';
 
 /** 04 · Home dashboard — today's classes and term attendance. */
 export default function Home() {
+  useAskForPhoneNotificationsOnce();
   const q = useDashboard();
   const api = useApi();
   const [gps, setGps] = useState<'ready' | 'permission' | 'off' | null>(null);
@@ -113,7 +117,7 @@ function Header({ d }: { d: DashboardResponse }) {
           {d.user.fullName}
         </Text>
       </View>
-      <Badge label={d.user.institution.name.length > 18 ? d.user.institution.slug.toUpperCase() : d.user.institution.name} tone="muted" dot={false} />
+      <NotificationBell />
     </View>
   );
 }
@@ -225,6 +229,7 @@ function SessionCard({ s, tz, now }: { s: TodaySession; tz: string; now: number 
           {timeRange(s.scheduledStart, s.scheduledEnd, tz)}
           {s.room ? ` · ${s.room}` : ''}
         </Text>
+        <ChangeNote change={s.change} tz={tz} />
       </View>
       <View style={{ paddingRight: 14 }}>
         {canScan ? (

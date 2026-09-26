@@ -28,7 +28,7 @@ import {
 import type { Deps } from '../deps';
 import { withTx, type Queryable } from '../db';
 import { STAFF, loadSessionFor, requireAdmin } from '../lib/access';
-import { requireDevice, type AuthContext } from '../lib/auth';
+import { requireDevice, requireDeviceKeyOnly, type AuthContext } from '../lib/auth';
 import { reconcileBatchEnrollments } from '../lib/batches';
 import { ApiError } from '../lib/errors';
 import { loadPlannerWeek, localNow, publishOps } from '../lib/planner-server';
@@ -366,6 +366,23 @@ export async function staffPlannerRoutes(app: FastifyInstance, deps: Deps) {
     ]);
     return {
       items: items.rows.map((r) => ({ id: Number(r.id), kind: r.kind, title: r.title, body: r.body, data: r.data, createdAt: r.created_at.toISOString(), read: !!r.read_at })),
+      unread: unread.rows[0]!.n,
+    };
+  });
+
+  /** Background check (device key only, read-only): new unread notifications after `after`. */
+  app.get('/v1/notifications/poll', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (req): Promise<NotificationsResponse> => {
+    const who = await requireDeviceKeyOnly(req, deps);
+    const q = z.object({ after: z.coerce.number().int().nonnegative().default(0) }).parse(req.query);
+    const [items, unread] = await Promise.all([
+      deps.db.query<{ id: string; kind: string; title: string; body: string; data: Record<string, unknown>; created_at: Date }>(
+        `select id, kind, title, body, data, created_at from notifications where user_id = $1 and read_at is null and id > $2 order by id limit 10`,
+        [who.userId, q.after],
+      ),
+      deps.db.query<{ n: number }>(`select count(*)::int as n from notifications where user_id = $1 and read_at is null`, [who.userId]),
+    ]);
+    return {
+      items: items.rows.map((r) => ({ id: Number(r.id), kind: r.kind, title: r.title, body: r.body, data: r.data, createdAt: r.created_at.toISOString(), read: false })),
       unread: unread.rows[0]!.n,
     };
   });

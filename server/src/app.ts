@@ -89,7 +89,7 @@ export async function buildApp(opts: BuildOptions): Promise<{ app: FastifyInstan
   if (config.corsOrigins.length > 0) {
     await app.register(cors, {
       origin: config.corsOrigins,
-      allowedHeaders: ['authorization', 'content-type', 'x-attendly-ts', 'x-attendly-nonce', 'x-attendly-sig'],
+      allowedHeaders: ['authorization', 'content-type', 'x-attendly-ts', 'x-attendly-nonce', 'x-attendly-sig', 'x-attendly-key', 'x-present-secret'],
       exposedHeaders: ['x-server-time'],
     });
   }

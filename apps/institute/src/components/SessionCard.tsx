@@ -41,6 +41,9 @@ export function SessionCard({ s, tz, showDate }: { s: StaffSession & { pendingSy
             <StatusBadge s={s} />
             {s.flagged > 0 ? <Badge label={`${s.flagged} flagged`} tone="amber" icon={<ShieldAlert color={colors.amber} size={11} />} /> : null}
             {s.pendingSync ? <Badge label="Waiting to sync" tone="violet" icon={<CloudUpload color={colors.violet} size={11} />} /> : null}
+            {s.substitute ? <Badge label={`Sub: ${s.substitute.name}`} tone="violet" dot={false} /> : null}
+            {s.change?.kind === 'rescheduled' ? <Badge label="Moved" tone="amber" dot={false} /> : null}
+            {s.change?.kind === 'extra' ? <Badge label="Extra" tone="green" dot={false} /> : null}
           </View>
         </View>
         <View style={{ paddingHorizontal: 12 }}>

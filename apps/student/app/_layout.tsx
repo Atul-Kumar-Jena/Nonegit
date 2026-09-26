@@ -1,5 +1,6 @@
 import { Stack, type ErrorBoundaryProps } from 'expo-router';
 import { OutboxRunner } from '@kit/components/OutboxRunner';
+import { NotificationRunner } from '@kit/lib/notifications';
 import { CrashScreen, RootShell } from '@kit/components/RootShell';
 import { colors } from '@kit/theme';
 import { studentOutboxHandlers } from '@/outbox-handlers';
@@ -13,6 +14,7 @@ const AUDIENCE = {
 export default function RootLayout() {
   return (
     <RootShell audience={AUDIENCE}>
+      <NotificationRunner />
       <OutboxRunner handlers={studentOutboxHandlers} />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg }, animation: 'fade' }}>
         <Stack.Screen name="index" />

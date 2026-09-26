@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
-import { ClipboardList, CloudOff, MapPin, Monitor, QrCode, ShieldAlert, XCircle } from 'lucide-react-native';
+import { ArrowRightLeft, ClipboardList, CloudOff, MapPin, Monitor, QrCode, ShieldAlert, UserRound, XCircle } from 'lucide-react-native';
 import { randomToken, type FeedEntry, type SessionMode, type StartSessionBody } from '@attendly/protocol';
 import { Screen } from '@kit/components/Screen';
 import { Badge, Button, Card, ErrorState, InfoRow, Loading, Notice, SectionLabel, Text } from '@kit/components/ui';
@@ -13,11 +13,12 @@ import { outbox } from '@kit/lib/outbox';
 import { useApi } from '@kit/state/session';
 import { colors } from '@kit/theme';
 import { staffApi } from '@/api';
+import { AdjustSheet } from '@/components/Adjust';
 import { BigScreenSheet } from '@/components/BigScreen';
 import { Chips, Field, Header, confirmAction } from '@/components/forms';
 import { StatusBadge } from '@/components/SessionCard';
 import { localSessions } from '@/local-sessions';
-import { qk, useFeed, useIsAdmin } from '@/queries';
+import { qk, useFeed, useIsAdmin, useMe } from '@/queries';
 import { useSessionView } from '@/session-view';
 import { TEACHER_EDIT_WINDOW_MS, canStartNow, minutesLabel } from '@/time';
 
@@ -51,10 +52,12 @@ export default function SessionScreen() {
   const [where, setWhere] = useState<'phone' | 'room' | null>(null);
   const [radius, setRadius] = useState<number | null>(null);
   const [rotation, setRotation] = useState<number | null>(null);
-  const [busy, setBusy] = useState<null | 'start' | 'end' | 'cancel'>(null);
+  const [busy, setBusy] = useState<null | 'start' | 'end'>(null);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [bigScreen, setBigScreen] = useState(false);
+  const [adjust, setAdjust] = useState<null | 'reschedule' | 'substitute' | 'cancel'>(null);
+  const me = useMe();
 
   if (!s) {
     if (query.isPending) return <Screen scroll={false}><Header title="Class" /><Loading /></Screen>;
@@ -67,6 +70,7 @@ export default function SessionScreen() {
   }
 
   const now = api.serverNow();
+  const canReorganise = isAdmin || (!!me.data && s.teacher?.id === me.data.user.id);
   const m: SessionMode = mode ?? s.mode;
   const roomHasLocation = s.lat !== null && s.lng !== null && s.status === 'scheduled';
   const w = where ?? 'phone';
@@ -163,21 +167,6 @@ export default function SessionScreen() {
     });
   }
 
-  function cancel() {
-    confirmAction('Cancel this class?', 'Students will see it as cancelled and it won’t count towards attendance.', 'Cancel class', async () => {
-      setBusy('cancel');
-      setError(null);
-      try {
-        await staffApi.cancel(api, s!.id);
-        refresh();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Couldn’t cancel the class.');
-      } finally {
-        setBusy(null);
-      }
-    }, true);
-  }
-
   const entries = feed.data?.entries ?? [];
   const present = entries.filter((e) => e.present);
   const absent = entries.filter((e) => !e.present);
@@ -192,6 +181,14 @@ export default function SessionScreen() {
       <Text variant="small" style={{ marginTop: 4 }}>
         {[timeRange(s.scheduledStart, s.scheduledEnd, tz), s.room?.name ?? s.roomLabel, s.lectureNo ? `Lecture ${s.lectureNo}` : null, `code ${s.code}`].filter(Boolean).join(' · ')}
       </Text>
+      {s.substitute || s.change ? (
+        <View style={{ flexDirection: 'row', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+          {s.substitute ? <Badge label={`Taken by ${s.substitute.name}`} tone="violet" dot={false} /> : null}
+          {s.change?.kind === 'rescheduled' ? <Badge label={`Moved${s.change.originalStart ? ` from ${zoned(s.change.originalStart, tz).dow} ${zoned(s.change.originalStart, tz).hm}` : ''}`} tone="amber" dot={false} /> : null}
+          {s.change?.kind === 'extra' ? <Badge label="Extra class" tone="green" dot={false} /> : null}
+          {s.change?.kind === 'cancelled' && s.change.note ? <Badge label={`Reason: ${s.change.note}`} tone="red" dot={false} /> : null}
+        </View>
+      ) : null}
 
       {fromCache ? (
         <View style={{ marginTop: 12 }}>
@@ -270,7 +267,24 @@ export default function SessionScreen() {
               </Text>
             </View>
           ) : null}
-          <Button title="Cancel this class" kind="danger" onPress={cancel} loading={busy === 'cancel'} icon={<XCircle color={colors.red} size={16} />} style={{ marginTop: 22 }} />
+          {canReorganise ? (
+            <>
+              <SectionLabel>Adjustment</SectionLabel>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <Button title="Move" kind="secondary" compact onPress={() => setAdjust('reschedule')} icon={<ArrowRightLeft color={colors.text} size={15} />} style={{ flex: 1 }} />
+                <Button title="Substitute" kind="secondary" compact onPress={() => setAdjust('substitute')} icon={<UserRound color={colors.text} size={15} />} style={{ flex: 1 }} />
+              </View>
+              <Button title="Cancel this class" kind="danger" onPress={() => setAdjust('cancel')} icon={<XCircle color={colors.red} size={16} />} style={{ marginTop: 10 }} />
+              <Text variant="small" style={{ marginTop: 8 }}>
+                Students of {s.courseCode} are notified immediately. Changes are checked for clashes with other classes, teachers and rooms.
+              </Text>
+            </>
+          ) : (
+            <Text variant="small" style={{ marginTop: 18 }}>
+              You’re taking this class as a substitute. Only its own teacher or an admin can move or cancel it.
+            </Text>
+          )}
+          <AdjustSheet session={s} tz={tz} mode={adjust} onClose={() => setAdjust(null)} />
         </>
       ) : null}
 
