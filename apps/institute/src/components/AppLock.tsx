@@ -97,49 +97,52 @@ export function AppLock({ children }: { children: ReactNode }) {
   // Signed-out screens (login, bind) don't hold staff data: no lock needed there.
   if (web || phase !== 'signed-in') return <>{children}</>;
 
-  if (state === 'open')
-    return (
-      <View style={{ flex: 1 }}>
-        {children}
-        {hidden ? <View style={[StyleSheet.absoluteFill, styles.shield]} /> : null}
-      </View>
-    );
-
+  // The app stays mounted underneath the lock (a half-taken register survives a relock);
+  // the lock only covers it and swallows every touch.
+  const locked = state !== 'open';
   return (
-    <View style={styles.root}>
-      <Backdrop />
-      <View style={styles.center}>
-        <LogoMark size={52} />
-        {state === 'no-screen-lock' ? (
-          <>
-            <ShieldAlert color={colors.amber} size={28} style={{ marginTop: 28 }} />
-            <Text variant="title" style={styles.text}>
-              Set a screen lock first
-            </Text>
-            <Text variant="body" style={styles.text}>
-              This phone has no PIN, pattern, password or fingerprint. Staff accounts can see student data, so Attendly Institute only runs on a locked phone. Add a screen lock in Settings → Security, then come back.
-            </Text>
-            <Button title="I’ve set it — check again" onPress={() => void unlock()} style={styles.btn} />
-          </>
-        ) : (
-          <>
-            <Lock color={colors.cyan} size={26} style={{ marginTop: 28 }} />
-            <Text variant="title" style={styles.text}>
-              Locked
-            </Text>
-            <Text variant="body" style={styles.text}>
-              Confirm it’s you with your fingerprint, face or phone PIN.
-            </Text>
-            {error ? (
-              <Text variant="small" color={colors.red} style={styles.text}>
-                {error}
-              </Text>
-            ) : null}
-            <Button title="Unlock" onPress={() => void unlock()} style={styles.btn} />
-          </>
-        )}
-        <Button title="Sign out" kind="ghost" onPress={() => void signOut()} style={{ marginTop: 8, alignSelf: 'stretch' }} />
+    <View style={{ flex: 1 }}>
+      <View style={{ flex: 1 }} importantForAccessibility={locked ? 'no-hide-descendants' : 'auto'} accessibilityElementsHidden={locked}>
+        {state === 'checking' ? null : children}
       </View>
+      {hidden && !locked ? <View style={[StyleSheet.absoluteFill, styles.shield]} /> : null}
+      {locked ? (
+        <View style={[StyleSheet.absoluteFill, styles.root]}>
+          <Backdrop />
+          <View style={styles.center}>
+            <LogoMark size={52} />
+            {state === 'no-screen-lock' ? (
+              <>
+                <ShieldAlert color={colors.amber} size={28} style={{ marginTop: 28 }} />
+                <Text variant="title" style={styles.text}>
+                  Set a screen lock first
+                </Text>
+                <Text variant="body" style={styles.text}>
+                  This phone has no PIN, pattern, password or fingerprint. Staff accounts can see student data, so Attendly Institute only runs on a locked phone. Add a screen lock in Settings → Security, then come back.
+                </Text>
+                <Button title="I’ve set it — check again" onPress={() => void unlock()} style={styles.btn} />
+              </>
+            ) : (
+              <>
+                <Lock color={colors.cyan} size={26} style={{ marginTop: 28 }} />
+                <Text variant="title" style={styles.text}>
+                  Locked
+                </Text>
+                <Text variant="body" style={styles.text}>
+                  Confirm it’s you with your fingerprint, face or phone PIN.
+                </Text>
+                {error ? (
+                  <Text variant="small" color={colors.red} style={styles.text}>
+                    {error}
+                  </Text>
+                ) : null}
+                {state === 'locked' ? <Button title="Unlock" onPress={() => void unlock()} style={styles.btn} /> : null}
+              </>
+            )}
+            <Button title="Sign out" kind="ghost" onPress={() => void signOut()} style={{ marginTop: 8, alignSelf: 'stretch' }} />
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
