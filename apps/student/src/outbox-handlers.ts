@@ -2,14 +2,22 @@ import { MarkBody } from '@attendly/protocol';
 import { ApiRequestError } from '@kit/lib/api-core';
 import type { OutboxHandler } from '@kit/lib/outbox';
 
+/** Refusals that can clear up on their own, so an offline scan keeps waiting instead of failing. */
+const WAIT_AND_RETRY = new Set(['E-NOT-STARTED', 'E-PAUSED']);
+
 /** Uploads a scan that was captured without internet. */
 const mark: OutboxHandler = async (api, item) => {
   const body = MarkBody.parse(item.payload);
   try {
     const res = await api.mark(body);
-    return { ok: true, message: `${res.record.courseCode} · marked present${res.alreadyMarked ? ' (already recorded)' : ''}` };
+    return { ok: true, message: `marked present${res.alreadyMarked ? ' (already recorded)' : ''}${res.record.offline ? ' · offline scan accepted' : ''}` };
   } catch (err) {
-    if (err instanceof ApiRequestError && err.rejection) return { ok: false, message: `${err.rejection.title}${err.rejection.detail ? ` — ${err.rejection.detail}` : ''}` };
+    if (err instanceof ApiRequestError && err.rejection) {
+      // The teacher may have started the class offline too — their phone hasn't synced yet.
+      // Retry with backoff; the server refuses anything older than 24 h on its own.
+      if (WAIT_AND_RETRY.has(err.rejection.code)) throw new ApiRequestError('INTERNAL', err.rejection.title, 503);
+      return { ok: false, message: `${err.rejection.title}${err.rejection.detail ? ` — ${err.rejection.detail}` : ''}` };
+    }
     throw err;
   }
 };

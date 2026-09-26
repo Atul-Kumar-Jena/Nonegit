@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
-import { Clock3, MapPin, ScanLine, ShieldCheck, Smartphone, TrendingDown, TrendingUp } from 'lucide-react-native';
+import { CalendarDays, ChevronRight, ClipboardList, Clock3, MapPin, ScanLine, ShieldCheck, Smartphone, TrendingDown, TrendingUp } from 'lucide-react-native';
 import type { DashboardResponse, TodaySession } from '@attendly/protocol';
 import { Screen } from '@kit/components/Screen';
+import { SyncBanner } from '@kit/components/SyncBanner';
 import { Avatar, Badge, Card, ErrorState, Loading, ProgressBar, SectionLabel, Text } from '@kit/components/ui';
 import { dayLabel, drift, greeting, initials, pct, shortFingerprint, timeRange } from '@kit/lib/format';
 import { integrityReport } from '@kit/lib/device-info';
@@ -42,6 +43,7 @@ export default function Home() {
     <Screen onRefresh={() => void q.refetch()} refreshing={q.isRefetching}>
       <Header d={d} />
       <TermCard d={d} offline={offline} updatedAt={q.dataUpdatedAt} />
+      <SyncBanner />
       <View style={styles.grid}>
         <Tile icon={<Smartphone color={colors.textMuted} size={14} />} label="Device" value="Bound" tone="green" sub={`HWID ${shortFingerprint(d.device.fingerprint)}`} />
         <Tile
@@ -71,10 +73,19 @@ export default function Home() {
       ) : (
         <View style={{ gap: 10 }}>
           {d.today.map((s) => (
-            <SessionCard key={s.sessionId} s={s} tz={d.timezone} />
+            <SessionCard key={s.sessionId} s={s} tz={d.timezone} now={api.serverNow()} />
           ))}
         </View>
       )}
+      <Pressable onPress={() => router.push('/timetable')} accessibilityRole="button" style={{ marginTop: 10 }}>
+        <Card style={styles.link}>
+          <CalendarDays color={colors.cyan} size={18} />
+          <Text variant="bodyStrong" style={{ flex: 1 }}>
+            Full timetable & next 7 days
+          </Text>
+          <ChevronRight color={colors.textDim} size={18} />
+        </Card>
+      </Pressable>
     </Screen>
   );
 }
@@ -171,9 +182,14 @@ function DriftTile({ driftMs }: { driftMs: number | null }) {
   );
 }
 
-function SessionCard({ s, tz }: { s: TodaySession; tz: string }) {
+/** Scans open 15 min before a scheduled class and close 15 min after it (the server enforces the same window). */
+const GRACE_MS = 15 * 60_000;
+
+function SessionCard({ s, tz, now }: { s: TodaySession; tz: string; now: number }) {
   const live = s.status === 'live';
-  const canScan = live && !s.marked;
+  const manual = s.mode === 'manual';
+  const inWindow = s.status === 'scheduled' && now >= Date.parse(s.scheduledStart) - GRACE_MS && now <= Date.parse(s.scheduledEnd) + GRACE_MS;
+  const canScan = !manual && !s.marked && (live || inWindow);
   return (
     <Card style={[styles.session, live && { borderColor: 'rgba(34,211,238,0.35)' }]} padded={false}>
       <View style={[styles.accent, { backgroundColor: live ? colors.cyan : s.marked ? colors.green : colors.borderHi }]} />
@@ -181,6 +197,7 @@ function SessionCard({ s, tz }: { s: TodaySession; tz: string }) {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Text variant="monoSmall">{s.courseCode}</Text>
           {live ? <Badge label="LIVE" tone="cyan" /> : null}
+          {manual ? <Badge label="Paper register" tone="violet" dot={false} icon={<ClipboardList color={colors.violet} size={11} />} /> : null}
           {s.status === 'cancelled' ? <Badge label="Cancelled" tone="red" dot={false} /> : null}
         </View>
         <Text variant="bodyStrong" numberOfLines={1}>
@@ -206,6 +223,8 @@ function SessionCard({ s, tz }: { s: TodaySession; tz: string }) {
           <Badge label="Present" tone="green" />
         ) : s.status === 'closed' ? (
           <Badge label="Missed" tone="amber" dot={false} />
+        ) : manual && s.status !== 'cancelled' ? (
+          <Badge label="Teacher marks" tone="muted" dot={false} />
         ) : s.status === 'scheduled' ? (
           <Badge label="Upcoming" tone="muted" dot={false} />
         ) : null}
@@ -223,5 +242,6 @@ const styles = StyleSheet.create({
   tileHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   session: { flexDirection: 'row', alignItems: 'center', overflow: 'hidden' },
   accent: { width: 3, alignSelf: 'stretch' },
+  link: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   scanBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.cyan, borderRadius: 11, paddingHorizontal: 14, paddingVertical: 9 },
 });

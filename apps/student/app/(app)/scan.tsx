@@ -6,14 +6,15 @@ import * as Haptics from 'expo-haptics';
 import { useQueryClient } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, Camera, MapPin } from 'lucide-react-native';
-import { parseQrToken } from '@attendly/protocol';
+import { parseQrToken, type MarkBody } from '@attendly/protocol';
 import { Button, Card, IconButton, IconTile, Text } from '@kit/components/ui';
 import { ApiRequestError, verifyReceipt } from '@kit/lib/api-core';
 import { confirmWithBiometrics } from '@kit/lib/biometrics';
 import { LocationError, getFreshFix, type LocationFix } from '@kit/lib/location';
 import { loadPrefs } from '@kit/lib/prefs';
+import { outbox } from '@kit/lib/outbox';
 import { pinnedKey } from '@kit/lib/server-config';
-import { qk } from '@/state/queries';
+import { studentQueryKeys } from '@/state/queries';
 import { setScanOutcome } from '@/state/scan-result';
 import { useApi, useSession } from '@kit/state/session';
 import { colors, radius } from '@kit/theme';
@@ -83,6 +84,9 @@ export default function Scan() {
         return;
       }
       busy.current = true;
+      // The moment of scanning on the server's clock — what an offline upload is judged against.
+      const scannedAt = Math.round(api.serverNow());
+      let body: MarkBody | null = null;
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
       try {
         if ((await loadPrefs()).biometricForScans) {
@@ -101,22 +105,32 @@ export default function Scan() {
         }
         setStage('submitting');
         const capturedAt = Math.round(fix.timestamp + (api.serverNow() - Date.now()));
-        const res = await api.mark({
-          qr: data,
-          location: { lat: fix.lat, lng: fix.lng, accuracyM: Math.max(0, fix.accuracyM), mocked: fix.mocked, capturedAt },
-        });
+        body = { qr: data, location: { lat: fix.lat, lng: fix.lng, accuracyM: Math.max(0, fix.accuracyM), mocked: fix.mocked, capturedAt } };
+        const res = await api.mark(body);
         const receiptVerified = server ? verifyReceipt(res, pinnedKey(server)) : false;
         setScanOutcome({ kind: 'success', res, receiptVerified });
         void Haptics.notificationAsync(receiptVerified ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Warning).catch(() => undefined);
-        void qc.invalidateQueries({ queryKey: qk.dashboard });
-        void qc.invalidateQueries({ queryKey: qk.subjects });
-        void qc.invalidateQueries({ queryKey: qk.profile });
+        for (const queryKey of studentQueryKeys) void qc.invalidateQueries({ queryKey });
       } catch (err) {
+        if (body && err instanceof ApiRequestError && (err.code === 'NETWORK' || err.code === 'TIMEOUT' || err.status >= 500)) {
+          // No internet (or the server is down): keep the signed-off scan encrypted on the phone
+          // and upload it automatically. The server re-checks everything against the scan time.
+          const label = `${course ? course.split(' · ')[0] : 'Class'} scan · ${new Date(scannedAt).toTimeString().slice(0, 5)}`;
+          try {
+            await outbox.enqueue('mark', label, { ...body, scannedAt });
+            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => undefined);
+            setScanOutcome({ kind: 'queued', label });
+            router.replace('/result');
+            return;
+          } catch {
+            // fall through to the plain error below
+          }
+        }
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => undefined);
         if (err instanceof ApiRequestError && err.rejection) setScanOutcome({ kind: 'rejected', rejection: err.rejection });
         else if (err instanceof LocationError) setScanOutcome({ kind: 'error', title: 'Location needed', message: err.message });
         else if (err instanceof ApiRequestError && err.transient)
-          setScanOutcome({ kind: 'error', title: 'No connection', message: `${err.message} Your mark was not confirmed — scan the live code again once you’re back online.` });
+          setScanOutcome({ kind: 'error', title: 'No connection', message: `${err.message} Your mark could not be saved — scan the live code again.` });
         else setScanOutcome({ kind: 'error', title: 'Couldn’t mark attendance', message: err instanceof Error ? err.message : 'Unexpected error.' });
       }
       router.replace('/result');

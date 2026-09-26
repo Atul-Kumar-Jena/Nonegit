@@ -8,6 +8,7 @@ export const REJECTION_CODES = {
   'E-EXPIRED': { title: 'QR token expired', hint: 'The code rotated before it reached the server. Scan the live code again.', suspicious: false },
   'E-QR-INVALID': { title: 'Invalid QR code', hint: 'This is not a valid Attendly session code. Scan the code shown by your instructor.', suspicious: true },
   'E-SESSION-CLOSED': { title: 'Session not live', hint: 'This session has not started yet or has already ended.', suspicious: false },
+  'E-NOT-STARTED': { title: 'Class not started yet', hint: 'Your instructor has not started this class. Scan again once the live code is on screen.', suspicious: false },
   'E-NOT-ENROLLED': { title: 'Not enrolled', hint: 'You are not on the roster for this class. Contact your instructor.', suspicious: false },
   'E-GEO': { title: 'Outside geofence', hint: 'Move inside the room and retry.', suspicious: false },
   'E-GPS-WEAK': { title: 'Location too imprecise', hint: 'Step near a window or enable precise location, then retry.', suspicious: false },

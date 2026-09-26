@@ -1,8 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Redirect, router } from 'expo-router';
-import { BarChart3, Check, ChevronDown, ChevronRight, Clock, MapPin, ShieldAlert, ShieldX, Smartphone, TriangleAlert, WifiOff, X } from 'lucide-react-native';
-import { REJECTION_CODES, type RejectionCode } from '@attendly/protocol';
+import { BarChart3, Check, CloudUpload, ChevronDown, ChevronRight, Clock, MapPin, ShieldAlert, ShieldX, Smartphone, TriangleAlert, WifiOff, X } from 'lucide-react-native';
+import { REJECTION_CODES, seqLabel, type RejectionCode } from '@attendly/protocol';
 import { Screen } from '@kit/components/Screen';
 import { Badge, Button, Card, IconTile, InfoRow, Text } from '@kit/components/ui';
 import { pct, utcStamp, zoned } from '@kit/lib/format';
@@ -15,6 +15,7 @@ export default function Result() {
   useEffect(() => () => clearScanOutcome(), []);
   if (!outcome) return <Redirect href="/home" />;
   if (outcome.kind === 'success') return <Success o={outcome} />;
+  if (outcome.kind === 'queued') return <Queued label={outcome.label} />;
   if (outcome.kind === 'rejected') return <Rejected code={outcome.rejection.code} title={outcome.rejection.title} hint={outcome.rejection.hint} detail={outcome.rejection.detail} />;
   return <Failure title={outcome.title} message={outcome.message} />;
 }
@@ -49,7 +50,7 @@ function Success({ o }: { o: Extract<ScanOutcome, { kind: 'success' }> }) {
       <Card style={{ marginTop: 22, paddingVertical: 10 }}>
         <InfoRow label="TIMESTAMP" value={utcStamp(r.markedAt)} />
         <InfoRow label="SESSION ID" value={sessionRef} />
-        <InfoRow label="QR TOKEN" value={`#${String(r.qrSeq).padStart(4, '0')} · rotating`} />
+        <InfoRow label="QR TOKEN" value={`${seqLabel(r.qrSeq)} · rotating${r.offline ? ' · offline' : ''}`} />
         <InfoRow label="DISTANCE" value={`${r.distanceM} m from room`} />
         <InfoRow
           label="SIGNATURE"
@@ -165,8 +166,35 @@ function Rejected({ code, title, hint, detail }: { code: RejectionCode; title: s
       </Card>
 
       <View style={{ gap: 10, marginTop: 22 }}>
-        {code === 'E-PAUSED' || code === 'E-NOT-ENROLLED' || code === 'E-SESSION-CLOSED' ? null : <Button title="Scan again" onPress={() => router.replace('/scan')} />}
+        {code === 'E-PAUSED' || code === 'E-NOT-ENROLLED' || code === 'E-SESSION-CLOSED' || code === 'E-REVOKED' ? null : <Button title="Scan again" onPress={() => router.replace('/scan')} />}
         <Button title="Back to dashboard" kind="secondary" onPress={() => router.dismissTo('/home')} />
+      </View>
+    </Screen>
+  );
+}
+
+function Queued({ label }: { label: string }) {
+  return (
+    <Screen edges={['top', 'bottom']} contentStyle={{ paddingTop: 28 }}>
+      <Halo tone="amber">
+        <CloudUpload color="#3b2303" size={32} />
+      </Halo>
+      <Text variant="title" style={styles.center}>
+        Saved offline
+      </Text>
+      <Text variant="body" style={[styles.center, { marginTop: 6 }]}>
+        {label}
+      </Text>
+      <Card style={{ marginTop: 20, gap: 8 }}>
+        <Text variant="body" color={colors.text}>
+          You’re offline, so your scan was sealed and stored on this phone. It uploads by itself as soon as you’re back online — keep the app installed and stay signed in.
+        </Text>
+        <Text variant="small">
+          The server still checks the code, your location and the time you scanned. Upload within 24 hours. You’ll see the result on the home screen.
+        </Text>
+      </Card>
+      <View style={{ gap: 10, marginTop: 22 }}>
+        <Button title="Back to dashboard" onPress={() => router.dismissTo('/home')} />
       </View>
     </Screen>
   );

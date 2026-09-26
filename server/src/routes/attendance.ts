@@ -26,7 +26,7 @@ import { courseStats, loadTenantTerm } from '../lib/stats';
 const MAX_SUSPICIOUS_PER_10_MIN = 10;
 const MAX_REJECTIONS_PER_10_MIN = 40;
 /** Refusals caused by the institution, not the student — never count towards the throttle. */
-const NOT_STUDENTS_FAULT = ['E-PAUSED', 'E-SESSION-CLOSED'];
+const NOT_STUDENTS_FAULT = ['E-PAUSED', 'E-SESSION-CLOSED', 'E-NOT-STARTED'];
 
 /** Grace around a class's scheduled window for early/late scans. */
 const WINDOW_GRACE_MS = 15 * 60_000;
@@ -185,7 +185,7 @@ export async function attendanceRoutes(app: FastifyInstance, deps: Deps) {
       if (scannedAt < opens || scannedAt > closes) throw new ScanRejection('E-SESSION-CLOSED', undefined, { status: session.status });
       if (session.status === 'closed' && !offline) throw new ScanRejection('E-SESSION-CLOSED', undefined, { status: session.status });
       if (session.lat === null || session.lng === null)
-        throw new ScanRejection('E-SESSION-CLOSED', 'Your instructor has not started this class yet.', { reason: 'no_location' });
+        throw new ScanRejection('E-NOT-STARTED', undefined, { reason: 'no_location' });
       const enrolled = await deps.db.query('select 1 from enrollments where course_id = $1 and user_id = $2', [session.course_id, auth.userId]);
       if (enrolled.rowCount !== 1) throw new ScanRejection('E-NOT-ENROLLED', undefined, { course: session.course_code });
 

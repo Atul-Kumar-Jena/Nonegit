@@ -78,7 +78,7 @@ export default function Verify() {
         Enter the code
       </Text>
       <Text variant="body" style={{ marginTop: 6 }}>
-        We sent a 6-digit code to <Text color={colors.text}>{pendingOtp.destination}</Text>. It expires in 5 minutes.
+        If <Text color={colors.text}>{pendingOtp.destination}</Text> is registered with your institution, a 6-digit code is on its way. It expires in 5 minutes. No code? Check the address or ask your admin to add you.
       </Text>
       <View style={{ marginTop: 28 }}>
         <OtpInput value={code} onChange={setCode} invalid={!!error} disabled={busy} />

@@ -3,6 +3,8 @@ import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Sw
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { LogOut, RefreshCw, Server, ShieldCheck, Smartphone, Trash2 } from 'lucide-react-native';
 import { Screen } from '@kit/components/Screen';
+import { SyncBanner } from '@kit/components/SyncBanner';
+import { useOutbox } from '@kit/lib/outbox';
 import { Avatar, Badge, Button, Card, Divider, ErrorState, IconTile, InfoRow, Input, Loading, Notice, SectionLabel, Text } from '@kit/components/ui';
 import { biometricSupport, confirmWithBiometrics, type BiometricSupport } from '@kit/lib/biometrics';
 import { APP_VERSION } from '@kit/lib/env';
@@ -22,6 +24,10 @@ export default function Profile() {
   const [bio, setBio] = useState<BiometricSupport | null>(null);
   const [bioOn, setBioOn] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
+  const { items: unsent } = useOutbox();
+  const unsentWarning = unsent.length
+    ? `\n\n⚠ ${unsent.length} offline ${unsent.length === 1 ? 'scan has' : 'scans have'} not been uploaded yet and will be deleted. Connect to the internet first to keep ${unsent.length === 1 ? 'it' : 'them'}.`
+    : '';
 
   useEffect(() => {
     void biometricSupport().then(setBio);
@@ -133,6 +139,8 @@ export default function Profile() {
         />
       )}
 
+      <SyncBanner />
+
       <SectionLabel>Preferences</SectionLabel>
       <Card>
         <View style={styles.row}>
@@ -172,14 +180,14 @@ export default function Profile() {
           title="Sign out"
           kind="secondary"
           icon={<LogOut color={colors.text} size={16} />}
-          onPress={() => confirm('Sign out?', 'This phone stays bound to your account — you can sign back in any time with a new code.', 'Sign out', false, () => void signOut())}
+          onPress={() => confirm('Sign out?', `This phone stays bound to your account — you can sign back in any time with a new code.${unsentWarning}`, 'Sign out', unsent.length > 0, () => void signOut())}
         />
         <Pressable
           accessibilityRole="button"
           onPress={() =>
             confirm(
               'Erase this phone’s identity?',
-              'This permanently deletes the device key. To use Attendly on this phone again, your admin must approve a new binding. Only do this if you are giving the phone away.',
+              `This permanently deletes the device key. To use Attendly on this phone again, your admin must approve a new binding. Only do this if you are giving the phone away.${unsentWarning}`,
               'Erase',
               true,
               () => void resetPhone(),
