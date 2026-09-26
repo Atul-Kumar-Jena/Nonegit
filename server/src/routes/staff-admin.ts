@@ -345,6 +345,7 @@ export async function staffAdminRoutes(app: FastifyInstance, deps: Deps) {
     const { id } = IdParam.parse(req.params);
     const b = PersonUpdateBody.parse(req.body);
     if (id === auth.userId && b.status === 'suspended') throw new ApiError(400, 'BAD_REQUEST', 'You cannot suspend your own account.');
+    if (id === auth.userId && b.resetDevice) throw new ApiError(400, 'BAD_REQUEST', 'You cannot unbind your own phone. Ask another admin.');
     try {
       await withTx(deps.db, async (tx) => {
         const cur = await tx.query<{ role: string }>('select role from users where id = $1 and tenant_id = $2 for update', [id, auth.tenantId]);

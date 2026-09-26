@@ -1,8 +1,11 @@
+import { useEffect } from 'react';
 import { Stack, type ErrorBoundaryProps } from 'expo-router';
+import { useSession } from '@kit/state/session';
 import { OutboxRunner } from '@kit/components/OutboxRunner';
 import { CrashScreen, RootShell } from '@kit/components/RootShell';
 import { colors } from '@kit/theme';
 import { AppLock } from '@/components/AppLock';
+import { localSessions } from '@/local-sessions';
 import { instituteOutboxHandlers } from '@/outbox-handlers';
 
 const AUDIENCE = {
@@ -11,10 +14,20 @@ const AUDIENCE = {
   wrongRoleMessage: 'This app is for teachers and administrators. Students use the Attendly app.',
 };
 
+/** Offline class state belongs to the signed-in account: forget it on sign-out. */
+function Housekeeping() {
+  const { phase } = useSession();
+  useEffect(() => {
+    if (phase === 'signed-out' || phase === 'needs-server') void localSessions.wipe();
+  }, [phase]);
+  return null;
+}
+
 export default function RootLayout() {
   return (
     <RootShell audience={AUDIENCE}>
       <OutboxRunner handlers={instituteOutboxHandlers} />
+      <Housekeeping />
       <AppLock>
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg }, animation: 'fade' }}>
           <Stack.Screen name="index" />
