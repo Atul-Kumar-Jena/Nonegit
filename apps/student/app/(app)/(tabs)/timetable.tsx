@@ -137,8 +137,13 @@ export default function Timetable() {
             <View key={g.key} style={{ gap: 8 }}>
               <Text variant="label">{g.label}</Text>
               {g.items.map((u) => (
-                <Pressable key={u.sessionId} onPress={() => router.push({ pathname: '/subject/[id]', params: { id: u.courseId } })} accessibilityRole="button">
-                  <Card style={[styles.row, u.status === 'cancelled' && { opacity: 0.55 }]}>
+                <Card key={u.sessionId} style={[styles.row, u.status === 'cancelled' && { opacity: 0.55 }]}>
+                  <Pressable
+                    onPress={() => router.push({ pathname: '/subject/[id]', params: { id: u.courseId } })}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${u.courseCode} ${zoned(u.scheduledStart, q.data!.timezone).hm}: open subject`}
+                    style={styles.rowMain}
+                  >
                     <View style={styles.time}>
                       <Text style={styles.timeText}>{zoned(u.scheduledStart, q.data!.timezone).hm}</Text>
                     </View>
@@ -155,19 +160,19 @@ export default function Timetable() {
                       </View>
                       <ChangeNote change={u.change} tz={q.data!.timezone} />
                     </View>
-                    <View style={{ alignItems: 'flex-end', gap: 6 }}>
-                      <StatusBadge u={u} />
-                      {u.status === 'scheduled' && !u.marked ? (
-                        <Pressable onPress={() => setAsk(u)} accessibilityRole="button" accessibilityLabel={`Ask the teacher about ${u.courseCode}`} hitSlop={8} style={styles.ask}>
-                          <MessageSquareText color={colors.cyan} size={12} />
-                          <Text variant="small" color={colors.cyan}>
-                            Ask
-                          </Text>
-                        </Pressable>
-                      ) : null}
-                    </View>
-                  </Card>
-                </Pressable>
+                  </Pressable>
+                  <View style={{ alignItems: 'flex-end', gap: 6 }}>
+                    <StatusBadge u={u} />
+                    {u.status === 'scheduled' && !u.marked ? (
+                      <Pressable onPress={() => setAsk(u)} accessibilityRole="button" accessibilityLabel={`Ask the teacher about ${u.courseCode}`} hitSlop={8} style={styles.ask}>
+                        <MessageSquareText color={colors.cyan} size={12} />
+                        <Text variant="small" color={colors.cyan}>
+                          Ask
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                </Card>
               ))}
             </View>
           ))}
@@ -198,6 +203,7 @@ function StatusBadge({ u }: { u: UpcomingSession }) {
 }
 
 const styles = StyleSheet.create({
+  rowMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
   requests: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.border },
   ask: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, paddingHorizontal: 8, borderRadius: 999, borderWidth: 1, borderColor: colors.cyanLine },
   days: { paddingHorizontal: 20, gap: 8 },

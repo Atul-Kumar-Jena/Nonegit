@@ -339,17 +339,21 @@ describe('institution', () => {
   });
 
   it('bootstrap creates the first institution and admin exactly once', async () => {
-    const config = { ...ctx.deps.config, bootstrap: { institutionName: 'St. Xavier’s College', adminEmail: 'principal@xaviers.edu', adminName: 'Principal', demoStudentEmail: 'demo@xaviers.edu', demoTeacherEmail: 'teacher.demo@xaviers.edu', timezone: 'Asia/Kolkata' } };
+    const config = { ...ctx.deps.config, bootstrap: { institutionName: 'St. Xavier’s College', adminEmail: 'principal@xaviers.edu', adminName: 'Principal', demoStudentEmail: 'demo@xaviers.edu', demoTeacherEmail: 'teacher.demo@xaviers.edu', developerEmail: 'owner@xaviers.edu', timezone: 'Asia/Kolkata' } };
     const quiet = () => {};
     await bootstrapInstitution(ctx.db, config, quiet);
     await bootstrapInstitution(ctx.db, config, quiet);
     const { rows } = await ctx.db.query<{ slug: string; n: number }>(
       `select t.slug, (select count(*) from users u where u.tenant_id = t.id)::int as n from tenants t where t.name = 'St. Xavier’s College'`,
     );
-    expect(rows).toEqual([{ slug: 'st-xavier-s-college', n: 3 }]);
+    expect(rows).toEqual([{ slug: 'st-xavier-s-college', n: 4 }]);
     const p = new TestDevice(ctx);
     await p.signIn('principal@xaviers.edu');
     expect(ok(await p.call('GET', '/v1/staff/overview')).role).toBe('admin');
+    // The owner's developer account (a real one: full console, not a sandbox).
+    const owner = new TestDevice(ctx);
+    await owner.signIn('owner@xaviers.edu');
+    expect(ok(await owner.call('GET', '/v1/root/console')).sandbox).toBe(false);
   });
 
   it('every staff action is in the tamper-evident audit log', async () => {

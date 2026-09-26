@@ -43,6 +43,14 @@ export async function bootstrapInstitution(db: Db, config: Config, log: (m: stri
         log(`created demo teacher ${b.demoTeacherEmail}`);
       }
     }
+    if (b.developerEmail) {
+      const d = await tx.query('select 1 from users where email = $1', [b.developerEmail]);
+      if (!d.rowCount) {
+        await tx.query(`insert into users(tenant_id, role, full_name, email) values ($1, 'developer', 'Platform owner', $2)`, [tenantId, b.developerEmail]);
+        await appendAudit(tx, { tenantId, actorType: 'system', action: 'institution.bootstrap_developer', subject: `email:${b.developerEmail}` });
+        log(`created developer account ${b.developerEmail}`);
+      }
+    }
     if (b.demoStudentEmail) {
       const s = await tx.query('select 1 from users where email = $1', [b.demoStudentEmail]);
       if (!s.rowCount) {

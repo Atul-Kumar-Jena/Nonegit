@@ -9,7 +9,7 @@ import { Avatar, Badge, Card, ErrorState, Loading, Notice, SectionLabel, Text } 
 import { dayLabel, initials, zoned } from '@kit/lib/format';
 import { useApi } from '@kit/state/session';
 import { colors, fonts } from '@kit/theme';
-import { Chips, Empty, Header, addDays } from '@/components/forms';
+import { Empty, Header, addDays } from '@/components/forms';
 import { CoverSheet } from '@/components/Requests';
 import { useDrag } from '@/planner/Board';
 import { useAvailability, useChangeRequests, useIsAdmin, useMe, useOverview, useSessionsOn } from '@/queries';
@@ -219,17 +219,30 @@ export default function Cover() {
     <Screen scroll={false}>
       <View ref={rootRef} style={{ flex: 1 }} collapsable={false}>
         <Header title="Cover a class" subtitle="Admin · any class, any teacher" />
-        <Chips
-          value={offset}
-          onChange={(v) => {
-            setOffset(v);
-            setPicked(null);
-          }}
-          options={[0, 1, 2, 3, 4, 5, 6].map((i) => ({ value: i, label: i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : dayLabel(`${addDays(today, i)}T12:00:00Z`, 'UTC') }))}
-        />
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={{ gap: 8, paddingRight: 16 }}>
+          {[0, 1, 2, 3, 4, 5, 6].map((i) => {
+            const on = offset === i;
+            return (
+              <Pressable
+                key={i}
+                onPress={() => {
+                  setOffset(i);
+                  setPicked(null);
+                }}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: on }}
+                style={[styles.day, on && styles.dayOn]}
+              >
+                <Text variant="small" color={on ? colors.text : colors.textMuted}>
+                  {i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : dayLabel(`${addDays(today, i)}T12:00:00Z`, 'UTC')}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
 
         <SectionLabel right={<Text variant="monoSmall">{offset === 0 ? `now ${nowHm}` : dayLabel(`${date}T12:00:00Z`, 'UTC')}</Text>}>Teachers</SectionLabel>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 16 }} scrollEnabled={!drag}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={{ gap: 8, paddingRight: 16, alignItems: 'flex-start' }} scrollEnabled={!drag}>
           {teachers.map(({ t, free, status }) => (
             <TeacherChip
               key={t.id}
@@ -424,6 +437,8 @@ function TeacherChip({
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  day: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bgRaised },
+  dayOn: { borderColor: colors.cyan, backgroundColor: colors.cyanSoft },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 16, borderWidth: 1.5, backgroundColor: colors.card },
   inbox: { padding: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.border, marginBottom: 10 },
   classCard: { flexDirection: 'row', gap: 12, alignItems: 'center', borderWidth: 1, borderColor: colors.border },

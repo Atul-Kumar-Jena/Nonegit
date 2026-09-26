@@ -9,6 +9,12 @@
 #   BOOTSTRAP_ADMIN_NAME         e.g. Dr. Anita Rao
 #   BOOTSTRAP_DEMO_TEACHER_EMAIL optional demo teacher account (leave empty for none)
 #   BOOTSTRAP_DEMO_STUDENT_EMAIL optional demo student account (leave empty for none)
+#   BOOTSTRAP_DEVELOPER_EMAIL    optional: YOUR developer account for the Attendly Developer app
+#
+# Demo mode: while OTP_DELIVERY=console (no email provider yet) the server also seeds the
+# "Demo Institute of Technology" and its @demo.attendly.app accounts sign in with one tap, no
+# code. Real accounts always need a code. Adding SMTP (OTP_DELIVERY=smtp) ends demo mode, or set
+# DEMO_INSTANT_LOGIN=false / use the "demo sign-in off" switch in the Developer app.
 #
 # The institution starts EMPTY apart from those accounts: the admin sets up rooms,
 # teachers, courses, students and the timetable from the Institute app.
@@ -51,6 +57,8 @@ services:
       - key: BOOTSTRAP_DEMO_TEACHER_EMAIL
         sync: false
       - key: BOOTSTRAP_DEMO_STUDENT_EMAIL
+        sync: false
+      - key: BOOTSTRAP_DEVELOPER_EMAIL
         sync: false
       - key: OTP_DELIVERY
         value: console

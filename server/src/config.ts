@@ -49,6 +49,8 @@ const EnvSchema = z
     BOOTSTRAP_ADMIN_NAME: z.string().trim().min(1).max(120).optional(),
     BOOTSTRAP_DEMO_STUDENT_EMAIL: z.string().trim().toLowerCase().pipe(z.email()).optional(),
     BOOTSTRAP_DEMO_TEACHER_EMAIL: z.string().trim().toLowerCase().pipe(z.email()).optional(),
+    /** The platform owner's developer account (Attendly Developer app); signs in with a normal code. */
+    BOOTSTRAP_DEVELOPER_EMAIL: z.string().trim().toLowerCase().pipe(z.email()).optional(),
     BOOTSTRAP_TIMEZONE: z.string().trim().default('Asia/Kolkata'),
     SERVER_SIGNING_KEY: b64Key(32),
     TOKEN_PEPPER: b64Key(32),
@@ -97,7 +99,15 @@ export interface Config {
   databaseUrl: string;
   databasePoolMax: number;
   databaseSsl: false | { rejectUnauthorized: boolean; ca?: string };
-  bootstrap: { institutionName: string; adminEmail: string; adminName: string; demoStudentEmail: string | null; demoTeacherEmail: string | null; timezone: string } | null;
+  bootstrap: {
+    institutionName: string;
+    adminEmail: string;
+    adminName: string;
+    demoStudentEmail: string | null;
+    demoTeacherEmail: string | null;
+    developerEmail: string | null;
+    timezone: string;
+  } | null;
   serverSigningSeed: Uint8Array;
   tokenPepper: Uint8Array;
   otpDelivery: 'console' | 'smtp';
@@ -154,6 +164,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
             adminName: e.BOOTSTRAP_ADMIN_NAME ?? 'Administrator',
             demoStudentEmail: e.BOOTSTRAP_DEMO_STUDENT_EMAIL ?? null,
             demoTeacherEmail: e.BOOTSTRAP_DEMO_TEACHER_EMAIL ?? null,
+            developerEmail: e.BOOTSTRAP_DEVELOPER_EMAIL ?? null,
             timezone: e.BOOTSTRAP_TIMEZONE,
           }
         : null,
