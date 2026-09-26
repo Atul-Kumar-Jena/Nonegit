@@ -1,6 +1,6 @@
 import { Redirect, Stack } from 'expo-router';
-import { useSession } from '@/state/session';
-import { colors } from '@/theme';
+import { useSession } from '@kit/state/session';
+import { colors } from '@kit/theme';
 
 export default function AuthLayout() {
   const { phase } = useSession();

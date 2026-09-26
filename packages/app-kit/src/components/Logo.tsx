@@ -1,7 +1,7 @@
 import { View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ShieldCheck } from 'lucide-react-native';
-import { gradients } from '@/theme';
+import { gradients } from '../theme';
 
 export function LogoMark({ size = 44 }: { size?: number }) {
   return (

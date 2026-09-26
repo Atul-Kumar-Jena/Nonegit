@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useApi } from './session';
+import { useApi } from '@kit/state/session';
 
 export const qk = {
   dashboard: ['dashboard'] as const,

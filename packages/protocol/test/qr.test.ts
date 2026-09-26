@@ -11,6 +11,7 @@ import {
   uuidToBytes,
   verifyQrMac,
   QR_MAX_LENGTH,
+  seqLabel,
 } from '../src';
 
 describe('rotating QR tokens', () => {
@@ -55,13 +56,16 @@ describe('rotating QR tokens', () => {
     }
   });
 
-  it('computes seq and freshness window', () => {
-    const start = 1_000_000;
-    expect(currentQrSeq(start, start, 7)).toBe(0);
-    expect(currentQrSeq(start, start + 6_999, 7)).toBe(0);
-    expect(currentQrSeq(start, start + 7_000, 7)).toBe(1);
-    expect(currentQrSeq(start, start - 5_000, 7)).toBe(0);
-    expect(msUntilNextRotation(start, start + 1_000, 7)).toBe(6_000);
+  it('computes epoch-based seq and freshness window', () => {
+    expect(currentQrSeq(0, 7)).toBe(0);
+    expect(currentQrSeq(6_999, 7)).toBe(0);
+    expect(currentQrSeq(7_000, 7)).toBe(1);
+    expect(currentQrSeq(1_790_000_000_000, 7)).toBe(Math.floor(1_790_000_000_000 / 7000));
+    expect(currentQrSeq(-5, 7)).toBe(0);
+    expect(msUntilNextRotation(1_000, 7)).toBe(6_000);
+    expect(seqLabel(255_714_285)).toBe('#4285');
+    // Fits the token grammar (≤ 10 digits) even at the fastest rotation for centuries.
+    expect(String(currentQrSeq(Date.UTC(2200, 0, 1), 3)).length).toBeLessThanOrEqual(10);
     expect(isQrSeqFresh(10, 10)).toBe(true);
     expect(isQrSeqFresh(9, 10)).toBe(true);
     expect(isQrSeqFresh(11, 10)).toBe(true);

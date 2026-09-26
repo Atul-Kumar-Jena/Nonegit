@@ -16,6 +16,7 @@ import { migrate } from '../src/migrate';
 import { verifyAuditChain } from '../src/lib/audit';
 import { createSession } from '../src/lib/sessions';
 import { seedDemo } from '../src/seed';
+import { materializeTimetable } from '../src/lib/timetable';
 
 function db(config: Config): Db {
   return createPool(config.databaseUrl, 4, config.databaseSsl);
@@ -36,6 +37,8 @@ async function seed(config: Config, reset: boolean) {
   try {
     await migrate(pool);
     await seedDemo(pool, config, { reset });
+    const n = await materializeTimetable(pool);
+    console.log(`Generated ${n} upcoming classes from the timetable.`);
   } finally {
     await pool.end();
   }

@@ -1,7 +1,6 @@
 /** Regression tests for issues found in code review. */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { encodeQrToken } from '@attendly/protocol';
-import { at, createTestApp, seedBasic, startLiveSession, TestDevice, type Seeded, type TestCtx } from './harness';
+import { at, createTestApp, seedBasic, startLiveSession, TestDevice, type Seeded, type TestCtx, liveToken } from './harness';
 import { verifyAuditChain } from '../src/lib/audit';
 
 let ctx: TestCtx;
@@ -57,7 +56,7 @@ describe('review regressions', () => {
     const phone = new TestDevice(ctx);
     await phone.signIn('patient@iit.ac.in');
     const s = await startLiveSession(ctx, { tenantId: seed.tenantId, courseId: seed.courseId });
-    const mark = () => phone.call('POST', '/v1/attendance/mark', { qr: encodeQrToken(s.secret, s.id, 0), location: { ...at(5), accuracyM: 8, mocked: false, capturedAt: ctx.clock.now } });
+    const mark = () => phone.call('POST', '/v1/attendance/mark', { qr: liveToken(ctx, s), location: { ...at(5), accuracyM: 8, mocked: false, capturedAt: ctx.clock.now } });
     await ctx.db.query(`update system_flags set enabled = true where key = 'scans_paused'`);
     try {
       for (let i = 0; i < 45; i++) expect((await mark()).json().error.rejection.code).toBe('E-PAUSED');

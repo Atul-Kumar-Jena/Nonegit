@@ -4,7 +4,7 @@
  * Format: `ATD1.<sessionId:22 b64url>.<seq:decimal>.<mac:22 b64url>`
  *
  *   mac = HMAC-SHA256(sessionSecret, "ATD1|<sessionId>|<seq>")[0..16]
- *   seq = floor((now - startedAt) / rotationSeconds)
+ *   seq = floor(unixTimeMs / (rotationSeconds · 1000))
  *
  * This is a TOTP-style construction (RFC 6238 idea, 128-bit truncated MAC).
  * Only the server and the faculty device that runs the session know the
@@ -85,17 +85,25 @@ export function verifyQrMac(secret: Uint8Array, parsed: ParsedQrToken): boolean 
   }
 }
 
-/** Current rotation index for a session. */
-export function currentQrSeq(startedAtMs: number, nowMs: number, rotationSeconds: number): number {
+/**
+ * Rotation index at `nowMs`. Epoch-based (not relative to when the session
+ * started), so a teacher's phone can display valid codes with no internet:
+ * it only needs the session secret and a synced clock.
+ */
+export function currentQrSeq(nowMs: number, rotationSeconds: number): number {
   if (!(rotationSeconds > 0)) throw new Error('qr: invalid rotation');
-  return Math.max(0, Math.floor((nowMs - startedAtMs) / (rotationSeconds * 1000)));
+  return Math.max(0, Math.floor(nowMs / (rotationSeconds * 1000)));
 }
 
 /** Milliseconds until the next rotation (for countdown UIs). */
-export function msUntilNextRotation(startedAtMs: number, nowMs: number, rotationSeconds: number): number {
+export function msUntilNextRotation(nowMs: number, rotationSeconds: number): number {
   const period = rotationSeconds * 1000;
-  const elapsed = Math.max(0, nowMs - startedAtMs);
-  return period - (elapsed % period);
+  return period - (Math.max(0, nowMs) % period);
+}
+
+/** Short display label for a sequence number, e.g. "#0024". */
+export function seqLabel(seq: number): string {
+  return `#${String(seq % 10_000).padStart(4, '0')}`;
 }
 
 /**

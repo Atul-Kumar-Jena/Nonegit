@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
-import { colors, fonts, radius, toneColor } from '@/theme';
+import { colors, fonts, radius, toneColor } from '../theme';
 import { Text } from './ui';
 
 /** Six boxes over one hidden input — supports paste and SMS/email autofill. */

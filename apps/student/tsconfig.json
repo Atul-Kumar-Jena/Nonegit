@@ -5,9 +5,25 @@
     "noUncheckedIndexedAccess": true,
     "noFallthroughCasesInSwitch": true,
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": [
+        "./src/*"
+      ],
+      "@kit/*": [
+        "../../packages/app-kit/src/*"
+      ]
     }
   },
-  "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts"],
-  "exclude": ["node_modules", "dist-android", "test"]
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    ".expo/types/**/*.ts",
+    "expo-env.d.ts",
+    "../../packages/app-kit/src/**/*.ts",
+    "../../packages/app-kit/src/**/*.tsx"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist-android",
+    "test"
+  ]
 }

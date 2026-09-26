@@ -3,14 +3,19 @@ import { ConfigError, loadConfig } from './config';
 import { createPool } from './db';
 import { migrate } from './migrate';
 import { seedDemo } from './seed';
+import { bootstrapInstitution } from './bootstrap';
+import { materializeTimetable } from './lib/timetable';
 
 async function main() {
   const config = loadConfig();
   const db = createPool(config.databaseUrl, config.databasePoolMax, config.databaseSsl);
   await migrate(db, undefined, (m) => console.log(`[migrate] ${m}`));
+  // First-run institution + admin (production). Failure is reported but never blocks serving.
+  await bootstrapInstitution(db, config, (m) => console.log(`[bootstrap] ${m}`)).catch((err: Error) => console.error(`[bootstrap] failed: ${err.message}`));
   if (config.seedDemo) {
     // Best effort: demo data must never stop the API from serving.
     await seedDemo(db, config, { log: (m) => console.log(`[seed] ${m}`) }).catch((err: Error) => console.error(`[seed] skipped: ${err.message}`));
+    await materializeTimetable(db).catch((err: Error) => console.error(`[timetable] ${err.message}`));
   }
   const { app, deps } = await buildApp({ config, db });
 

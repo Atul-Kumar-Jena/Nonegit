@@ -9,11 +9,22 @@ export type Db = pg.Pool;
 export type DbClient = pg.PoolClient | pg.Pool;
 export type Queryable = Pick<pg.PoolClient, 'query'>;
 
-export function createPool(url: string, max: number, ssl: boolean): Db {
+export function createPool(url: string, max: number, ssl: false | { rejectUnauthorized: boolean; ca?: string }): Db {
+  // When TLS is configured explicitly, drop sslmode & co. from the URL: the driver would
+  // otherwise let them override (and weaken) the explicit certificate settings.
+  if (ssl) {
+    try {
+      const u = new URL(url);
+      for (const k of ['sslmode', 'ssl', 'sslrootcert', 'sslcert', 'sslkey', 'uselibpqcompat']) u.searchParams.delete(k);
+      url = u.toString();
+    } catch {
+      /* not a URL-style connection string; use as is */
+    }
+  }
   const pool = new pg.Pool({
     connectionString: url,
     max,
-    ssl: ssl ? { rejectUnauthorized: true } : undefined,
+    ssl: ssl || undefined,
     connectionTimeoutMillis: 10_000,
     idleTimeoutMillis: 30_000,
     statement_timeout: 15_000,

@@ -3,14 +3,14 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Clock3, MapPin, ScanLine, ShieldCheck, Smartphone, TrendingDown, TrendingUp } from 'lucide-react-native';
 import type { DashboardResponse, TodaySession } from '@attendly/protocol';
-import { Screen } from '@/components/Screen';
-import { Avatar, Badge, Card, ErrorState, Loading, ProgressBar, SectionLabel, Text } from '@/components/ui';
-import { dayLabel, drift, greeting, initials, pct, shortFingerprint, timeRange } from '@/lib/format';
-import { integrityReport } from '@/lib/device-info';
-import { locationStatus } from '@/lib/location';
+import { Screen } from '@kit/components/Screen';
+import { Avatar, Badge, Card, ErrorState, Loading, ProgressBar, SectionLabel, Text } from '@kit/components/ui';
+import { dayLabel, drift, greeting, initials, pct, shortFingerprint, timeRange } from '@kit/lib/format';
+import { integrityReport } from '@kit/lib/device-info';
+import { locationStatus } from '@kit/lib/location';
 import { useDashboard } from '@/state/queries';
-import { useApi } from '@/state/session';
-import { colors, fonts, toneColor } from '@/theme';
+import { useApi } from '@kit/state/session';
+import { colors, fonts, toneColor } from '@kit/theme';
 
 /** 04 · Home dashboard — today's classes and term attendance. */
 export default function Home() {

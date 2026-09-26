@@ -8,8 +8,11 @@ import {
   type DashboardResponse,
   type DeviceRequestResponse,
   type ProfileResponse,
+  type SubjectDetailResponse,
   type SubjectsResponse,
+  type TimetableResponse,
 } from '@attendly/protocol';
+import { z } from 'zod';
 import type { Deps } from '../deps';
 import { isUniqueViolation, withTx } from '../db';
 import { appendAudit } from '../lib/audit';
@@ -41,15 +44,17 @@ export async function studentRoutes(app: FastifyInstance, deps: Deps) {
         title: string;
         room: string | null;
         status: 'scheduled' | 'live' | 'closed' | 'cancelled';
+        mode: 'qr' | 'manual';
         scheduled_start: Date;
         scheduled_end: Date;
         marked: boolean;
       }>(
-        `select s.id, c.code, c.title, s.room, s.status, s.scheduled_start, s.scheduled_end,
-                exists(select 1 from attendance_records a where a.session_id = s.id and a.user_id = $1) as marked
+        `select s.id, c.code, c.title, coalesce(r.name, s.room) as room, s.status, s.mode, s.scheduled_start, s.scheduled_end,
+                exists(select 1 from attendance_records a where a.session_id = s.id and a.user_id = $1 and a.revoked_at is null) as marked
            from class_sessions s
            join courses c on c.id = s.course_id
            join enrollments e on e.course_id = c.id and e.user_id = $1
+           left join rooms r on r.id = s.room_id
           where (s.scheduled_start at time zone $2)::date = (now() at time zone $2)::date
              or s.status = 'live'
           order by (s.status = 'live') desc, s.scheduled_start`,
@@ -81,6 +86,7 @@ export async function studentRoutes(app: FastifyInstance, deps: Deps) {
         courseTitle: r.title,
         room: r.room,
         status: r.status,
+        mode: r.mode,
         scheduledStart: r.scheduled_start.toISOString(),
         scheduledEnd: r.scheduled_end.toISOString(),
         marked: r.marked,
@@ -123,7 +129,7 @@ export async function studentRoutes(app: FastifyInstance, deps: Deps) {
     const term = await loadTenantTerm(deps.db, auth.tenantId);
     const [{ user, device }, last, resets] = await Promise.all([
       userAndDevice(deps, auth),
-      deps.db.query<{ at: Date | null }>('select max(marked_at) as at from attendance_records where user_id = $1', [auth.userId]),
+      deps.db.query<{ at: Date | null }>('select max(marked_at) as at from attendance_records where user_id = $1 and revoked_at is null', [auth.userId]),
       deps.db.query<{ id: string; status: string; reason: string; created_at: Date }>(
         `select id, status, reason, created_at from device_requests
           where user_id = $1 and kind = 'reset' and created_at >= ($2::date::timestamp at time zone $3)
@@ -141,6 +147,152 @@ export async function studentRoutes(app: FastifyInstance, deps: Deps) {
         limit: term.device_reset_limit,
         pending: pending ? { id: pending.id, createdAt: pending.created_at.toISOString(), reason: pending.reason } : null,
       },
+    };
+  });
+
+  app.get('/v1/me/timetable', async (req): Promise<TimetableResponse> => {
+    const auth = await requireDevice(req, deps, STUDENT);
+    const term = await loadTenantTerm(deps.db, auth.tenantId);
+    const [slots, upcoming] = await Promise.all([
+      deps.db.query<{
+        weekday: number;
+        start_time: string;
+        end_time: string;
+        course_id: string;
+        code: string;
+        title: string;
+        instructor: string | null;
+        room: string | null;
+        mode: 'qr' | 'manual';
+      }>(
+        `select sl.weekday, to_char(sl.start_time, 'HH24:MI') as start_time, to_char(sl.end_time, 'HH24:MI') as end_time,
+                c.id as course_id, c.code, c.title, i.full_name as instructor, r.name as room, sl.mode
+           from timetable_slots sl
+           join courses c on c.id = sl.course_id and c.active
+           join enrollments e on e.course_id = c.id and e.user_id = $1
+           left join users i on i.id = c.instructor_id
+           left join rooms r on r.id = sl.room_id
+          where sl.active and (sl.valid_until is null or sl.valid_until >= (now() at time zone $2)::date)
+          order by sl.weekday, sl.start_time`,
+        [auth.userId, term.timezone],
+      ),
+      deps.db.query<{
+        id: string;
+        course_id: string;
+        code: string;
+        title: string;
+        room: string | null;
+        status: 'scheduled' | 'live' | 'closed' | 'cancelled';
+        mode: 'qr' | 'manual';
+        scheduled_start: Date;
+        scheduled_end: Date;
+        marked: boolean;
+      }>(
+        `select s.id, c.id as course_id, c.code, c.title, coalesce(r.name, s.room) as room, s.status, s.mode, s.scheduled_start, s.scheduled_end,
+                exists(select 1 from attendance_records a where a.session_id = s.id and a.user_id = $1 and a.revoked_at is null) as marked
+           from class_sessions s
+           join courses c on c.id = s.course_id
+           join enrollments e on e.course_id = c.id and e.user_id = $1
+           left join rooms r on r.id = s.room_id
+          where s.scheduled_end > now() - interval '1 hour' and s.scheduled_start < now() + interval '7 days'
+          order by s.scheduled_start limit 200`,
+        [auth.userId],
+      ),
+    ]);
+    return {
+      timezone: term.timezone,
+      slots: slots.rows.map((r) => ({
+        weekday: r.weekday,
+        start: r.start_time,
+        end: r.end_time,
+        courseId: r.course_id,
+        courseCode: r.code,
+        courseTitle: r.title,
+        instructor: r.instructor,
+        room: r.room,
+        mode: r.mode,
+      })),
+      upcoming: upcoming.rows.map((r) => ({
+        sessionId: r.id,
+        courseId: r.course_id,
+        courseCode: r.code,
+        courseTitle: r.title,
+        room: r.room,
+        status: r.status,
+        mode: r.mode,
+        scheduledStart: r.scheduled_start.toISOString(),
+        scheduledEnd: r.scheduled_end.toISOString(),
+        marked: r.marked,
+      })),
+    };
+  });
+
+  app.get('/v1/me/subjects/:courseId', async (req): Promise<SubjectDetailResponse> => {
+    const auth = await requireDevice(req, deps, STUDENT);
+    const { courseId } = z.object({ courseId: z.uuid() }).parse(req.params);
+    const term = await loadTenantTerm(deps.db, auth.tenantId);
+    const [s] = await courseStats(deps.db, auth.userId, term, courseId);
+    if (!s) throw new ApiError(404, 'NOT_FOUND', 'You are not enrolled in this subject.');
+    const min = term.min_attendance;
+    const [history, remaining] = await Promise.all([
+      deps.db.query<{
+        id: string;
+        scheduled_start: Date;
+        lecture_no: number | null;
+        room: string | null;
+        status: 'scheduled' | 'live' | 'closed' | 'cancelled';
+        rec_id: string | null;
+        source: 'scan' | 'manual' | 'import' | 'review' | null;
+        offline: boolean | null;
+        marked_at: Date | null;
+      }>(
+        `select s.id, s.scheduled_start, s.lecture_no, coalesce(r.name, s.room) as room, s.status,
+                a.id as rec_id, a.source, a.offline, a.marked_at
+           from class_sessions s
+           left join rooms r on r.id = s.room_id
+           left join attendance_records a on a.session_id = s.id and a.user_id = $2 and a.revoked_at is null
+          where s.course_id = $1 and s.scheduled_start >= ($3::date::timestamp at time zone $4)
+            and (s.status <> 'scheduled' or s.scheduled_start < now() + interval '14 days')
+          order by s.scheduled_start desc limit 400`,
+        [courseId, auth.userId, term.term_start, term.timezone],
+      ),
+      deps.db.query<{ n: number }>(`select count(*) as n from class_sessions where course_id = $1 and status = 'scheduled' and scheduled_start > now()`, [courseId]),
+    ]);
+    return {
+      timezone: term.timezone,
+      minPercent: min,
+      subject: {
+        courseId: s.course_id,
+        code: s.code,
+        title: s.title,
+        kind: s.kind,
+        instructor: s.instructor,
+        attended: s.attended,
+        held: s.held,
+        percent: attendancePercent(s.attended, s.held),
+        standing: standing(s.attended, s.held, min),
+        needToReach: Math.min(sessionsNeededToReach(s.attended, s.held, min), UNREACHABLE),
+        safeToMiss: Math.min(sessionsSafeToMiss(s.attended, s.held, min), UNREACHABLE),
+      },
+      remainingThisTerm: remaining.rows[0]!.n,
+      history: history.rows.map((h) => ({
+        sessionId: h.id,
+        scheduledStart: h.scheduled_start.toISOString(),
+        lectureNo: h.lecture_no,
+        room: h.room,
+        status: h.rec_id
+          ? 'present'
+          : h.status === 'cancelled'
+            ? 'cancelled'
+            : h.status === 'scheduled'
+              ? 'upcoming'
+              : h.status === 'live'
+                ? 'live'
+                : 'absent',
+        source: h.source,
+        offline: !!h.offline,
+        markedAt: h.marked_at?.toISOString() ?? null,
+      })),
     };
   });
 

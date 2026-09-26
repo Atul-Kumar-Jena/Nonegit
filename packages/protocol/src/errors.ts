@@ -16,6 +16,7 @@ export const REJECTION_CODES = {
   'E-DEVICE': { title: 'Device mismatch', hint: 'Scans are only accepted from your bound device.', suspicious: true },
   'E-INTEGRITY': { title: 'Device integrity failed', hint: 'Rooted, jailbroken or tampered devices cannot mark attendance.', suspicious: true },
   'E-DUPE': { title: 'Already marked', hint: 'Your attendance for this session is already recorded.', suspicious: false },
+  'E-REVOKED': { title: 'Mark removed by instructor', hint: 'Your instructor removed your mark for this session. Speak to them if this is wrong.', suspicious: false },
   'E-PAUSED': { title: 'Scanning paused', hint: 'Attendance marking is temporarily paused by your institution.', suspicious: false },
 } as const;
 

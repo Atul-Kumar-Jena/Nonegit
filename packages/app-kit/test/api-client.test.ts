@@ -5,7 +5,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { encodeQrToken, fromB64url, generateKeyPair, type AuthTokens } from '@attendly/protocol';
 import { ApiClient, ApiRequestError, normalizeBaseUrl, verifyReceipt, type TokenStore } from '../src/lib/api-core';
-import { CENTER, createTestApp, seedBasic, startLiveSession, type Seeded, type TestCtx } from '../../../server/test/harness';
+import { CENTER, createTestApp, seedBasic, startLiveSession, type Seeded, type TestCtx, liveToken } from '../../../server/test/harness';
 
 let ctx: TestCtx;
 let seed: Seeded;
@@ -82,7 +82,7 @@ describe('student app ⇄ server', () => {
     expect((await p.client.profile()).device.status).toBe('active');
 
     const s = await startLiveSession(ctx, { tenantId: seed.tenantId, courseId: seed.courseId });
-    const res = await p.client.mark({ qr: encodeQrToken(s.secret, s.id, 0), location: { ...CENTER, accuracyM: 6, mocked: false, capturedAt: p.client.serverNow() } });
+    const res = await p.client.mark({ qr: liveToken(ctx, s), location: { ...CENTER, accuracyM: 6, mocked: false, capturedAt: p.client.serverNow() } });
     expect(res.status).toBe('present');
     const pin = { kid: meta.serverKey.kid, publicKey: fromB64url(meta.serverKey.publicKey) };
     expect(verifyReceipt(res, pin)).toBe(true);
@@ -96,7 +96,7 @@ describe('student app ⇄ server', () => {
     await signIn(p, 'priya@iit.ac.in');
     const s = await startLiveSession(ctx, { tenantId: seed.tenantId, courseId: seed.courseId });
     const err = await p.client
-      .mark({ qr: encodeQrToken(s.secret, s.id, 0), location: { lat: CENTER.lat + 0.01, lng: CENTER.lng, accuracyM: 6, mocked: false, capturedAt: p.client.serverNow() } })
+      .mark({ qr: liveToken(ctx, s), location: { lat: CENTER.lat + 0.01, lng: CENTER.lng, accuracyM: 6, mocked: false, capturedAt: p.client.serverNow() } })
       .catch((e) => e);
     expect(err).toBeInstanceOf(ApiRequestError);
     expect(err.code).toBe('REJECTED');

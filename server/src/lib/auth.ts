@@ -15,6 +15,16 @@ import { randomToken } from './secrets';
 
 export const ACCESS_TTL_MS = 15 * 60_000;
 export const REFRESH_TTL_MS = 30 * 24 * 60 * 60_000;
+/**
+ * Absolute lifetime of one sign-in, however often it is refreshed. Staff hold
+ * powers over other people's records, so they re-verify with a code every day.
+ */
+export const STUDENT_LOGIN_MAX_MS = 180 * 24 * 60 * 60_000;
+export const STAFF_LOGIN_MAX_MS = 16 * 60 * 60_000;
+
+export function loginLifetimeMs(role: Role): number {
+  return role === 'student' ? STUDENT_LOGIN_MAX_MS : STAFF_LOGIN_MAX_MS;
+}
 /** Allowed difference between the device's (server-corrected) clock and ours. */
 export const MAX_CLOCK_SKEW_MS = 90_000;
 /** Nonces are remembered for longer than the skew window, so a replay is always caught. */
@@ -53,16 +63,22 @@ export interface AuthContext {
 export async function issueTokens(
   tx: Queryable,
   deps: Deps,
-  p: { userId: string; deviceId: string; familyId?: string; parentId?: string },
+  p: { userId: string; deviceId: string; familyId?: string; parentId?: string; familyExpiresAt?: Date },
 ): Promise<AuthTokens> {
   const now = deps.clock();
+  let familyExpiresAt = p.familyExpiresAt;
+  if (!familyExpiresAt) {
+    const { rows } = await tx.query<{ role: Role }>('select role from users where id = $1', [p.userId]);
+    familyExpiresAt = new Date(now + loginLifetimeMs(rows[0]?.role ?? 'student'));
+  }
+  const cap = familyExpiresAt.getTime();
   const accessToken = randomToken(32);
   const refreshToken = randomToken(32);
-  const accessExpiresAt = new Date(now + ACCESS_TTL_MS);
-  const refreshExpiresAt = new Date(now + REFRESH_TTL_MS);
+  const accessExpiresAt = new Date(Math.min(now + ACCESS_TTL_MS, cap));
+  const refreshExpiresAt = new Date(Math.min(now + REFRESH_TTL_MS, cap));
   await tx.query(
-    `insert into auth_sessions(family_id, parent_id, user_id, device_id, access_hash, access_expires_at, refresh_hash, refresh_expires_at)
-     values (coalesce($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6, $7, $8)`,
+    `insert into auth_sessions(family_id, parent_id, user_id, device_id, access_hash, access_expires_at, refresh_hash, refresh_expires_at, family_expires_at)
+     values (coalesce($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6, $7, $8, $9)`,
     [
       p.familyId ?? null,
       p.parentId ?? null,
@@ -72,6 +88,7 @@ export async function issueTokens(
       accessExpiresAt,
       deps.hash('refresh', refreshToken),
       refreshExpiresAt,
+      familyExpiresAt,
     ],
   );
   return {
@@ -169,8 +186,10 @@ export async function requireDevice(req: FastifyRequest, deps: Deps, roles?: rea
 
   const { rows } = await deps.db.query<SessionRow>(`${SESSION_SELECT} where s.access_hash = $1`, [deps.hash('access', token)]);
   const s = rows[0];
-  if (!s || s.revoked_at) throw unauthenticated();
+  if (!s) throw unauthenticated();
+  // Report an unbound phone as such (its sessions are revoked with it) so the app can say why.
   if (s.device_status !== 'active') throw new ApiError(401, 'DEVICE_REVOKED');
+  if (s.revoked_at) throw unauthenticated();
   if (s.user_status !== 'active' || s.tenant_status !== 'active') throw new ApiError(403, 'ACCOUNT_SUSPENDED');
 
   const now = deps.clock();
@@ -200,6 +219,7 @@ export async function requireDevice(req: FastifyRequest, deps: Deps, roles?: rea
 
 interface RefreshRow extends SessionRow {
   refresh_expires_at: Date;
+  family_expires_at: Date;
 }
 
 /**
@@ -211,17 +231,18 @@ export async function rotateRefreshToken(req: FastifyRequest, deps: Deps, refres
   try {
     await client.query('begin');
     const { rows } = await client.query<RefreshRow>(
-      `${SESSION_SELECT.replace('s.last_used_at', 's.last_used_at, s.refresh_expires_at')} where s.refresh_hash = $1 for update of s`,
+      `${SESSION_SELECT.replace('s.last_used_at', 's.last_used_at, s.refresh_expires_at, s.family_expires_at')} where s.refresh_hash = $1 for update of s`,
       [deps.hash('refresh', refreshToken)],
     );
     const s = rows[0];
-    if (!s || s.revoked_at) throw unauthenticated();
+    if (!s) throw unauthenticated();
     if (s.device_status !== 'active') throw new ApiError(401, 'DEVICE_REVOKED');
+    if (s.revoked_at) throw unauthenticated();
     if (s.user_status !== 'active' || s.tenant_status !== 'active') throw new ApiError(403, 'ACCOUNT_SUSPENDED');
 
     await verifyDeviceSignature(client, deps, req, { id: s.device_id, publicKey: s.public_key });
     const now = deps.clock();
-    if (s.refresh_expires_at.getTime() <= now) throw unauthenticated('Session expired. Please sign in again.');
+    if (s.refresh_expires_at.getTime() <= now || s.family_expires_at.getTime() <= now) throw unauthenticated('Session expired. Please sign in again.');
 
     if (s.rotated_at) {
       if (now - s.rotated_at.getTime() > REFRESH_RETRY_GRACE_MS) {
@@ -241,7 +262,13 @@ export async function rotateRefreshToken(req: FastifyRequest, deps: Deps, refres
     } else {
       await client.query('update auth_sessions set rotated_at = $2 where id = $1', [s.session_id, new Date(now)]);
     }
-    const tokens = await issueTokens(client, deps, { userId: s.user_id, deviceId: s.device_id, familyId: s.family_id, parentId: s.session_id });
+    const tokens = await issueTokens(client, deps, {
+      userId: s.user_id,
+      deviceId: s.device_id,
+      familyId: s.family_id,
+      parentId: s.session_id,
+      familyExpiresAt: s.family_expires_at,
+    });
     await client.query('commit');
     return tokens;
   } catch (err) {

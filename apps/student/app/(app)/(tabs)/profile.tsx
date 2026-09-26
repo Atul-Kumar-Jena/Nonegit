@@ -2,16 +2,16 @@ import { useEffect, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Switch, View } from 'react-native';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { LogOut, RefreshCw, Server, ShieldCheck, Smartphone, Trash2 } from 'lucide-react-native';
-import { Screen } from '@/components/Screen';
-import { Avatar, Badge, Button, Card, Divider, ErrorState, IconTile, InfoRow, Input, Loading, Notice, SectionLabel, Text } from '@/components/ui';
-import { biometricSupport, confirmWithBiometrics, type BiometricSupport } from '@/lib/biometrics';
-import { APP_VERSION } from '@/lib/env';
-import { dateLong, initials, timeAgo } from '@/lib/format';
-import { loadPrefs, savePrefs } from '@/lib/prefs';
-import { displayHost } from '@/lib/server-config';
+import { Screen } from '@kit/components/Screen';
+import { Avatar, Badge, Button, Card, Divider, ErrorState, IconTile, InfoRow, Input, Loading, Notice, SectionLabel, Text } from '@kit/components/ui';
+import { biometricSupport, confirmWithBiometrics, type BiometricSupport } from '@kit/lib/biometrics';
+import { APP_VERSION } from '@kit/lib/env';
+import { dateLong, initials, timeAgo } from '@kit/lib/format';
+import { loadPrefs, savePrefs } from '@kit/lib/prefs';
+import { displayHost } from '@kit/lib/server-config';
 import { qk, useProfile } from '@/state/queries';
-import { useApi, useSession } from '@/state/session';
-import { colors } from '@/theme';
+import { useApi, useSession } from '@kit/state/session';
+import { colors } from '@kit/theme';
 
 /** 09 · Profile · device — bound HWID, reset, preferences. */
 export default function Profile() {

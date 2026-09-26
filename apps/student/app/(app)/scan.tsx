@@ -7,16 +7,16 @@ import { useQueryClient } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, Camera, MapPin } from 'lucide-react-native';
 import { parseQrToken } from '@attendly/protocol';
-import { Button, Card, IconButton, IconTile, Text } from '@/components/ui';
-import { ApiRequestError, verifyReceipt } from '@/lib/api-core';
-import { confirmWithBiometrics } from '@/lib/biometrics';
-import { LocationError, getFreshFix, type LocationFix } from '@/lib/location';
-import { loadPrefs } from '@/lib/prefs';
-import { pinnedKey } from '@/lib/server-config';
+import { Button, Card, IconButton, IconTile, Text } from '@kit/components/ui';
+import { ApiRequestError, verifyReceipt } from '@kit/lib/api-core';
+import { confirmWithBiometrics } from '@kit/lib/biometrics';
+import { LocationError, getFreshFix, type LocationFix } from '@kit/lib/location';
+import { loadPrefs } from '@kit/lib/prefs';
+import { pinnedKey } from '@kit/lib/server-config';
 import { qk } from '@/state/queries';
 import { setScanOutcome } from '@/state/scan-result';
-import { useApi, useSession } from '@/state/session';
-import { colors, radius } from '@/theme';
+import { useApi, useSession } from '@kit/state/session';
+import { colors, radius } from '@kit/theme';
 
 /** A warm fix younger than this is reused, so a scan doesn't wait on GPS. */
 const WARM_FIX_MAX_AGE_MS = 10_000;

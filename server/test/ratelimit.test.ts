@@ -1,6 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { encodeQrToken } from '@attendly/protocol';
-import { at, createTestApp, seedBasic, startLiveSession, TestDevice, type Seeded, type TestCtx } from './harness';
+import { at, createTestApp, seedBasic, startLiveSession, TestDevice, type Seeded, type TestCtx, liveToken } from './harness';
 
 let ctx: TestCtx;
 let seed: Seeded;
@@ -18,9 +17,9 @@ describe('rate limiting', () => {
     await a.signIn('aarav@iit.ac.in');
     await b.signIn('priya@iit.ac.in');
     // A scheduled (not live) session gives a cheap, non-suspicious rejection.
-    const s = await startLiveSession(ctx, { tenantId: seed.tenantId, courseId: seed.courseId, status: 'scheduled' });
+    const s = await startLiveSession(ctx, { tenantId: seed.tenantId, courseId: seed.courseId, status: 'scheduled', startedAt: ctx.clock.now + 2 * 3_600_000 });
     const mark = (d: TestDevice) =>
-      d.call('POST', '/v1/attendance/mark', { qr: encodeQrToken(s.secret, s.id, 0), location: { ...at(5), accuracyM: 8, mocked: false, capturedAt: ctx.clock.now } });
+      d.call('POST', '/v1/attendance/mark', { qr: liveToken(ctx, s), location: { ...at(5), accuracyM: 8, mocked: false, capturedAt: ctx.clock.now } });
     for (let i = 0; i < 30; i++) expect((await mark(a)).statusCode).toBe(422);
     const limited = await mark(a);
     expect(limited.statusCode).toBe(429);

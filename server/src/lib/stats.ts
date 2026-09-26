@@ -52,7 +52,7 @@ export async function courseStats(db: Queryable, userId: string, term: TenantTer
        cross join bounds b
        left join users i on i.id = c.instructor_id
        left join class_sessions s on s.course_id = c.id and s.status in ('live', 'closed') and s.started_at >= b.term_start
-       left join attendance_records a on a.session_id = s.id and a.user_id = e.user_id
+       left join attendance_records a on a.session_id = s.id and a.user_id = e.user_id and a.revoked_at is null
       where e.user_id = $1 and ($4::uuid is null or c.id = $4)
       group by c.id, c.code, c.title, c.kind, i.full_name
       order by c.code`,

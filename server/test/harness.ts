@@ -4,6 +4,8 @@ import pg from 'pg';
 import type { FastifyInstance } from 'fastify';
 import {
   bindProofString,
+  currentQrSeq,
+  encodeQrToken,
   generateKeyPair,
   loginProofString,
   randomToken,
@@ -252,6 +254,11 @@ export class TestDevice {
     });
     return res;
   }
+}
+
+/** The QR token a teacher's screen shows right now for session `s` (offset = rotations from now). */
+export function liveToken(ctx: TestCtx, s: { id: string; secret: Uint8Array }, rotationS = 7, offset = 0): string {
+  return encodeQrToken(s.secret, s.id, currentQrSeq(ctx.clock.now, rotationS) + offset);
 }
 
 export function at(metersNorth: number) {

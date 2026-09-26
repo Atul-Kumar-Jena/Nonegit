@@ -14,7 +14,7 @@ import type { Deps } from '../deps';
 import { withTx } from '../db';
 import { appendAudit } from '../lib/audit';
 import { ApiError } from '../lib/errors';
-import { createSession } from '../lib/sessions';
+import { assignLectureNo, createSession } from '../lib/sessions';
 
 const StartBody = z.object({
   courseId: z.uuid(),
@@ -125,6 +125,7 @@ export async function devRoutes(app: FastifyInstance, deps: Deps) {
         [id, b.lat, b.lng, b.radiusM, b.rotationS, now, new Date(now.getTime() + b.durationMin * 60_000)],
       );
       if (!r.rows[0]) throw new ApiError(404, 'NOT_FOUND', 'Session is not scheduled');
+      await assignLectureNo(tx, id);
       await appendAudit(tx, { tenantId: r.rows[0].tenant_id, actorType: 'system', action: 'session.start', subject: `session:${id}` });
       return { id, shortCode: r.rows[0].short_code };
     });
@@ -168,14 +169,14 @@ export async function devRoutes(app: FastifyInstance, deps: Deps) {
     const s = rows[0];
     if (!s || s.status !== 'live') throw new ApiError(404, 'NOT_FOUND', 'Session is not live');
     const now = deps.clock();
-    const seq = currentQrSeq(s.started_at.getTime(), now, s.rotation_s);
+    const seq = currentQrSeq(now, s.rotation_s);
     const token = encodeQrToken(s.qr_secret, id, seq);
     const svg = await QRCode.toString(token, { type: 'svg', errorCorrectionLevel: 'M', margin: 1, color: { dark: '#050814', light: '#ffffff' } });
     return {
       seq,
       token,
       svg,
-      msUntilNext: msUntilNextRotation(s.started_at.getTime(), now, s.rotation_s),
+      msUntilNext: msUntilNextRotation(now, s.rotation_s),
       rotationS: s.rotation_s,
       shortCode: s.short_code,
       room: s.room,

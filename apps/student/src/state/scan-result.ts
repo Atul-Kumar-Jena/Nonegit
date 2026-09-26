@@ -1,5 +1,5 @@
 import type { MarkResponse } from '@attendly/protocol';
-import type { Rejection } from '@/lib/api-core';
+import type { Rejection } from '@kit/lib/api-core';
 
 /**
  * Hand-off from the scanner to the result screen. Kept in memory (not route

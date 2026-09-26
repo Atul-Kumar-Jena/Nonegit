@@ -14,11 +14,17 @@ import { JetBrainsMono_400Regular } from '@expo-google-fonts/jetbrains-mono/400R
 import { JetBrainsMono_500Medium } from '@expo-google-fonts/jetbrains-mono/500Medium';
 import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { ApiRequestError } from '@/lib/api-core';
-import { SessionProvider } from '@/state/session';
-import { Button, Text } from '@/components/ui';
-import { Backdrop } from '@/components/Screen';
-import { colors } from '@/theme';
+import { ApiRequestError } from '@kit/lib/api-core';
+import { SessionProvider } from '@kit/state/session';
+import { Button, Text } from '@kit/components/ui';
+import { Backdrop } from '@kit/components/Screen';
+import { colors } from '@kit/theme';
+
+const AUDIENCE = {
+  appName: 'Attendly',
+  allowedRoles: ['student'] as const,
+  wrongRoleMessage: 'This is the student app. Staff accounts sign in with the Attendly Institute app.',
+};
 
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 void SystemUI.setBackgroundColorAsync(colors.bg).catch(() => undefined);
@@ -63,7 +69,7 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider style={{ backgroundColor: colors.bg }}>
       <QueryClientProvider client={queryClient}>
-        <SessionProvider>
+        <SessionProvider audience={AUDIENCE}>
           <StatusBar style="light" />
           <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg }, animation: 'fade' }}>
             <Stack.Screen name="index" />

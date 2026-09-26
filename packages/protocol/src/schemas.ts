@@ -26,7 +26,7 @@ export type Channel = z.infer<typeof Channel>;
 export const Platform = z.enum(['ios', 'android', 'web']);
 export type Platform = z.infer<typeof Platform>;
 
-export const Role = z.enum(['student', 'admin', 'developer']);
+export const Role = z.enum(['student', 'teacher', 'admin', 'developer']);
 export type Role = z.infer<typeof Role>;
 
 // ───────────────────────────── meta ─────────────────────────────
@@ -152,6 +152,7 @@ export const TodaySession = z.object({
   courseTitle: z.string(),
   room: z.string().nullable(),
   status: SessionStatus,
+  mode: z.enum(['qr', 'manual']).default('qr'),
   scheduledStart: IsoDate,
   scheduledEnd: IsoDate,
   marked: z.boolean(),
@@ -217,6 +218,11 @@ export type ResetRequestBody = z.infer<typeof ResetRequestBody>;
 
 export const MarkBody = z.object({
   qr: z.string().min(1).max(QR_MAX_LENGTH),
+  /**
+   * When the code was scanned (server-corrected ms). Only differs from "now" for
+   * scans captured offline and uploaded later.
+   */
+  scannedAt: z.number().int().positive().optional(),
   location: z.object({
     lat: z.number().gte(-90).lte(90),
     lng: z.number().gte(-180).lte(180),
@@ -233,6 +239,7 @@ export const MarkResponse = z.object({
   record: z.object({
     id: z.uuid(),
     sessionId: z.uuid(),
+    offline: z.boolean(),
     sessionCode: z.string(),
     lectureNo: z.number().int().nullable(),
     courseCode: z.string(),

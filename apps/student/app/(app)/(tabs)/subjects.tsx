@@ -2,11 +2,11 @@ import { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { AlertTriangle } from 'lucide-react-native';
 import type { SubjectStat } from '@attendly/protocol';
-import { Screen } from '@/components/Screen';
-import { Badge, Card, ErrorState, IconTile, Loading, ProgressBar, Segmented, Text } from '@/components/ui';
-import { pct } from '@/lib/format';
+import { Screen } from '@kit/components/Screen';
+import { Badge, Card, ErrorState, IconTile, Loading, ProgressBar, Segmented, Text } from '@kit/components/ui';
+import { pct } from '@kit/lib/format';
 import { useSubjects } from '@/state/queries';
-import { colors, fonts } from '@/theme';
+import { colors, fonts } from '@kit/theme';
 
 type Filter = 'all' | 'theory' | 'lab' | 'risk';
 const FILTERS = [

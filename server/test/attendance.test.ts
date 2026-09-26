@@ -4,13 +4,14 @@ import {
   DashboardResponse,
   SubjectsResponse,
   ProfileResponse,
+  currentQrSeq,
   encodeQrToken,
   fromB64url,
   randomBytes,
   receiptSigningString,
   verifyB64,
 } from '@attendly/protocol';
-import { at, createTestApp, seedBasic, startLiveSession, TestDevice, type Seeded, type TestCtx } from './harness';
+import { at, createTestApp, seedBasic, startLiveSession, TestDevice, type Seeded, type TestCtx, liveToken } from './harness';
 import { verifyAuditChain } from '../src/lib/audit';
 
 let ctx: TestCtx;
@@ -49,7 +50,7 @@ describe('marking attendance', () => {
   it('accepts a fresh token inside the geofence and returns a verifiable receipt', async () => {
     const s = await startLiveSession(ctx, { tenantId: seed.tenantId, courseId: seed.courseId });
     ctx.clock.now += 3_000;
-    const res = await mark(aarav, encodeQrToken(s.secret, s.id, 0));
+    const res = await mark(aarav, liveToken(ctx, s));
     expect(res.statusCode).toBe(200);
     const body = MarkResponse.parse(res.json());
     expect(body.alreadyMarked).toBe(false);
@@ -78,7 +79,7 @@ describe('marking attendance', () => {
 
     // A retry (e.g. the response was lost) is idempotent — same record, even after the token rotated.
     ctx.clock.now += 60_000;
-    const retry = await mark(aarav, encodeQrToken(s.secret, s.id, 0), loc(5));
+    const retry = await mark(aarav, liveToken(ctx, s), loc(5));
     expect(retry.statusCode).toBe(200);
     expect(retry.json().alreadyMarked).toBe(true);
     expect(retry.json().record.id).toBe(body.record.id);
@@ -86,39 +87,36 @@ describe('marking attendance', () => {
 
   it('accepts the previous and next rotation but not older/newer', async () => {
     const s = await startLiveSession(ctx, { tenantId: seed.tenantId, courseId: seed.courseId, rotationS: 5, startedAt: ctx.clock.now - 50_000 });
-    // current seq = 10
-    for (const [seq, ok] of [
-      [8, false],
-      [12, false],
-    ] as const) {
-      const r = await mark(aarav, encodeQrToken(s.secret, s.id, seq));
-      expect(rejection(r).code).toBe(ok ? '' : 'E-EXPIRED');
-    }
-    const r = await mark(aarav, encodeQrToken(s.secret, s.id, 9));
-    expect(r.statusCode).toBe(200);
+    for (const offset of [-2, 2]) expect(rejection(await mark(aarav, liveToken(ctx, s, 5, offset))).code).toBe('E-EXPIRED');
+    expect((await mark(aarav, liveToken(ctx, s, 5, -1))).statusCode).toBe(200);
   });
 
   it('rejects forged, malformed and cross-institution tokens', async () => {
     const s = await startLiveSession(ctx, { tenantId: seed.tenantId, courseId: seed.courseId });
     expect(rejection(await mark(aarav, 'hello world')).code).toBe('E-QR-INVALID');
-    expect(rejection(await mark(aarav, encodeQrToken(randomBytes(32), s.id, 0))).code).toBe('E-QR-INVALID');
+    expect(rejection(await mark(aarav, encodeQrToken(randomBytes(32), s.id, currentQrSeq(ctx.clock.now, 7)))).code).toBe('E-QR-INVALID');
     const foreign = await startLiveSession(ctx, { tenantId: seed.otherTenantId, courseId: seed.foreignCourseId });
-    expect(rejection(await mark(aarav, encodeQrToken(foreign.secret, foreign.id, 0))).code).toBe('E-QR-INVALID');
-    const flipped = encodeQrToken(s.secret, s.id, 0).slice(0, -2) + 'AA';
+    expect(rejection(await mark(aarav, liveToken(ctx, foreign))).code).toBe('E-QR-INVALID');
+    const flipped = liveToken(ctx, s).slice(0, -2) + 'AA';
     expect(rejection(await mark(aarav, flipped)).code).toBe('E-QR-INVALID');
   });
 
   it('rejects when the session is not live or the student is not enrolled', async () => {
-    const sched = await startLiveSession(ctx, { tenantId: seed.tenantId, courseId: seed.courseId, status: 'scheduled' });
-    expect(rejection(await mark(aarav, encodeQrToken(sched.secret, sched.id, 0))).code).toBe('E-SESSION-CLOSED');
+    // A class that starts in two hours can't be scanned yet…
+    const later = await startLiveSession(ctx, { tenantId: seed.tenantId, courseId: seed.courseId, status: 'scheduled', startedAt: ctx.clock.now + 2 * 3_600_000 });
+    expect(rejection(await mark(aarav, liveToken(ctx, later))).code).toBe('E-SESSION-CLOSED');
+    // …nor one that is over.
+    const done = await startLiveSession(ctx, { tenantId: seed.tenantId, courseId: seed.courseId, status: 'closed', startedAt: ctx.clock.now - 3 * 3_600_000 });
+    await ctx.db.query(`update class_sessions set ended_at = scheduled_end where id = $1`, [done.id]);
+    expect(rejection(await mark(aarav, liveToken(ctx, done))).code).toBe('E-SESSION-CLOSED');
     const other = await startLiveSession(ctx, { tenantId: seed.tenantId, courseId: seed.otherCourseId });
-    const r = rejection(await mark(aarav, encodeQrToken(other.secret, other.id, 0)));
+    const r = rejection(await mark(aarav, liveToken(ctx, other)));
     expect(r.code).toBe('E-NOT-ENROLLED');
   });
 
   it('enforces the geofence and GPS sanity checks', async () => {
     const s = await startLiveSession(ctx, { tenantId: seed.tenantId, courseId: seed.courseId, radiusM: 50 });
-    const q = () => encodeQrToken(s.secret, s.id, 0);
+    const q = () => liveToken(ctx, s);
     const geo = rejection(await mark(aarav, q(), loc(184)));
     expect(geo.code).toBe('E-GEO');
     expect(geo.detail).toBe("You're 184m from LH-2. Sessions accept marks only inside the 50m perimeter.");
@@ -141,7 +139,7 @@ describe('marking attendance', () => {
     const s = await startLiveSession(ctx, { tenantId: seed.tenantId, courseId: seed.courseId });
     await ctx.db.query(`update system_flags set enabled = true where key = 'scans_paused'`);
     try {
-      expect(rejection(await mark(aarav, encodeQrToken(s.secret, s.id, 0))).code).toBe('E-PAUSED');
+      expect(rejection(await mark(aarav, liveToken(ctx, s))).code).toBe('E-PAUSED');
     } finally {
       await ctx.db.query(`update system_flags set enabled = false where key = 'scans_paused'`);
     }
@@ -149,7 +147,7 @@ describe('marking attendance', () => {
 
   it('concurrent submissions from the same student create exactly one record', async () => {
     const s = await startLiveSession(ctx, { tenantId: seed.tenantId, courseId: seed.courseId });
-    const results = await Promise.all(Array.from({ length: 8 }, () => mark(aarav, encodeQrToken(s.secret, s.id, 0))));
+    const results = await Promise.all(Array.from({ length: 8 }, () => mark(aarav, liveToken(ctx, s))));
     expect(results.every((r) => r.statusCode === 200)).toBe(true);
     const ids = new Set(results.map((r) => r.json().record.id));
     expect(ids.size).toBe(1);
@@ -182,7 +180,7 @@ describe('student data', () => {
     // 4 closed sessions, attends 2 → 50% (at risk), then a live one marked → 3/5 = 60%.
     for (let i = 0; i < 4; i++) {
       const s = await startLiveSession(ctx, { tenantId: seed.tenantId, courseId: seed.courseId });
-      if (i < 2) expect((await mark(p, encodeQrToken(s.secret, s.id, 0))).statusCode).toBe(200);
+      if (i < 2) expect((await mark(p, liveToken(ctx, s))).statusCode).toBe(200);
       await ctx.db.query(`update class_sessions set status = 'closed' where id = $1`, [s.id]);
     }
     // Close every other open session in this course so the numbers are exact.
@@ -197,7 +195,7 @@ describe('student data', () => {
     const liveItem = dashBefore.today.find((t) => t.sessionId === live.id);
     expect(liveItem).toMatchObject({ status: 'live', marked: false, courseCode: 'CS-301' });
 
-    const m = MarkResponse.parse((await mark(p, encodeQrToken(live.secret, live.id, 0))).json());
+    const m = MarkResponse.parse((await mark(p, liveToken(ctx, live))).json());
     expect(m.course.before).toBeCloseTo((2 / held) * 100, 0);
     expect(m.course.after).toBeCloseTo((3 / (held + 1)) * 100, 0);
 

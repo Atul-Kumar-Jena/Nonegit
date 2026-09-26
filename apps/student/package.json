@@ -9,7 +9,6 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
     "doctor": "expo-doctor",
     "export:android": "expo export --platform android --output-dir dist-android"
   },
@@ -43,11 +42,11 @@
     "react-native-screens": "~4.26.0",
     "react-native-svg": "15.15.4",
     "react-native-web": "~0.21.0",
-    "zod": "4.6.5"
+    "zod": "4.6.5",
+    "@attendly/app-kit": "*"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
-    "typescript": "~6.0.3",
-    "vitest": "5.0.2"
+    "typescript": "~6.0.3"
   }
 }

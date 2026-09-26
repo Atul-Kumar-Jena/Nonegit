@@ -4,8 +4,8 @@ import type { BottomTabBarProps } from 'expo-router/tabs';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BookOpen, House, ScanLine, UserRound } from 'lucide-react-native';
-import { Text } from '@/components/ui';
-import { colors, gradients } from '@/theme';
+import { Text } from '@kit/components/ui';
+import { colors, gradients } from '@kit/theme';
 
 const ICONS = { home: House, subjects: BookOpen, profile: UserRound } as const;
 const LABELS = { home: 'Home', subjects: 'Subjects', profile: 'Profile' } as const;

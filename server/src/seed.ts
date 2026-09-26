@@ -94,8 +94,8 @@ export async function seedDemo(pool: Db, config: Config, opts: { reset?: boolean
     const facultyIds: Record<string, string> = {};
     for (const f of FACULTY) {
       const r = await tx.query<{ id: string }>(
-        `insert into users(tenant_id, role, full_name, email, department) values ($1, 'admin', $2, $3, $4) returning id`,
-        [tenantId, f.name, f.email, f.dept],
+        `insert into users(tenant_id, role, full_name, email, department) values ($1, $2, $3, $4, $5) returning id`,
+        [tenantId, f.key === 'iyer' ? 'admin' : 'teacher', f.name, f.email, f.dept],
       );
       facultyIds[f.key] = r.rows[0]!.id;
     }
@@ -173,26 +173,18 @@ export async function seedDemo(pool: Db, config: Config, opts: { reset?: boolean
           records++;
         }
       }
-      // Today's timetable (scheduled; start them from the dev console or Admin app).
-      const todayWeekday = new Date(Date.now() + TZ_OFFSET_MIN * 60_000).getUTCDay();
-      if ((c.days as readonly number[]).includes(todayWeekday) || c.code === 'CS-301') {
-        const start = istDate(0, c.hour);
-        await createSession(tx, {
-          tenantId,
-          courseId,
-          room: c.room,
-          lat: CAMPUS.lat,
-          lng: CAMPUS.lng,
-          radiusM: 50,
-          rotationS: 7,
-          status: 'scheduled',
-          scheduledStart: start,
-          scheduledEnd: new Date(start.getTime() + 60 * 60_000),
-          startedAt: null,
-          createdBy: facultyIds[c.instructor]!,
-          audit: false,
-        });
-      }
+      // Weekly timetable: one slot per teaching day, in a located room (classes are generated from it).
+      const room = await tx.query<{ id: string }>(
+        `insert into rooms(tenant_id, name, lat, lng, radius_m) values ($1, $2, $3, $4, 50)
+         on conflict (tenant_id, name) do update set name = excluded.name returning id`,
+        [tenantId, c.room, CAMPUS.lat, CAMPUS.lng],
+      );
+      for (const weekday of c.days)
+        await tx.query(
+          `insert into timetable_slots(tenant_id, course_id, weekday, start_time, end_time, room_id, created_by)
+           values ($1, $2, $3, make_time($4, 0, 0), make_time($4 + 1, 0, 0), $5, $6)`,
+          [tenantId, courseId, weekday, c.hour, room.rows[0]!.id, facultyIds[c.instructor]!],
+        );
     }
     await appendAudit(tx, { tenantId, actorType: 'system', action: 'seed.demo', data: { students: studentIds.length, records } });
     log(`Seeded "Demo Institute of Technology": ${studentIds.length} students, ${COURSES.length} courses, ${records} historic attendance records.`);

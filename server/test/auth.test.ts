@@ -75,20 +75,17 @@ describe('OTP sign-in and device binding', () => {
     expect(v3.json().status).toBe('ok');
   });
 
-  it('refuses unknown institutions but hides whether a user exists', async () => {
+  it('never reveals whether an email is registered, and only registered people get codes', async () => {
     const phone = new TestDevice(ctx);
-    const unknownInst = await phone.requestOtp('someone@gmail.com');
-    expect(unknownInst.statusCode).toBe(404);
-    expect(unknownInst.json().error.code).toBe('INSTITUTION_UNKNOWN');
-
     const before = ctx.sent.length;
-    const ghost = await phone.requestOtp('ghost@iit.ac.in');
-    expect(ghost.statusCode).toBe(200);
-    expect(Object.keys(ghost.json()).sort()).toEqual(['challengeId', 'destination', 'expiresAt', 'resendAfterSec']);
+    for (const who of ['someone@gmail.com', 'ghost@iit.ac.in']) {
+      const r = await phone.requestOtp(who);
+      expect(r.statusCode).toBe(200);
+      expect(Object.keys(r.json()).sort()).toEqual(['challengeId', 'destination', 'expiresAt', 'resendAfterSec']);
+      // …and no code can ever verify it.
+      expect((await phone.verifyOtp(r.json().challengeId, '000000')).json().error.code).toBe('OTP_INVALID');
+    }
     expect(ctx.sent.length).toBe(before); // nothing was sent
-    // …and no code can ever verify it.
-    const v = await phone.verifyOtp(ghost.json().challengeId, '000000');
-    expect(v.json().error.code).toBe('OTP_INVALID');
   });
 
   it('locks a challenge after 5 wrong codes and never accepts it afterwards', async () => {

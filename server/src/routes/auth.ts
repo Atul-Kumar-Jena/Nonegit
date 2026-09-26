@@ -83,21 +83,15 @@ export async function authRoutes(app: FastifyInstance, deps: Deps) {
     const now = deps.clock();
     if (!deps.sender.supports(body.channel)) throw new ApiError(400, 'BAD_REQUEST', 'Phone sign-in is not enabled for this server. Use your institution email.');
 
-    let institution: string | undefined;
-    let user: { id: string; status: string; tenant_status: string; tenant_name: string } | undefined;
-    if (body.channel === 'email') {
-      const domain = body.identifier.split('@')[1] ?? '';
-      const t = await deps.db.query<{ name: string }>(`select name from tenants where $1 = any(email_domains) and status = 'active'`, [domain]);
-      if (!t.rows[0]) throw new ApiError(404, 'INSTITUTION_UNKNOWN');
-      institution = t.rows[0].name;
-    }
+    // Only people an admin has registered can receive a code — whatever their email domain.
+    // The response is identical either way, so it never reveals who is registered.
     const col = body.channel === 'email' ? 'email' : 'phone';
     const u = await deps.db.query<{ id: string; status: string; tenant_status: string; tenant_name: string }>(
       `select u.id, u.status, t.status as tenant_status, t.name as tenant_name from users u join tenants t on t.id = u.tenant_id where u.${col} = $1`,
       [body.identifier],
     );
-    user = u.rows[0];
-    institution ??= user?.tenant_name ?? 'your institution';
+    const user = u.rows[0];
+    const institution = user?.tenant_name ?? 'your institution';
 
     // Throttle per identifier (in addition to the per-IP limiter).
     const recent = await deps.db.query<{ n: number; last: Date | null }>(

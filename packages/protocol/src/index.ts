@@ -6,3 +6,4 @@ export * from './geo';
 export * from './attendance';
 export * from './errors';
 export * from './schemas';
+export * from './staff';

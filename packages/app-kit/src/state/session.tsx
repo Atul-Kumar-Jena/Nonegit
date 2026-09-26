@@ -1,10 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import type { Channel, OtpVerifyResponse, UserSummary } from '@attendly/protocol';
-import { ApiClient, ApiRequestError, normalizeBaseUrl } from '@/lib/api-core';
-import { collectDeviceInfo } from '@/lib/device-info';
-import { destroyDeviceKey, deviceKeys } from '@/lib/device-key';
-import { ALLOW_HTTP, DEFAULT_SERVER_URL } from '@/lib/env';
+import type { Channel, OtpVerifyResponse, Role, UserSummary } from '@attendly/protocol';
+import { ApiClient, ApiRequestError, normalizeBaseUrl } from '../lib/api-core';
+import { collectDeviceInfo } from '../lib/device-info';
+import { destroyDeviceKey, deviceKeys } from '../lib/device-key';
+import { ALLOW_HTTP, DEFAULT_SERVER_URL } from '../lib/env';
 import {
   ServerIdentityError,
   checkServerIdentity,
@@ -12,8 +12,8 @@ import {
   loadServerConfig,
   saveServerConfig,
   type ServerConfig,
-} from '@/lib/server-config';
-import { tokenStore } from '@/lib/tokens';
+} from '../lib/server-config';
+import { tokenStore } from '../lib/tokens';
 
 export type Phase = 'booting' | 'needs-server' | 'signed-out' | 'signed-in' | 'identity-error';
 
@@ -51,6 +51,14 @@ interface SessionValue {
 
 const Ctx = createContext<SessionValue | null>(null);
 
+/** Which people an app is for. Checked right after the code is verified — before any device is bound. */
+export interface AppAudience {
+  appName: string;
+  allowedRoles: readonly Role[];
+  /** Shown when someone signs in to the wrong app, e.g. a teacher in the student app. */
+  wrongRoleMessage: string;
+}
+
 /** Free-tier servers (e.g. Render) sleep when idle and need up to a minute to wake. */
 const CONNECT_TIMEOUT_MS = 75_000;
 
@@ -81,7 +89,7 @@ export function useApi(): ApiClient {
   return api;
 }
 
-export function SessionProvider({ children }: { children: ReactNode }) {
+export function SessionProvider({ children, audience }: { children: ReactNode; audience: AppAudience }) {
   const queryClient = useQueryClient();
   const [phase, setPhase] = useState<Phase>('booting');
   const [server, setServer] = useState<ServerConfig | null>(null);
@@ -241,6 +249,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       if (!client || !pendingOtp) throw new Error('Request a new code.');
       const info = await collectDeviceInfo();
       const res = await client.verifyOtp(pendingOtp.challengeId, code, info);
+      if (!audience.allowedRoles.includes(res.user.role)) {
+        // Wrong app for this account: never bind this phone, and drop any session just issued.
+        if (res.status === 'ok') await client.logout().catch(() => tokenStore.clear());
+        setPendingOtp(null);
+        setPendingDevice(null);
+        throw new ApiRequestError('FORBIDDEN', audience.wrongRoleMessage, 403);
+      }
       if (res.status === 'ok') {
         setPendingOtp(null);
         setPendingDevice(null);
@@ -255,7 +270,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setPendingDevice({ ...res, kind: 'mismatch' });
       return 'mismatch' as const;
     },
-    [pendingOtp, queryClient],
+    [pendingOtp, queryClient, audience],
   );
 
   const bindDevice = useCallback(async () => {

@@ -7,6 +7,7 @@ import type { Db } from './db';
 import type { Deps } from './deps';
 import { createOtpSender, type OtpSender } from './lib/delivery';
 import { ApiError } from './lib/errors';
+import { materializeTimetable } from './lib/timetable';
 import { createServerSigner } from './lib/keys';
 import { makeHasher } from './lib/secrets';
 import { attendanceRoutes } from './routes/attendance';
@@ -14,6 +15,9 @@ import { authRoutes } from './routes/auth';
 import { devRoutes } from './routes/dev';
 import { metaRoutes } from './routes/meta';
 import { studentRoutes } from './routes/student';
+import { staffAcademicRoutes } from './routes/staff-academics';
+import { staffAdminRoutes } from './routes/staff-admin';
+import { staffSessionRoutes } from './routes/staff-sessions';
 
 export interface BuildOptions {
   config: Config;
@@ -117,6 +121,9 @@ export async function buildApp(opts: BuildOptions): Promise<{ app: FastifyInstan
   await app.register(async (s) => authRoutes(s, deps));
   await app.register(async (s) => studentRoutes(s, deps));
   await app.register(async (s) => attendanceRoutes(s, deps));
+  await app.register(async (s) => staffAdminRoutes(s, deps));
+  await app.register(async (s) => staffAcademicRoutes(s, deps));
+  await app.register(async (s) => staffSessionRoutes(s, deps));
   await app.register(async (s) => devRoutes(s, deps));
 
   return { app, deps };
@@ -133,9 +140,11 @@ export function startJanitor(deps: Deps): () => void {
       await deps.db.query(`delete from auth_sessions where refresh_expires_at < $1`, [new Date(now.getTime() - 24 * 3_600_000)]);
       // Auto-close sessions that ran past their scheduled end by more than 30 minutes.
       await deps.db.query(
-        `update class_sessions set status = 'closed', ended_at = scheduled_end where status = 'live' and scheduled_end < $1`,
+        `update class_sessions set status = 'closed', ended_at = greatest(scheduled_end, started_at) where status = 'live' and scheduled_end < $1`,
         [new Date(now.getTime() - 30 * 60_000)],
       );
+      // Keep the next two weeks of every timetable turned into real classes.
+      await materializeTimetable(deps.db);
     } catch (err) {
       deps.log.error({ err: (err as Error).message }, 'janitor run failed');
     }

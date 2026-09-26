@@ -3,11 +3,11 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { Redirect, router } from 'expo-router';
 import { BarChart3, Check, ChevronDown, ChevronRight, Clock, MapPin, ShieldAlert, ShieldX, Smartphone, TriangleAlert, WifiOff, X } from 'lucide-react-native';
 import { REJECTION_CODES, type RejectionCode } from '@attendly/protocol';
-import { Screen } from '@/components/Screen';
-import { Badge, Button, Card, IconTile, InfoRow, Text } from '@/components/ui';
-import { pct, utcStamp, zoned } from '@/lib/format';
+import { Screen } from '@kit/components/Screen';
+import { Badge, Button, Card, IconTile, InfoRow, Text } from '@kit/components/ui';
+import { pct, utcStamp, zoned } from '@kit/lib/format';
 import { clearScanOutcome, takeScanOutcome, type ScanOutcome } from '@/state/scan-result';
-import { colors, fonts, toneColor } from '@/theme';
+import { colors, fonts, toneColor } from '@kit/theme';
 
 /** 06 · Attendance success  /  07 · Rejected. */
 export default function Result() {

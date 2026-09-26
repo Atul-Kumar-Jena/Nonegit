@@ -40,7 +40,15 @@ const EnvSchema = z
     PORT: z.coerce.number().int().min(1).max(65535).default(4000),
     DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
     DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
-    DATABASE_SSL: bool,
+    /** false | true (verify certificate) | no-verify (encrypt only — last resort). */
+    DATABASE_SSL: z.enum(['', '0', '1', 'false', 'true', 'no-verify']).optional(),
+    /** PEM of the database's CA certificate (e.g. Supabase → Database settings → SSL certificate). */
+    DATABASE_SSL_CA: z.string().optional(),
+    BOOTSTRAP_INSTITUTION_NAME: z.string().trim().min(2).max(120).optional(),
+    BOOTSTRAP_ADMIN_EMAIL: z.string().trim().toLowerCase().pipe(z.email()).optional(),
+    BOOTSTRAP_ADMIN_NAME: z.string().trim().min(1).max(120).optional(),
+    BOOTSTRAP_DEMO_STUDENT_EMAIL: z.string().trim().toLowerCase().pipe(z.email()).optional(),
+    BOOTSTRAP_TIMEZONE: z.string().trim().default('Asia/Kolkata'),
     SERVER_SIGNING_KEY: b64Key(32),
     TOKEN_PEPPER: b64Key(32),
     OTP_DELIVERY: z.enum(['console', 'smtp']).optional(),
@@ -62,6 +70,8 @@ const EnvSchema = z
   .superRefine((e, ctx) => {
     const otp = e.OTP_DELIVERY ?? (e.NODE_ENV === 'production' ? undefined : 'console');
     if (!otp) ctx.addIssue({ code: 'custom', path: ['OTP_DELIVERY'], message: 'must be set explicitly in production (smtp, or console for private testing)' });
+    if ((e.BOOTSTRAP_INSTITUTION_NAME ? 1 : 0) + (e.BOOTSTRAP_ADMIN_EMAIL ? 1 : 0) === 1)
+      ctx.addIssue({ code: 'custom', path: ['BOOTSTRAP_ADMIN_EMAIL'], message: 'set both BOOTSTRAP_INSTITUTION_NAME and BOOTSTRAP_ADMIN_EMAIL (or neither)' });
     if (otp === 'smtp' && !e.SMTP_URL) ctx.addIssue({ code: 'custom', path: ['SMTP_URL'], message: 'required when OTP_DELIVERY=smtp' });
     if (e.SMS_DELIVERY === 'twilio' && !(e.TWILIO_ACCOUNT_SID && e.TWILIO_AUTH_TOKEN && e.TWILIO_FROM))
       ctx.addIssue({ code: 'custom', path: ['SMS_DELIVERY'], message: 'twilio requires TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_FROM' });
@@ -77,7 +87,8 @@ export interface Config {
   port: number;
   databaseUrl: string;
   databasePoolMax: number;
-  databaseSsl: boolean;
+  databaseSsl: false | { rejectUnauthorized: boolean; ca?: string };
+  bootstrap: { institutionName: string; adminEmail: string; adminName: string; demoStudentEmail: string | null; timezone: string } | null;
   serverSigningSeed: Uint8Array;
   tokenPepper: Uint8Array;
   otpDelivery: 'console' | 'smtp';
@@ -111,7 +122,22 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     port: e.PORT,
     databaseUrl: e.DATABASE_URL,
     databasePoolMax: e.DATABASE_POOL_MAX,
-    databaseSsl: e.DATABASE_SSL,
+    databaseSsl:
+      e.DATABASE_SSL === 'no-verify'
+        ? { rejectUnauthorized: false }
+        : e.DATABASE_SSL === '1' || e.DATABASE_SSL === 'true' || !!e.DATABASE_SSL_CA
+          ? { rejectUnauthorized: true, ...(e.DATABASE_SSL_CA ? { ca: e.DATABASE_SSL_CA.replace(/\\n/g, '\n') } : {}) }
+          : false,
+    bootstrap:
+      e.BOOTSTRAP_INSTITUTION_NAME && e.BOOTSTRAP_ADMIN_EMAIL
+        ? {
+            institutionName: e.BOOTSTRAP_INSTITUTION_NAME,
+            adminEmail: e.BOOTSTRAP_ADMIN_EMAIL,
+            adminName: e.BOOTSTRAP_ADMIN_NAME ?? 'Administrator',
+            demoStudentEmail: e.BOOTSTRAP_DEMO_STUDENT_EMAIL ?? null,
+            timezone: e.BOOTSTRAP_TIMEZONE,
+          }
+        : null,
     serverSigningSeed: seed.slice(0, 32),
     tokenPepper: decodeKey(e.TOKEN_PEPPER),
     otpDelivery: e.OTP_DELIVERY ?? 'console',
