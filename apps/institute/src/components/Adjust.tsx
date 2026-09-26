@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, CheckCircle2, XOctagon } from 'lucide-react-native';
 import type { DraftOp, PlannerConflict, OpError, PublishResponse, StaffSession } from '@attendly/protocol';
 import { Badge, Button, Card, Input, Loading, Notice, Text } from '@kit/components/ui';
-import { zoned } from '@kit/lib/format';
+import { zoned, clock } from '@kit/lib/format';
 import { useApi } from '@kit/state/session';
 import { colors } from '@kit/theme';
 import { staffApi } from '@/api';
@@ -152,7 +152,7 @@ export function AdjustSheet({ session: s, tz, mode, onClose }: { session: StaffS
   return (
     <Sheet open onClose={onClose} title={title}>
       <Text variant="small">
-        {s.courseCode} · {zoned(s.scheduledStart, tz).dow} {zoned(s.scheduledStart, tz).hm}. Its students are notified as soon as you confirm.
+        {s.courseCode} · {zoned(s.scheduledStart, tz).dow} {clock(s.scheduledStart, tz)}. Its students are notified as soon as you confirm.
       </Text>
       {mode === 'reschedule' ? (
         <>
@@ -234,5 +234,5 @@ export function AdjustSheet({ session: s, tz, mode, onClose }: { session: StaffS
 const styles = StyleSheet.create({
   line: { flexDirection: 'row', gap: 8, alignItems: 'flex-start' },
   teacher: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bgRaised },
-  teacherOn: { borderColor: 'rgba(34,211,238,0.55)', backgroundColor: 'rgba(34,211,238,0.08)' },
+  teacherOn: { borderColor: 'rgba(255, 255, 255, 0.55)', backgroundColor: 'rgba(255, 255, 255, 0.08)' },
 });

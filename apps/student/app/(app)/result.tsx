@@ -5,7 +5,7 @@ import { BarChart3, Check, CloudUpload, ChevronDown, ChevronRight, Clock, MapPin
 import { REJECTION_CODES, seqLabel, type RejectionCode } from '@attendly/protocol';
 import { Screen } from '@kit/components/Screen';
 import { Badge, Button, Card, IconTile, InfoRow, Text } from '@kit/components/ui';
-import { pct, utcStamp, zoned } from '@kit/lib/format';
+import { pct, utcStamp, zoned, clock } from '@kit/lib/format';
 import { clearScanOutcome, takeScanOutcome, type ScanOutcome } from '@/state/scan-result';
 import { colors, fonts, toneColor } from '@kit/theme';
 
@@ -44,7 +44,7 @@ function Success({ o }: { o: Extract<ScanOutcome, { kind: 'success' }> }) {
         {res.alreadyMarked ? 'Already marked' : 'Marked present'}
       </Text>
       <Text variant="body" style={[styles.center, { marginTop: 6 }]}>
-        {res.alreadyMarked ? `You were marked present at ${zoned(r.markedAt).hm}. ${subtitle}` : subtitle}
+        {res.alreadyMarked ? `You were marked present at ${clock(r.markedAt)}. ${subtitle}` : subtitle}
       </Text>
 
       <Card style={{ marginTop: 22, paddingVertical: 10 }}>

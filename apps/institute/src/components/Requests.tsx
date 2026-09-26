@@ -5,7 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { ArrowRight, CalendarClock, Inbox, MessageSquareText, Send, UserRound } from 'lucide-react-native';
 import { STUDENT_TOPIC_LABELS, type ChangeRequest, type CoverResponse, type PlannerConflict, type OpError, type StaffSession } from '@attendly/protocol';
 import { Badge, Button, Card, Input, Notice, Text } from '@kit/components/ui';
-import { timeAgo, zoned, dayLabel } from '@kit/lib/format';
+import { timeAgo, zoned, dayLabel, clock } from '@kit/lib/format';
 import { useApi } from '@kit/state/session';
 import { colors, type Tone } from '@kit/theme';
 import { staffApi } from '@/api';
@@ -22,7 +22,7 @@ const STATUS: Record<ChangeRequest['status'], { label: string; tone: Tone }> = {
 };
 
 export function whenLabel(r: ChangeRequest, tz?: string): string {
-  return `${dayLabel(r.session.start, tz)} ${zoned(r.session.start, tz).hm}–${zoned(r.session.end, tz).hm}`;
+  return `${dayLabel(r.session.start, tz)} ${clock(r.session.start, tz)}–${clock(r.session.end, tz)}`;
 }
 
 /**
@@ -288,7 +288,7 @@ export function CoverSheet({
               onPress={() => void send(false)}
               loading={busy}
               disabled={!teacherId}
-              icon={<Send color="#03141c" size={16} />}
+              icon={<Send color="#0a0a0a" size={16} />}
               style={{ marginTop: 16 }}
             />
           )

@@ -67,6 +67,15 @@ export interface AppAudience {
   wrongRoleMessage: string;
   /** Where a "request" notification opens (cover requests / questions to teachers). */
   requestsRoute?: string;
+  /** Where tapping a notification about a class goes (the class itself). */
+  routeFor?: (d: NotificationTarget) => string | null;
+}
+
+export interface NotificationTarget {
+  kind?: string;
+  sessionId?: string;
+  courseId?: string;
+  requestId?: string;
 }
 
 const CLOCK_KEY = 'clock.offset.v1';

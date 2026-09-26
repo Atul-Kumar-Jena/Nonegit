@@ -36,8 +36,7 @@ export default function Splash() {
   const translateX = progress.interpolate({ inputRange: [0, 1], outputRange: [-40, 76] });
   return (
     <View style={styles.root}>
-      <LinearGradient colors={['rgba(34,211,238,0.16)', 'rgba(5,8,20,0)']} start={{ x: 0.5, y: 0.2 }} end={{ x: 0.5, y: 0.6 }} style={StyleSheet.absoluteFill} />
-      <LinearGradient colors={['rgba(5,8,20,0)', 'rgba(139,92,246,0.12)']} start={{ x: 0.5, y: 0.6 }} end={{ x: 0.5, y: 1 }} style={StyleSheet.absoluteFill} />
+      <LinearGradient colors={['rgba(255, 255, 255, 0.08)', 'rgba(255, 255, 255, 0)']} start={{ x: 0.5, y: 0.15 }} end={{ x: 0.5, y: 0.65 }} style={StyleSheet.absoluteFill} />
       <View style={styles.center}>
         <View style={{ alignItems: 'center' }}>
           <LogoMark size={72} />
@@ -60,8 +59,8 @@ export default function Splash() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 },
-  brand: { fontFamily: fonts.bold, fontSize: 34, letterSpacing: -1, color: colors.text, marginTop: 14 },
-  track: { width: 76, height: 3, borderRadius: 2, backgroundColor: 'rgba(138,148,173,0.18)', overflow: 'hidden', marginTop: 14 },
+  brand: { fontFamily: fonts.bold, fontSize: 40, letterSpacing: -1.5, color: colors.text, marginTop: 14 },
+  track: { width: 76, height: 3, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.12)', overflow: 'hidden', marginTop: 14 },
   bar: { width: 36, height: 3, borderRadius: 2, backgroundColor: colors.cyan },
   footer: { textAlign: 'center', marginBottom: 36 },
 });

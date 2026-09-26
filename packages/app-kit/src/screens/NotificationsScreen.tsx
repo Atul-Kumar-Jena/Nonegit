@@ -5,7 +5,7 @@ import { ArrowLeft, BellRing, CalendarClock, CheckCheck } from 'lucide-react-nat
 import { Screen } from '../components/Screen';
 import { Button, Card, ErrorState, IconButton, Loading, Notice, Text } from '../components/ui';
 import { timeAgo } from '../lib/format';
-import { enablePhoneNotifications, phoneNotificationStatus, useMarkRead, useNotifications } from '../lib/notifications';
+import { enablePhoneNotifications, phoneNotificationStatus, targetOf, useMarkRead, useNotifications } from '../lib/notifications';
 import { useSession } from '../state/session';
 import { colors } from '../theme';
 
@@ -72,7 +72,8 @@ export default function NotificationsScreen() {
               key={n.id}
               onPress={() => {
                 if (!n.read) void markRead([n.id]);
-                router.push((n.kind === 'request' && audience.requestsRoute) || '/timetable');
+                const t = targetOf(n);
+                router.push((audience.routeFor?.(t) ?? (n.kind === 'request' ? audience.requestsRoute : null) ?? '/timetable') as never);
               }}
               accessibilityRole="button"
               accessibilityLabel={`${n.read ? '' : 'Unread. '}${n.title}. ${n.body}`}

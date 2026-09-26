@@ -12,11 +12,12 @@ export interface ChangeLine {
   sessionId?: string;
 }
 
-/** "Tue 30 Sep, 10:00" in the institution's time zone. */
+/** "Tue 30 Sep, 10:00 AM" in the institution's time zone. */
 export function fmtWhen(d: Date, timeZone: string): string {
-  const parts = new Intl.DateTimeFormat('en-GB', { timeZone, weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(d);
+  const parts = new Intl.DateTimeFormat('en-GB', { timeZone, weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: false }).formatToParts(d);
   const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
-  return `${get('weekday')} ${get('day')} ${get('month')}, ${get('hour') === '24' ? '00' : get('hour')}:${get('minute')}`;
+  const h = Number(get('hour')) % 24;
+  return `${get('weekday')} ${get('day')} ${get('month')}, ${h % 12 === 0 ? 12 : h % 12}:${get('minute')} ${h < 12 ? 'AM' : 'PM'}`;
 }
 export const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 

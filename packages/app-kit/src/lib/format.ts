@@ -47,8 +47,19 @@ export function dayLabel(iso: string | number, timeZone?: string): string {
   return `${z.dow} ${z.d} ${MONTHS[z.m]!.toUpperCase()}`;
 }
 
+/** "14:05" → "2:05 PM" (for display; logic keeps 24-hour strings). */
+export function to12h(hm: string): string {
+  const [h = 0, m = 0] = hm.split(':').map(Number);
+  return `${h % 12 === 0 ? 12 : h % 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+}
+
+/** A time for people to read: "2:05 PM". */
+export function clock(iso: string | number, timeZone?: string): string {
+  return to12h(zoned(iso, timeZone).hm);
+}
+
 export function timeRange(startIso: string, endIso: string, timeZone?: string): string {
-  return `${zoned(startIso, timeZone).hm} — ${zoned(endIso, timeZone).hm}`;
+  return `${clock(startIso, timeZone)} – ${clock(endIso, timeZone)}`;
 }
 
 export function dateLong(iso: string): string {

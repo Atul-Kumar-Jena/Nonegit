@@ -18,14 +18,14 @@ export default function InboxScreen() {
   if (q.isPending)
     return (
       <Screen scroll={false}>
-        <Header title="Requests" />
+        <Header info="inbox" title="Requests" />
         <Loading />
       </Screen>
     );
   if (q.error)
     return (
       <Screen>
-        <Header title="Requests" />
+        <Header info="inbox" title="Requests" />
         <ErrorState message={q.error.message} onRetry={() => void q.refetch()} />
       </Screen>
     );
@@ -35,7 +35,7 @@ export default function InboxScreen() {
   const list = tab === 'in' ? incoming : outgoing;
   return (
     <Screen onRefresh={() => void q.refetch()} refreshing={q.isRefetching}>
-      <Header title="Requests" subtitle="Cover classes · students’ questions" right={admin ? <Button title="Cover" kind="ghost" compact onPress={() => router.push('/cover')} icon={<UserPlus color={colors.text} size={14} />} /> : undefined} />
+      <Header info="inbox" title="Requests" subtitle="Cover classes · students’ questions" right={admin ? <Button title="Cover" kind="ghost" compact onPress={() => router.push('/cover')} icon={<UserPlus color={colors.text} size={14} />} /> : undefined} />
       <Segmented
         value={tab}
         onChange={setTab}

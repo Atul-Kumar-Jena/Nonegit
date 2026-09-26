@@ -7,7 +7,7 @@ import { randomToken, type FeedEntry, type SessionMode, type StartSessionBody } 
 import { Screen } from '@kit/components/Screen';
 import { Badge, Button, Card, ErrorState, InfoRow, Loading, Notice, SectionLabel, Text } from '@kit/components/ui';
 import { ApiRequestError } from '@kit/lib/api-core';
-import { dayLabel, timeAgo, timeRange, zoned } from '@kit/lib/format';
+import { dayLabel, timeAgo, timeRange, zoned, clock } from '@kit/lib/format';
 import { LocationError, getFreshFix } from '@kit/lib/location';
 import { outbox } from '@kit/lib/outbox';
 import { useApi } from '@kit/state/session';
@@ -185,7 +185,7 @@ export default function SessionScreen() {
       {s.substitute || s.change ? (
         <View style={{ flexDirection: 'row', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
           {s.substitute ? <Badge label={`Taken by ${s.substitute.name}`} tone="violet" dot={false} /> : null}
-          {s.change?.kind === 'rescheduled' ? <Badge label={`Moved${s.change.originalStart ? ` from ${zoned(s.change.originalStart, tz).dow} ${zoned(s.change.originalStart, tz).hm}` : ''}`} tone="amber" dot={false} /> : null}
+          {s.change?.kind === 'rescheduled' ? <Badge label={`Moved${s.change.originalStart ? ` from ${zoned(s.change.originalStart, tz).dow} ${clock(s.change.originalStart, tz)}` : ''}`} tone="amber" dot={false} /> : null}
           {s.change?.kind === 'extra' ? <Badge label="Extra class" tone="green" dot={false} /> : null}
           {s.change?.kind === 'cancelled' && s.change.note ? <Badge label={`Reason: ${s.change.note}`} tone="red" dot={false} /> : null}
         </View>
@@ -257,7 +257,7 @@ export default function SessionScreen() {
             onPress={() => (m === 'qr' ? void start() : router.push({ pathname: '/register/[id]', params: { id: s.id } }))}
             loading={busy === 'start'}
             disabled={m === 'qr' ? !startable : !canEditRegister}
-            icon={m === 'qr' ? <QrCode color="#03141c" size={18} /> : <ClipboardList color="#03141c" size={18} />}
+            icon={m === 'qr' ? <QrCode color="#0a0a0a" size={18} /> : <ClipboardList color="#0a0a0a" size={18} />}
             style={{ marginTop: 16 }}
           />
           {m === 'qr' ? (
@@ -295,7 +295,7 @@ export default function SessionScreen() {
         <View style={{ gap: 10, marginTop: 18 }}>
           {s.mode === 'qr' ? (
             <>
-              <Button title="Show the QR code" onPress={() => router.push({ pathname: '/live/[id]', params: { id: s.id } })} icon={<QrCode color="#03141c" size={18} />} />
+              <Button title="Show the QR code" onPress={() => router.push({ pathname: '/live/[id]', params: { id: s.id } })} icon={<QrCode color="#0a0a0a" size={18} />} />
               <Button title="Show on a big screen" kind="secondary" onPress={() => setBigScreen(true)} icon={<Monitor color={colors.text} size={16} />} />
               <BigScreenSheet sessionId={s.id} courseLabel={s.courseCode} open={bigScreen} onClose={() => setBigScreen(false)} />
             </>
@@ -308,8 +308,8 @@ export default function SessionScreen() {
       {s.status === 'closed' ? (
         <View style={{ gap: 10, marginTop: 18 }}>
           <Card>
-            <InfoRow label="STARTED" value={s.startedAt ? zoned(s.startedAt, tz).hm : '—'} />
-            <InfoRow label="ENDED" value={s.endedAt ? zoned(s.endedAt, tz).hm : '—'} />
+            <InfoRow label="STARTED" value={s.startedAt ? clock(s.startedAt, tz) : '—'} />
+            <InfoRow label="ENDED" value={s.endedAt ? clock(s.endedAt, tz) : '—'} />
             <InfoRow label="PRESENT" value={`${s.marked} of ${s.enrolled}`} />
           </Card>
           {canEditRegister ? (
@@ -397,7 +397,7 @@ function EntryRow({ e, tz, first }: { e: FeedEntry; tz?: string; first: boolean 
           {[e.rollNo, how].filter(Boolean).join(' · ') || ' '}
         </Text>
       </View>
-      {e.present ? <Text variant="monoSmall">{e.markedAt ? zoned(e.markedAt, tz).hm : ''}</Text> : <Badge label="Absent" tone="muted" dot={false} />}
+      {e.present ? <Text variant="monoSmall">{e.markedAt ? clock(e.markedAt, tz) : ''}</Text> : <Badge label="Absent" tone="muted" dot={false} />}
     </View>
   );
 }

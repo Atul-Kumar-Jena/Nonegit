@@ -7,12 +7,13 @@ import { Screen } from '@kit/components/Screen';
 import { usePermissionsOnboarding } from '@kit/lib/notifications';
 import { SyncBanner } from '@kit/components/SyncBanner';
 import { Avatar, Badge, Button, Card, ErrorState, Loading, SectionLabel, Text } from '@kit/components/ui';
-import { dayLabel, greeting, initials, timeAgo } from '@kit/lib/format';
+import { dayLabel, greeting, initials, timeAgo, clock } from '@kit/lib/format';
 import { colors, fonts, toneColor, type Tone } from '@kit/theme';
 import { SessionCard } from '@/components/SessionCard';
 import { Empty } from '@/components/forms';
 import { useLocalSessions, withLocal } from '@/local-sessions';
-import { useChangeRequests, useMe, useOfflinePack, useOverview } from '@/queries';
+import { useChangeRequests, useMe, useOfflinePack, useOverview, useSessionsOn } from '@/queries';
+import { addDays } from '@/components/forms';
 import { RequestsBanner } from '@/components/Requests';
 import { useSetupProgress } from '@/setup';
 import { ymdIn } from '@/time';
@@ -77,29 +78,13 @@ export default function Today() {
 
       <SyncBanner />
 
-      <View style={styles.grid}>
-        <Tile icon={<Radio color={colors.cyan} size={14} />} label="Live now" value={d ? String(d.liveNow) : '–'} tone="cyan" />
-        <Tile icon={<UserCheck color={colors.green} size={14} />} label="Marked today" value={d ? String(d.markedToday) : '–'} tone="green" />
-        <Tile icon={<ShieldAlert color={colors.amber} size={14} />} label="Flags to review" value={d ? String(d.flaggedOpen) : '–'} tone={d?.flaggedOpen ? 'amber' : 'muted'} onPress={() => router.push('/flags')} />
-        <Tile
-          icon={<Smartphone color={colors.violet} size={14} />}
-          label="Phone requests"
-          value={d ? String(d.pendingRequests) : '–'}
-          tone={d?.pendingRequests ? 'violet' : 'muted'}
-          onPress={() => router.push('/requests')}
-        />
-      </View>
-
-      <Pressable onPress={() => void pack.refetch()} accessibilityRole="button" style={[styles.row, { marginTop: 12 }]}>
-        <CloudDownload color={pack.data ? colors.green : colors.textDim} size={15} />
-        <Text variant="small" style={{ flex: 1 }}>
-          {pack.data
-            ? `Ready offline · ${pack.data.sessions.length} ${pack.data.sessions.length === 1 ? 'class' : 'classes'} of yours (today & tomorrow) saved · ${timeAgo(new Date(pack.data.generatedAt).toISOString())}`
-            : pack.isFetching
-              ? 'Downloading today’s classes for offline use…'
-              : 'Not ready offline yet — tap to download.'}
-        </Text>
-      </Pressable>
+      {d && (d.liveNow || (admin && (d.flaggedOpen || d.pendingRequests))) ? (
+        <View style={styles.needs}>
+          {d.liveNow ? <Pill icon={<Radio color={colors.green} size={13} />} label={`${d.liveNow} live now`} /> : null}
+          {admin && d.flaggedOpen ? <Pill icon={<ShieldAlert color={colors.amber} size={13} />} label={`${d.flaggedOpen} suspicious ${d.flaggedOpen === 1 ? 'scan' : 'scans'}`} onPress={() => router.push('/flags')} /> : null}
+          {admin && d.pendingRequests ? <Pill icon={<Smartphone color={colors.text} size={13} />} label={`${d.pendingRequests} phone ${d.pendingRequests === 1 ? 'request' : 'requests'}`} onPress={() => router.push('/requests')} /> : null}
+        </View>
+      ) : null}
 
       <SectionLabel right={<Text variant="monoSmall">{`${list.length} ${list.length === 1 ? 'class' : 'classes'}`}</Text>}>
         {`Today · ${dayLabel(d?.serverTime ?? Date.now(), tz)}`}
@@ -116,6 +101,7 @@ export default function Today() {
           ))}
         </View>
       )}
+      <ComingUp from={addDays(today, 1)} tz={tz} />
       <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
         <Button title="Extra class" kind="secondary" onPress={() => router.push('/extra-class')} icon={<Plus color={colors.text} size={16} />} style={{ flex: 1 }} />
         {admin ? (
@@ -124,7 +110,52 @@ export default function Today() {
           <Button title="Requests" kind="secondary" onPress={() => router.push('/inbox')} icon={<Inbox color={colors.text} size={16} />} style={{ flex: 1 }} />
         )}
       </View>
+      <Pressable onPress={() => void pack.refetch()} accessibilityRole="button" style={[styles.row, { marginTop: 22 }]}>
+        <CloudDownload color={pack.data ? colors.green : colors.textDim} size={15} />
+        <Text variant="small" style={{ flex: 1 }}>
+          {pack.data
+            ? `Ready offline · ${pack.data.sessions.length} ${pack.data.sessions.length === 1 ? 'class' : 'classes'} of yours (today & tomorrow) saved · ${timeAgo(new Date(pack.data.generatedAt).toISOString())}`
+            : pack.isFetching
+              ? 'Downloading today’s classes for offline use…'
+              : 'Not ready offline yet — tap to download.'}
+        </Text>
+      </Pressable>
     </Screen>
+  );
+}
+
+/** Classes scheduled for the next days (yours, or everyone's for an admin). */
+function ComingUp({ from, tz }: { from: string; tz?: string }) {
+  const q = useSessionsOn(from, 7);
+  const next = (q.data ?? []).filter((s) => s.status === 'scheduled' || s.status === 'cancelled').slice(0, 6);
+  if (!next.length) return null;
+  return (
+    <>
+      <SectionLabel>Coming up</SectionLabel>
+      <Card padded={false}>
+        {next.map((s, i) => (
+          <Pressable
+            key={s.id}
+            onPress={() => router.push({ pathname: '/session/[id]', params: { id: s.id } })}
+            accessibilityRole="button"
+            style={[styles.upRow, i < next.length - 1 && styles.upDivider, s.status === 'cancelled' && { opacity: 0.55 }]}
+          >
+            <View style={{ width: 86 }}>
+              <Text variant="monoSmall">{dayLabel(s.scheduledStart, tz)}</Text>
+              <Text variant="bodyStrong">{clock(s.scheduledStart, tz)}</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text variant="bodyStrong" numberOfLines={1}>
+                {s.courseCode} · {s.courseTitle}
+              </Text>
+              <Text variant="small" numberOfLines={1}>
+                {[s.roomLabel, s.substitute ? `${s.substitute.name} (covering)` : s.teacher?.name, s.status === 'cancelled' ? 'Cancelled' : null].filter(Boolean).join(' · ')}
+              </Text>
+            </View>
+          </Pressable>
+        ))}
+      </Card>
+    </>
   );
 }
 
@@ -143,6 +174,17 @@ function SetupNudge() {
         </View>
         <ChevronRight color={colors.textDim} size={18} />
       </Card>
+    </Pressable>
+  );
+}
+
+function Pill({ icon, label, onPress }: { icon: ReactNode; label: string; onPress?: () => void }) {
+  return (
+    <Pressable onPress={onPress} disabled={!onPress} accessibilityRole={onPress ? 'button' : 'text'} style={styles.pill}>
+      {icon}
+      <Text variant="small" color={colors.text}>
+        {label}
+      </Text>
     </Pressable>
   );
 }
@@ -167,6 +209,10 @@ function Tile({ icon, label, value, tone, onPress }: { icon: ReactNode; label: s
 }
 
 const styles = StyleSheet.create({
+  upRow: { flexDirection: 'row', gap: 12, padding: 14, alignItems: 'center' },
+  upDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+  needs: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 },
+  pill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 7, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 14 },

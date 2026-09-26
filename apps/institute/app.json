@@ -7,7 +7,7 @@
     "icon": "./assets/icon.png",
     "scheme": "attendly-institute",
     "userInterfaceStyle": "dark",
-    "backgroundColor": "#050814",
+    "backgroundColor": "#0a0a0a",
     "ios": {
       "bundleIdentifier": "app.attendly.institute",
       "supportsTablet": false,
@@ -24,7 +24,7 @@
       "allowBackup": false,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#050814"
+        "backgroundColor": "#fafafa"
       },
       "permissions": [
         "android.permission.ACCESS_FINE_LOCATION",
@@ -52,9 +52,9 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#050814",
+          "backgroundColor": "#0a0a0a",
           "image": "./assets/splash-icon.png",
-          "imageWidth": 120
+          "imageWidth": 110
         }
       ],
       [
@@ -82,7 +82,7 @@
       [
         "expo-notifications",
         {
-          "color": "#22d3ee"
+          "color": "#ffffff"
         }
       ],
       "expo-background-task"

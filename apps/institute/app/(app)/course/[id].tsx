@@ -210,7 +210,7 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', gap: 8, marginTop: 14 },
   filterRow: { flexDirection: 'row', gap: 8 },
   pill: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, borderWidth: 1, borderColor: colors.border },
-  pillOn: { borderColor: 'rgba(34,211,238,0.5)', backgroundColor: 'rgba(34,211,238,0.08)' },
+  pillOn: { borderColor: 'rgba(255, 255, 255, 0.5)', backgroundColor: 'rgba(255, 255, 255, 0.08)' },
   student: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12 },
   pct: { fontFamily: fonts.bold, fontSize: 18, minWidth: 56, textAlign: 'right' },
   slot: { flexDirection: 'row', alignItems: 'center', gap: 10 },

@@ -39,7 +39,7 @@ function TabBar({ state, navigation }: BottomTabBarProps) {
       {items[1]}
       <Pressable accessibilityRole="button" accessibilityLabel="Scan attendance QR" onPress={() => router.push('/scan')} style={styles.scanWrap} hitSlop={6}>
         <LinearGradient colors={gradients.brand} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.scan}>
-          <ScanLine color="#04141c" size={24} strokeWidth={2.2} />
+          <ScanLine color="#0a0a0a" size={24} strokeWidth={2.2} />
         </LinearGradient>
       </Pressable>
       {items[2]}
@@ -63,7 +63,7 @@ const styles = StyleSheet.create({
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(8,13,28,0.98)',
+    backgroundColor: 'rgba(10,10,10,0.97)',
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
     paddingTop: 8,
@@ -79,7 +79,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: -22,
-    shadowColor: '#22d3ee',
+    shadowColor: '#ffffff',
     shadowOpacity: 0.5,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 4 },

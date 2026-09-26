@@ -68,7 +68,7 @@ export default function ServerSetup() {
   if (!manual)
     return (
       <Screen contentStyle={{ paddingTop: 28, gap: 14 }}>
-        <LogoMark size={44} />
+        <LogoMark size={30} withName />
         <View style={{ gap: 6, marginTop: 8 }}>
           <Text variant="title">Connecting to Attendly</Text>
           <Text variant="body">{displayHost(DEFAULT_SERVER_URL)}</Text>
@@ -84,7 +84,7 @@ export default function ServerSetup() {
         {error && !busy ? (
           <>
             <Notice message={error} tone="red" />
-            <Button title="Try again" onPress={() => void tryConnect(DEFAULT_SERVER_URL)} icon={<RefreshCw color="#03141c" size={16} />} />
+            <Button title="Try again" onPress={() => void tryConnect(DEFAULT_SERVER_URL)} icon={<RefreshCw color="#0a0a0a" size={16} />} />
           </>
         ) : null}
         {notice ? <Notice message={notice} onDismiss={clearNotice} /> : null}
@@ -98,7 +98,7 @@ export default function ServerSetup() {
 
   return (
     <Screen keyboard contentStyle={{ paddingTop: 28, gap: 14 }}>
-      <LogoMark size={44} />
+      <LogoMark size={30} withName />
       <View style={{ gap: 6, marginTop: 8 }}>
         <Text variant="title">Connect to your institution</Text>
         <Text variant="body">Paste the address of your Attendly server — exactly as it was shown when the server was set up.</Text>
@@ -135,7 +135,7 @@ export default function ServerSetup() {
         </Pressable>
       ) : null}
       <Card style={{ gap: 8, marginTop: 8 }}>
-        <Badge label="Pinned on first connect" tone="violet" icon={<Lock color="#a78bfa" size={11} />} />
+        <Badge label="Pinned on first connect" tone="violet" icon={<Lock color="#d4d4d4" size={11} />} />
         <Text variant="small">
           The app remembers this server’s cryptographic identity. If it ever changes, Attendly stops and warns you instead of sending your attendance anywhere else.
         </Text>

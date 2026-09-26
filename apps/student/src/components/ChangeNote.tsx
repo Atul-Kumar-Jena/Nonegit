@@ -2,7 +2,7 @@ import { View } from 'react-native';
 import { ArrowRightLeft, CalendarPlus, UserRound, XCircle } from 'lucide-react-native';
 import type { SessionChange } from '@attendly/protocol';
 import { Text } from '@kit/components/ui';
-import { zoned, dayLabel } from '@kit/lib/format';
+import { zoned, dayLabel, clock } from '@kit/lib/format';
 import { colors } from '@kit/theme';
 
 /** One line explaining what changed about a class, e.g. "Moved from Tue 10:00". */
@@ -13,7 +13,7 @@ export function ChangeNote({ change, tz }: { change: SessionChange | null | unde
   const color = kind === 'cancelled' ? colors.red : kind === 'extra' ? colors.green : colors.violet;
   const base =
     kind === 'rescheduled'
-      ? `Moved${change.originalStart ? ` from ${dayLabel(change.originalStart, tz)} ${zoned(change.originalStart, tz).hm}` : ''}${change.teacher ? ` · taken by ${change.teacher}` : ''}`
+      ? `Moved${change.originalStart ? ` from ${dayLabel(change.originalStart, tz)} ${clock(change.originalStart, tz)}` : ''}${change.teacher ? ` · taken by ${change.teacher}` : ''}`
       : kind === 'cancelled'
         ? 'Cancelled'
         : kind === 'extra'

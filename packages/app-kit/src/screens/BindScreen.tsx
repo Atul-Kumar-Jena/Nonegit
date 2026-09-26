@@ -60,9 +60,9 @@ export default function Bind() {
       </Text>
 
       <Card style={styles.hero} padded={false}>
-        <LinearGradient colors={['rgba(34,211,238,0.14)', 'rgba(34,211,238,0)']} start={{ x: 0.5, y: 0.5 }} end={{ x: 0.5, y: 1 }} style={StyleSheet.absoluteFill} />
+        <LinearGradient colors={['rgba(255, 255, 255, 0.14)', 'rgba(255, 255, 255, 0)']} start={{ x: 0.5, y: 0.5 }} end={{ x: 0.5, y: 1 }} style={StyleSheet.absoluteFill} />
         <View style={[styles.ring, { width: 180, height: 180 }]} />
-        <View style={[styles.ring, { width: 132, height: 132, borderColor: 'rgba(34,211,238,0.22)' }]} />
+        <View style={[styles.ring, { width: 132, height: 132, borderColor: 'rgba(255, 255, 255, 0.22)' }]} />
         <View style={styles.core}>
           <Fingerprint color={colors.cyan} size={34} strokeWidth={1.8} />
         </View>
@@ -88,7 +88,7 @@ export default function Bind() {
         </Card>
         <Card style={styles.row}>
           <IconTile tone="violet">
-            <KeyRound color="#a78bfa" size={18} />
+            <KeyRound color="#d4d4d4" size={18} />
           </IconTile>
           <View style={{ flex: 1 }}>
             <Text variant="bodyStrong">Ed25519 device key</Text>
@@ -113,17 +113,17 @@ export default function Bind() {
 
 const styles = StyleSheet.create({
   hero: { height: 220, marginTop: 20, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  ring: { position: 'absolute', borderRadius: 999, borderWidth: 1, borderColor: 'rgba(34,211,238,0.12)' },
+  ring: { position: 'absolute', borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.12)' },
   core: {
     width: 76,
     height: 76,
     borderRadius: 22,
-    backgroundColor: 'rgba(34,211,238,0.08)',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
     borderWidth: 1,
-    borderColor: 'rgba(34,211,238,0.35)',
+    borderColor: 'rgba(255, 255, 255, 0.35)',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#22d3ee',
+    shadowColor: '#ffffff',
     shadowOpacity: 0.5,
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 0 },

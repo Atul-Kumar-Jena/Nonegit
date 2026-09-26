@@ -32,6 +32,9 @@ import { WEEKDAY_NAMES, deliverChanges, fmtWhen, type ChangeLine } from './notif
 import { createSession } from './sessions';
 import { clearFutureOccurrences } from './timetable';
 
+/** "CS-301 (Operating Systems)" — just the code when the title adds nothing. */
+const label = (c: { code: string; title: string }) => (c.title && c.title !== c.code ? `${c.code} (${c.title})` : c.code);
+
 /** Local "now" of the institution, from the server clock (tests move it). */
 export async function localNow(db: Queryable, tz: string, nowMs: number): Promise<{ today: string; now: string }> {
   const { rows } = await db.query<{ today: string; now: string }>(
@@ -308,7 +311,7 @@ export async function publishOps(
   const slotsToMaterialize: string[] = [];
   const courseInfo = async (id: string) =>
     (
-      await tx.query<{ code: string; instructor_id: string | null }>('select code, instructor_id from courses where id = $1', [id])
+      await tx.query<{ code: string; title: string; instructor_id: string | null }>('select code, title, instructor_id from courses where id = $1', [id])
     ).rows[0]!;
   const nameOf = async (userId: string | null) =>
     userId ? ((await tx.query<{ full_name: string }>('select full_name from users where id = $1', [userId])).rows[0]?.full_name ?? 'another teacher') : null;
@@ -336,7 +339,7 @@ export async function publishOps(
           [o.sessionId, start, end, o.roomId !== undefined, room?.id ?? null, room?.name ?? null, room?.lat ?? null, room?.lng ?? null, room?.radius_m ?? null, opts.note ?? null, t, auth.userId],
         );
         const c = await courseInfo(s.course_id);
-        const l: ChangeLine = { kind: 'rescheduled', courseId: s.course_id, courseCode: c.code, sessionId: o.sessionId, text: noted(`${c.code} moved: ${fmtWhen(s.scheduled_start, tz)} → ${fmtWhen(start, tz)}${room ? ` · ${room.name}` : ''}`, opts.note) };
+        const l: ChangeLine = { kind: 'rescheduled', courseId: s.course_id, courseCode: c.code, sessionId: o.sessionId, text: noted(`${label(c)} moved: ${fmtWhen(s.scheduled_start, tz)} → ${fmtWhen(start, tz)}${room ? ` · ${room.name}` : ''}`, opts.note) };
         lines.push(l);
         tellStaff(s.substitute_id ?? c.instructor_id, l);
         break;
@@ -345,7 +348,7 @@ export async function publishOps(
         const s = (await tx.query<{ course_id: string; scheduled_start: Date; substitute_id: string | null }>('select course_id, scheduled_start, substitute_id from class_sessions where id = $1', [o.sessionId])).rows[0]!;
         await tx.query(`update class_sessions set status = 'cancelled', change_kind = 'cancelled', change_note = $2, changed_at = $3, changed_by = $4 where id = $1`, [o.sessionId, o.reason, t, auth.userId]);
         const c = await courseInfo(s.course_id);
-        const l: ChangeLine = { kind: 'cancelled', courseId: s.course_id, courseCode: c.code, sessionId: o.sessionId, text: `${c.code} on ${fmtWhen(s.scheduled_start, tz)} is cancelled — ${o.reason}` };
+        const l: ChangeLine = { kind: 'cancelled', courseId: s.course_id, courseCode: c.code, sessionId: o.sessionId, text: `${label(c)} on ${fmtWhen(s.scheduled_start, tz)} is cancelled — ${o.reason}` };
         lines.push(l);
         tellStaff(s.substitute_id ?? c.instructor_id, l);
         break;
@@ -362,7 +365,7 @@ export async function publishOps(
           [o.sessionId, next, t, auth.userId, note],
         );
         const who = (await nameOf(next ?? c.instructor_id)) ?? 'the usual teacher';
-        const l: ChangeLine = { kind: 'substitute', courseId: s.course_id, courseCode: c.code, sessionId: o.sessionId, text: noted(`${c.code} on ${fmtWhen(s.scheduled_start, tz)} will be taken by ${who}`, note) };
+        const l: ChangeLine = { kind: 'substitute', courseId: s.course_id, courseCode: c.code, sessionId: o.sessionId, text: noted(`${label(c)} on ${fmtWhen(s.scheduled_start, tz)} will be taken by ${who}`, note) };
         lines.push(l);
         tellStaff(next, { ...l, text: `You’re taking ${c.code} on ${fmtWhen(s.scheduled_start, tz)} (adjustment)` });
         tellStaff(s.substitute_id, l);
@@ -397,7 +400,7 @@ export async function publishOps(
           changedAt: t,
         });
         created[o.tempId] = s.id;
-        const l: ChangeLine = { kind: 'extra', courseId: o.courseId, courseCode: c.code, sessionId: s.id, text: noted(`Extra ${c.code} class: ${fmtWhen(start, tz)}${room ? ` · ${room.name}` : ''}`, opts.note) };
+        const l: ChangeLine = { kind: 'extra', courseId: o.courseId, courseCode: c.code, sessionId: s.id, text: noted(`Extra ${label(c)} class: ${fmtWhen(start, tz)}${room ? ` · ${room.name}` : ''}`, opts.note) };
         lines.push(l);
         tellStaff(sub ?? c.instructor_id, l);
         break;

@@ -228,6 +228,6 @@ const styles = StyleSheet.create({
   controls: { position: 'absolute', left: 0, right: 0, bottom: 150, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 14 },
   zooms: { flexDirection: 'row', gap: 6, padding: 4, borderRadius: 999, backgroundColor: 'rgba(5,8,20,0.6)' },
   zoom: { minWidth: 40, height: 34, paddingHorizontal: 8, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(5,8,20,0.6)' },
-  zoomOn: { backgroundColor: 'rgba(34,211,238,0.18)' },
+  zoomOn: { backgroundColor: 'rgba(255, 255, 255, 0.18)' },
   zoomText: { fontFamily: fonts.monoMedium, fontSize: 13, color: colors.text },
 });

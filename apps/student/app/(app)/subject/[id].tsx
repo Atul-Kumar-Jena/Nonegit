@@ -5,7 +5,7 @@ import { ArrowLeft, Minus, Plus } from 'lucide-react-native';
 import { minToAttendOfNext, type HistoryItem } from '@attendly/protocol';
 import { Screen } from '@kit/components/Screen';
 import { Badge, Card, ErrorState, IconButton, Loading, ProgressBar, SectionLabel, Text } from '@kit/components/ui';
-import { dayLabel, pct, zoned } from '@kit/lib/format';
+import { dayLabel, pct, zoned, clock } from '@kit/lib/format';
 import { colors, fonts, radius, toneColor } from '@kit/theme';
 import { ChangeNote } from '@/components/ChangeNote';
 import { useSubjectDetail } from '@/state/queries';
@@ -144,7 +144,7 @@ function HistoryRow({ h, tz, first }: { h: HistoryItem; tz: string; first: boole
       <View style={[styles.dot, { backgroundColor: toneColor[tone].fg }]} />
       <View style={{ flex: 1 }}>
         <Text variant="bodyStrong">
-          {dayLabel(h.scheduledStart, tz)} · {zoned(h.scheduledStart, tz).hm}
+          {dayLabel(h.scheduledStart, tz)} · {clock(h.scheduledStart, tz)}
         </Text>
         <Text variant="small">{[h.lectureNo ? `Lecture ${h.lectureNo}` : null, h.room, how].filter(Boolean).join(' · ') || ' '}</Text>
         <ChangeNote change={h.change} tz={tz} />

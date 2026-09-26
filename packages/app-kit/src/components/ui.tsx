@@ -23,7 +23,7 @@ type Variant = 'display' | 'title' | 'heading' | 'body' | 'bodyStrong' | 'small'
 
 const variantStyle: Record<Variant, TextStyle> = {
   display: { fontFamily: fonts.bold, fontSize: 44, letterSpacing: -1.5, color: colors.text },
-  title: { fontFamily: fonts.bold, fontSize: 26, letterSpacing: -0.6, color: colors.text },
+  title: { fontFamily: fonts.bold, fontSize: 30, letterSpacing: -1, color: colors.text },
   heading: { fontFamily: fonts.semibold, fontSize: 17, letterSpacing: -0.2, color: colors.text },
   body: { fontFamily: fonts.regular, fontSize: 15, lineHeight: 22, color: colors.textMuted },
   bodyStrong: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
@@ -102,7 +102,7 @@ export function Button({
   accessibilityHint?: string;
 }) {
   const inactive = disabled || loading;
-  const textColor = kind === 'primary' ? '#03141c' : kind === 'danger' ? colors.red : colors.text;
+  const textColor = kind === 'primary' ? colors.bg : kind === 'danger' ? colors.red : colors.text;
   const content = (
     <View style={[styles.btnInner, compact && styles.btnCompact]}>
       {loading ? <ActivityIndicator color={textColor} size="small" /> : null}
@@ -217,7 +217,7 @@ export function Segmented<T extends string>({ value, options, onChange }: { valu
 
 export function ProgressBar({ value, marker, tone = 'cyan', height = 6 }: { value: number | null; marker?: number; tone?: Tone; height?: number }) {
   const v = Math.max(0, Math.min(100, value ?? 0));
-  const fill = tone === 'amber' ? (['#fbbf24', '#f59e0b'] as const) : tone === 'red' ? (['#f87171', '#ef4444'] as const) : (['#22d3ee', '#3b82f6'] as const);
+  const fill = tone === 'amber' ? (['#fbbf24', '#f59e0b'] as const) : tone === 'red' ? (['#f87171', '#ef4444'] as const) : (['#ffffff', '#d4d4d4'] as const);
   return (
     <View
       style={[styles.track, { height, borderRadius: height }]}
@@ -235,7 +235,7 @@ export function ProgressBar({ value, marker, tone = 'cyan', height = 6 }: { valu
 export function Avatar({ text, size = 40 }: { text: string; size?: number }) {
   return (
     <LinearGradient colors={gradients.avatar} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: size, height: size, borderRadius: size / 2, alignItems: 'center', justifyContent: 'center' }}>
-      <RNText style={{ fontFamily: fonts.monoMedium, color: '#fff', fontSize: size * 0.36 }} maxFontSizeMultiplier={1}>
+      <RNText style={{ fontFamily: fonts.monoMedium, color: colors.bg, fontSize: size * 0.36 }} maxFontSizeMultiplier={1}>
         {text}
       </RNText>
     </LinearGradient>
@@ -292,27 +292,27 @@ export function Notice({ message, tone = 'amber', onDismiss }: { message: string
 
 const styles = StyleSheet.create({
   card: { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, borderRadius: radius.lg },
-  sectionLabel: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 22, marginBottom: 10 },
+  sectionLabel: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 28, marginBottom: 12 },
   badge: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: 9, paddingVertical: 3.5, alignSelf: 'flex-start' },
   badgeText: { fontFamily: fonts.medium, fontSize: 11.5 },
   dot: { width: 6, height: 6, borderRadius: 3 },
-  btn: { borderRadius: radius.md, overflow: 'hidden', minHeight: 50 },
-  btnGradient: { flex: 1, borderRadius: radius.md },
+  btn: { borderRadius: radius.pill, overflow: 'hidden', minHeight: 50 },
+  btnGradient: { flex: 1, borderRadius: radius.pill },
   btnInner: { flex: 1, minHeight: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 18 },
   btnCompact: { minHeight: 40, paddingHorizontal: 14 },
   btnText: { fontFamily: fonts.semibold, fontSize: 15 },
-  btnSecondary: { backgroundColor: colors.cardHi, borderWidth: 1, borderColor: colors.borderHi },
+  btnSecondary: { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.borderHi },
   btnDanger: { backgroundColor: 'rgba(248,113,113,0.08)', borderWidth: 1, borderColor: 'rgba(248,113,113,0.35)' },
   btnGhost: { backgroundColor: 'transparent' },
-  iconBtn: { width: 40, height: 40, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' },
+  iconBtn: { width: 42, height: 42, borderRadius: 21, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' },
   input: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 52, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bgRaised, paddingHorizontal: 14 },
   inputText: { flex: 1, color: colors.text, fontFamily: fonts.regular, fontSize: 16, paddingVertical: 12 },
   segmented: { flexDirection: 'row', backgroundColor: colors.bgRaised, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, padding: 4, gap: 4 },
   segment: { flex: 1, minHeight: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  segmentActive: { backgroundColor: 'rgba(34,211,238,0.10)', borderWidth: 1, borderColor: 'rgba(34,211,238,0.28)' },
+  segmentActive: { backgroundColor: 'rgba(255, 255, 255, 0.10)', borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.28)' },
   segmentText: { fontFamily: fonts.medium, fontSize: 13, color: colors.textMuted },
-  track: { backgroundColor: 'rgba(138,148,173,0.14)', overflow: 'visible', width: '100%' },
-  marker: { position: 'absolute', width: 2, marginLeft: -1, backgroundColor: 'rgba(232,236,247,0.55)', borderRadius: 1 },
+  track: { backgroundColor: 'rgba(255,255,255,0.10)', overflow: 'visible', width: '100%' },
+  marker: { position: 'absolute', width: 2, marginLeft: -1, backgroundColor: 'rgba(255,255,255,0.55)', borderRadius: 1 },
   infoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 16, paddingVertical: 7 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   notice: { borderWidth: 1, borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 10 },

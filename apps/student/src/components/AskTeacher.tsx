@@ -92,7 +92,7 @@ export function AskTeacherSheet({
                 <Notice tone="green" message="Sent. You’ll get a notification when your teacher replies." />
               </View>
             ) : (
-              <Button title="Send" onPress={() => void send()} loading={busy} disabled={note.trim().length < 3} icon={<Send color="#03141c" size={16} />} style={{ marginTop: 16 }} />
+              <Button title="Send" onPress={() => void send()} loading={busy} disabled={note.trim().length < 3} icon={<Send color="#0a0a0a" size={16} />} style={{ marginTop: 16 }} />
             )}
           </ScrollView>
         </View>

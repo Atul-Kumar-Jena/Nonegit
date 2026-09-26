@@ -34,7 +34,7 @@ export default function Requests() {
 
   return (
     <Screen onRefresh={() => void q.refetch()} refreshing={q.isRefetching}>
-      <Header title="Phone requests" />
+      <Header info="phoneRequests" title="Phone requests" />
       <Text variant="small">
         Each account works on one phone. Approve only if you’re sure the request is genuine — e.g. the person told you they changed phones.
       </Text>

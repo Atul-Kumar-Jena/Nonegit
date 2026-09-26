@@ -156,7 +156,7 @@ export default function Roster() {
               disabled={!candidates.length}
               onPress={() => setPicked(picked.size === candidates.length ? new Set() : new Set(candidates.map((c) => c.id)))}
             />
-            <Button title={`Enrol ${picked.size || ''}`.trim()} onPress={() => void apply([...picked], [])} loading={busy} disabled={!picked.size} icon={<UserPlus color="#03141c" size={16} />} style={{ flex: 1 }} />
+            <Button title={`Enrol ${picked.size || ''}`.trim()} onPress={() => void apply([...picked], [])} loading={busy} disabled={!picked.size} icon={<UserPlus color="#0a0a0a" size={16} />} style={{ flex: 1 }} />
           </View>
         </>
       )}

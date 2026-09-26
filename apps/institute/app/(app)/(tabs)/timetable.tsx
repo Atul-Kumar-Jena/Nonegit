@@ -75,7 +75,7 @@ export default function Timetable() {
       </Text>
 
       {admin ? (
-        <Button title="Open the planner (drag & drop)" onPress={() => router.push('/planner')} icon={<CalendarRange color="#03141c" size={16} />} style={{ marginTop: 12 }} />
+        <Button title="Open the planner (drag & drop)" onPress={() => router.push('/planner')} icon={<CalendarRange color="#0a0a0a" size={16} />} style={{ marginTop: 12 }} />
       ) : null}
       <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
         <Button title="Who’s busy where" kind="ghost" compact onPress={() => router.push('/busy')} icon={<Clock4 color={colors.text} size={14} />} />
@@ -154,7 +154,7 @@ export default function Timetable() {
 const styles = StyleSheet.create({
   days: { paddingHorizontal: 20, gap: 8 },
   day: { width: 54, paddingVertical: 10, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, alignItems: 'center', gap: 2 },
-  dayOn: { borderColor: 'rgba(34,211,238,0.5)', backgroundColor: 'rgba(34,211,238,0.08)' },
+  dayOn: { borderColor: 'rgba(255, 255, 255, 0.5)', backgroundColor: 'rgba(255, 255, 255, 0.08)' },
   dayText: { fontFamily: fonts.medium, fontSize: 13, color: colors.textMuted },
   dayCount: { fontFamily: fonts.mono, fontSize: 11, color: colors.textDim },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },

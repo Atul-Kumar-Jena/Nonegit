@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, Share } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Monitor, MonitorX, ShieldCheck } from 'lucide-react-native';
 import { normalizePresentCode, type PresentScreen } from '@attendly/protocol';
@@ -99,11 +99,20 @@ export function BigScreenSheet({ sessionId, courseLabel, open, onClose }: { sess
       <Text variant="small">
         On the laptop, projector PC or smartboard, open this address in a browser:
       </Text>
-      <Card style={{ marginTop: 10, paddingVertical: 12 }}>
+      <Card style={{ marginTop: 10, paddingVertical: 12, gap: 10 }}>
         <Text style={styles.url} selectable>
           {host}/present
         </Text>
+        <Button
+          title="Share link (WhatsApp, email…)"
+          kind="secondary"
+          compact
+          onPress={() => void Share.share({ message: `${server?.url ?? `https://${host}`}/present` }).catch(() => undefined)}
+        />
       </Card>
+      <Text variant="small" style={{ marginTop: 6 }}>
+        On a free server the page can take up to a minute to open the first time.
+      </Text>
       <Text variant="small" style={{ marginTop: 10 }}>
         It shows an 8-character code. Type it here:
       </Text>
@@ -142,7 +151,7 @@ export function BigScreenSheet({ sessionId, courseLabel, open, onClose }: { sess
           <Text variant="small" color={colors.text}>
             Only approve if this is the screen in front of you. It will show the {courseLabel} QR until the class ends or you disconnect it.
           </Text>
-          <Button title="Approve & show QR" onPress={() => void approve()} loading={busy === 'approve'} icon={<ShieldCheck color="#03141c" size={16} />} />
+          <Button title="Approve & show QR" onPress={() => void approve()} loading={busy === 'approve'} icon={<ShieldCheck color="#0a0a0a" size={16} />} />
         </Card>
       ) : null}
       {done ? (

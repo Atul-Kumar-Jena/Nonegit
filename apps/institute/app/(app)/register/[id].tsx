@@ -5,7 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, CheckCheck, Eraser, QrCode, Search } from 'lucide-react-native';
 import { ManualBody, randomToken } from '@attendly/protocol';
 import { Screen } from '@kit/components/Screen';
-import { Badge, Button, Card, Input, Loading, Notice, Text } from '@kit/components/ui';
+import { Badge, Button, Card, Input, Loading, Notice, Segmented, Text } from '@kit/components/ui';
 import { ApiRequestError } from '@kit/lib/api-core';
 import { outbox, useOutbox } from '@kit/lib/outbox';
 import { useApi } from '@kit/state/session';
@@ -41,6 +41,8 @@ export default function Register() {
   const { items: queued } = useOutbox();
 
   const [ticks, setTicks] = useState<Set<string> | null>(null);
+  /** Roll-call style: everyone starts present and you tap the absentees (or the other way round). */
+  const [mode, setMode] = useState<'absent' | 'present'>('absent');
   const [q, setQ] = useState('');
   const [note, setNote] = useState('');
   const [checked, setChecked] = useState(false);
@@ -70,7 +72,10 @@ export default function Register() {
 
   useEffect(() => {
     if (ticks || !rows) return;
-    setTicks(new Set(pendingDraft ? pendingDraft.present : rows.filter((r) => r.wasPresent).map((r) => r.userId)));
+    const already = rows.filter((r) => r.wasPresent).map((r) => r.userId);
+    // A fresh paper register starts as roll call: everyone present, tap the absentees.
+    setTicks(new Set(pendingDraft ? pendingDraft.present : already.length ? already : rows.map((r) => r.userId)));
+    if (!pendingDraft && already.length) setMode('present');
   }, [rows, ticks, pendingDraft]);
 
   const offlineMode = !feed.data && !!packRoster;
@@ -161,16 +166,29 @@ export default function Register() {
 
   return (
     <Screen scroll={false} keyboard>
-      <Header title="Register" subtitle={`${s.courseCode} · ${s.courseTitle}`} />
+      <Header info="register" title="Register" subtitle={`${s.courseCode} · ${s.courseTitle}`} />
       <View style={styles.warning}>
-        <AlertTriangle color={colors.amber} size={18} />
+        <AlertTriangle color={colors.amber} size={16} />
         <Text variant="small" color={colors.text} style={{ flex: 1 }}>
           <Text variant="small" color={colors.amber} style={{ fontFamily: fonts.semibold }}>
-            Manual attendance.{' '}
-          </Text>
-          Nothing here is checked by GPS or QR — you are confirming each name. Every change is saved under your name with the time and can be audited. Tick only the students you can see in class.
+            Manual attendance
+          </Text>{' '}
+          — saved under your name and audited. Mark only who you can see.
         </Text>
       </View>
+      <Segmented
+        value={mode}
+        onChange={(m) => {
+          setMode(m);
+          setChecked(false);
+          // Switching to roll-call on an untouched register: start with everyone present.
+          if (m === 'absent' && ticks && ticks.size === 0 && rows) setTicks(new Set(rows.map((r) => r.userId)));
+        }}
+        options={[
+          { value: 'absent', label: 'Tap who’s absent' },
+          { value: 'present', label: 'Tap who’s present' },
+        ]}
+      />
       {offlineMode ? (
         <Notice tone="violet" message="Offline — this register is saved on the phone and uploads automatically. It adds the students you tick; students who scanned stay marked." />
       ) : null}
@@ -228,7 +246,12 @@ export default function Register() {
               accessibilityRole="checkbox"
               accessibilityState={{ checked: on }}
               accessibilityLabel={`${item.fullName}${item.rollNo ? `, ${item.rollNo}` : ''}`}
-              style={[styles.row, on && { backgroundColor: toneColor.green.bg }, changed && { borderColor: toneColor.amber.line }]}
+              style={[
+                styles.row,
+                mode === 'present' && on && { backgroundColor: toneColor.green.bg },
+                mode === 'absent' && !on && { backgroundColor: toneColor.red.bg, borderColor: toneColor.red.line },
+                changed && mode === 'present' && { borderColor: toneColor.amber.line },
+              ]}
             >
               <Checkbox checked={on} tone="green" />
               <View style={{ flex: 1 }}>
@@ -238,7 +261,7 @@ export default function Register() {
                 <Text variant="monoSmall">{item.rollNo ?? 'no roll no.'}</Text>
               </View>
               {item.scanned ? <Badge label="Scanned" tone="cyan" icon={<QrCode color={colors.cyan} size={10} />} /> : null}
-              {changed ? <Badge label={on ? 'Adding' : 'Removing'} tone="amber" dot={false} /> : null}
+              {!on ? <Badge label="Absent" tone="red" dot={false} /> : changed ? <Badge label="Present" tone="green" dot={false} /> : null}
             </Pressable>
           );
         }}
@@ -270,6 +293,6 @@ const styles = StyleSheet.create({
   tools: { flexDirection: 'row', gap: 8, marginTop: 8 },
   bulk: { flexDirection: 'row', alignItems: 'center', gap: 8, marginVertical: 10 },
   bulkBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: colors.border },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, paddingVertical: 11, marginHorizontal: 4, marginBottom: 6, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 14, marginHorizontal: 4, marginBottom: 6, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
   confirm: { flexDirection: 'row', alignItems: 'center', gap: 10 },
 });

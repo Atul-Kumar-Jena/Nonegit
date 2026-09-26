@@ -81,7 +81,10 @@ export function useDrag(opts: { disabled: boolean; onTap: () => void; onStart: (
           else if (!s.cancelled && Date.now() - s.t0 < LONG_PRESS_MS + 400) ref.current.onTap();
           s.active = false;
         },
+        // Once a drag is on, keep the finger: parents (lists) may not take it over.
+        onMoveShouldSetPanResponderCapture: () => state.current.active,
         onPanResponderTerminationRequest: () => !state.current.active,
+        onShouldBlockNativeResponder: () => true,
         onPanResponderTerminate: () => {
           const s = state.current;
           if (s.timer) clearTimeout(s.timer);
@@ -263,7 +266,8 @@ export function Board(p: BoardProps) {
   const measure = useCallback(
     () =>
       new Promise<void>((resolve) => {
-        rootRef.current?.measureInWindow((rx, ry) => {
+        // Page coordinates: the same space as the finger's pageX/pageY on every platform.
+        rootRef.current?.measure((_x, _y, _w, _h, rx, ry) => {
           origin.current.root = { x: rx, y: ry };
           // The grid's viewport starts below the day headers.
           origin.current.grid = { x: rx, y: ry + HEADER_H };
@@ -407,7 +411,7 @@ export function Board(p: BoardProps) {
                   </View>
                 ))}
                 {p.days.map((d, i) => (
-                  <View key={d} style={[styles.dayCol, { left: GUTTER + i * colW, width: colW, height: gridH }, d === p.today && { backgroundColor: 'rgba(34,211,238,0.035)' }, d < p.today && { backgroundColor: 'rgba(255,255,255,0.02)' }]} />
+                  <View key={d} style={[styles.dayCol, { left: GUTTER + i * colW, width: colW, height: gridH }, d === p.today && { backgroundColor: 'rgba(255, 255, 255, 0.035)' }, d < p.today && { backgroundColor: 'rgba(255,255,255,0.02)' }]} />
                 ))}
                 {target ? (
                   <View
@@ -488,7 +492,7 @@ export function Board(p: BoardProps) {
 const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border, backgroundColor: colors.bg },
   dayHead: { alignItems: 'center', justifyContent: 'center', borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: colors.border },
-  today: { backgroundColor: 'rgba(34,211,238,0.07)' },
+  today: { backgroundColor: 'rgba(255, 255, 255, 0.07)' },
   dayName: { fontFamily: fonts.semibold, fontSize: 12, color: colors.text },
   dayDate: { fontFamily: fonts.mono, fontSize: 10, color: colors.textDim },
   hourLine: { position: 'absolute', left: 0, right: 0, height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
@@ -497,7 +501,7 @@ const styles = StyleSheet.create({
   card: { position: 'absolute', borderRadius: 8, paddingHorizontal: 4, paddingVertical: 3, overflow: 'hidden' },
   code: { fontFamily: fonts.bold, fontSize: 11, color: colors.text },
   meta: { fontFamily: fonts.mono, fontSize: 9.5, color: colors.textMuted },
-  dropPreview: { position: 'absolute', borderRadius: 8, borderWidth: 2, borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(34,211,238,0.08)' },
+  dropPreview: { position: 'absolute', borderRadius: 8, borderWidth: 2, borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255, 255, 255, 0.08)' },
   dropText: { fontFamily: fonts.mono, fontSize: 10, color: colors.text },
   tray: { paddingTop: 10, paddingBottom: 6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
   chip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, borderWidth: 1, minWidth: 84 },

@@ -1,18 +1,18 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Linking, Pressable, StyleSheet, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
-import { CalendarDays, ChevronRight, ClipboardList, Clock3, MapPin, ScanLine, ShieldCheck, Smartphone, TrendingDown, TrendingUp } from 'lucide-react-native';
+import { CalendarDays, ChevronRight, ClipboardList, MapPin, ScanLine, TrendingDown, TrendingUp } from 'lucide-react-native';
 import type { DashboardResponse, TodaySession } from '@attendly/protocol';
 import { NotificationBell } from '@kit/components/NotificationBell';
 import { Screen } from '@kit/components/Screen';
 import { usePermissionsOnboarding } from '@kit/lib/notifications';
 import { SyncBanner } from '@kit/components/SyncBanner';
 import { Avatar, Badge, Card, ErrorState, Loading, ProgressBar, SectionLabel, Text } from '@kit/components/ui';
-import { dayLabel, drift, greeting, initials, pct, shortFingerprint, timeRange } from '@kit/lib/format';
+import { clock, dayLabel, greeting, initials, pct, timeRange } from '@kit/lib/format';
 import { integrityReport } from '@kit/lib/device-info';
 import { ensureLocationPermission, locationStatus } from '@kit/lib/location';
 import { ChangeNote } from '@/components/ChangeNote';
-import { useDashboard } from '@/state/queries';
+import { useDashboard, useTimetable } from '@/state/queries';
 import { useApi } from '@kit/state/session';
 import { colors, fonts, toneColor } from '@kit/theme';
 
@@ -48,35 +48,35 @@ export default function Home() {
       <Header d={d} />
       <TermCard d={d} offline={offline} updatedAt={q.dataUpdatedAt} />
       <SyncBanner />
-      <View style={styles.grid}>
-        <Tile icon={<Smartphone color={colors.textMuted} size={14} />} label="Device" value="Bound" tone="green" sub={`HWID ${shortFingerprint(d.device.fingerprint)}`} />
-        <Tile
-          icon={<MapPin color={colors.textMuted} size={14} />}
-          label="GPS"
-          value={gps === 'ready' ? 'Ready' : gps === 'permission' ? 'Allow' : gps === 'off' ? 'Off' : '…'}
-          tone={gps === 'ready' ? 'green' : 'amber'}
-          sub={gps === 'ready' ? 'Precise · on demand' : gps === 'permission' ? 'Tap to allow' : 'Tap to turn on'}
-          onPress={
+      {gps && gps !== 'ready' ? (
+        <Pressable
+          onPress={() =>
             gps === 'permission'
-              ? () =>
-                  void ensureLocationPermission().then((r) => {
-                    if (r === 'blocked') void Linking.openSettings();
-                    void locationStatus().then(setGps);
-                  })
-              : gps === 'off'
-                ? () => void Linking.openSettings()
-                : undefined
+              ? void ensureLocationPermission().then((r) => {
+                  if (r === 'blocked') void Linking.openSettings();
+                  void locationStatus().then(setGps);
+                })
+              : void Linking.openSettings()
           }
-        />
-        <Tile
-          icon={<ShieldCheck color={colors.textMuted} size={14} />}
-          label="Integrity"
-          value={rooted === null ? '…' : rooted ? 'Fail' : 'Pass'}
-          tone={rooted ? 'amber' : 'green'}
-          sub={rooted ? 'Rooted device detected' : 'Key sealed · signed'}
-        />
-        <DriftTile driftMs={api.clockDriftMs()} />
-      </View>
+          accessibilityRole="button"
+          style={{ marginTop: 12 }}
+        >
+          <Card tone="amber" style={styles.link}>
+            <MapPin color={colors.amber} size={18} />
+            <Text variant="small" style={{ flex: 1 }}>
+              {gps === 'permission' ? 'Allow location so your scans can be checked in the classroom. Tap to allow.' : 'Location is off. Turn it on to scan attendance.'}
+            </Text>
+            <ChevronRight color={colors.textDim} size={18} />
+          </Card>
+        </Pressable>
+      ) : null}
+      {rooted ? (
+        <View style={{ marginTop: 12 }}>
+          <Card tone="red">
+            <Text variant="small">This phone looks rooted or modified, so attendance scans will be refused.</Text>
+          </Card>
+        </View>
+      ) : null}
 
       <SectionLabel right={<Text variant="monoSmall">{d.today.length} {d.today.length === 1 ? 'class' : 'classes'}</Text>}>
         {`Today · ${dayLabel(d.serverTime, d.timezone)}`}
@@ -92,6 +92,7 @@ export default function Home() {
           ))}
         </View>
       )}
+      <ComingUp tz={d.timezone} today={dayLabel(d.serverTime, d.timezone)} />
       <Pressable onPress={() => router.push('/timetable')} accessibilityRole="button" style={{ marginTop: 10 }}>
         <Card style={styles.link}>
           <CalendarDays color={colors.cyan} size={18} />
@@ -102,6 +103,42 @@ export default function Home() {
         </Card>
       </Pressable>
     </Screen>
+  );
+}
+
+/** The next scheduled classes after today (moved / extra / cancelled ones included). */
+function ComingUp({ tz, today }: { tz: string; today: string }) {
+  const t = useTimetable();
+  const next = (t.data?.upcoming ?? []).filter((u) => dayLabel(u.scheduledStart, tz) !== today).slice(0, 5);
+  if (!next.length) return null;
+  return (
+    <>
+      <SectionLabel>Coming up</SectionLabel>
+      <Card padded={false}>
+        {next.map((u, i) => (
+          <Pressable
+            key={u.sessionId}
+            onPress={() => router.push({ pathname: '/subject/[id]', params: { id: u.courseId } })}
+            accessibilityRole="button"
+            style={[styles.upRow, i < next.length - 1 && styles.upDivider, u.status === 'cancelled' && { opacity: 0.55 }]}
+          >
+            <View style={{ width: 86 }}>
+              <Text variant="monoSmall">{dayLabel(u.scheduledStart, tz)}</Text>
+              <Text variant="bodyStrong">{clock(u.scheduledStart, tz)}</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text variant="bodyStrong" numberOfLines={1}>
+                {u.courseCode} · {u.courseTitle}
+              </Text>
+              <Text variant="small" numberOfLines={1}>
+                {u.room ?? 'Room to be announced'}
+              </Text>
+              <ChangeNote change={u.change} tz={tz} />
+            </View>
+          </Pressable>
+        ))}
+      </Card>
+    </>
   );
 }
 
@@ -169,41 +206,6 @@ function TermCard({ d, offline, updatedAt }: { d: DashboardResponse; offline: bo
   );
 }
 
-function Tile({ icon, label, value, sub, tone, onPress }: { icon: ReactNode; label: string; value: string; sub: string; tone: 'green' | 'amber' | 'cyan'; onPress?: () => void }) {
-  const card = (
-    <Card style={onPress ? styles.tileInner : styles.tile}>
-      <View style={styles.tileHead}>
-        {icon}
-        <Text variant="label">{label}</Text>
-      </View>
-      <Text style={{ fontFamily: fonts.semibold, fontSize: 16, color: toneColor[tone].fg, marginTop: 8 }}>{value}</Text>
-      <Text variant="monoSmall" numberOfLines={1} style={{ marginTop: 2 }}>
-        {sub}
-      </Text>
-    </Card>
-  );
-  return onPress ? (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`${label}: ${value}. ${sub}`} style={styles.tileWrap}>
-      {card}
-    </Pressable>
-  ) : (
-    card
-  );
-}
-
-function DriftTile({ driftMs }: { driftMs: number | null }) {
-  const bad = driftMs !== null && Math.abs(driftMs) > 30_000;
-  return (
-    <Tile
-      icon={<Clock3 color={colors.textMuted} size={14} />}
-      label="Time drift"
-      value={drift(driftMs)}
-      tone={bad ? 'amber' : 'green'}
-      sub={bad ? 'Auto-corrected' : 'Server-synced'}
-    />
-  );
-}
-
 /** Scans open 15 min before a scheduled class and close 15 min after it (the server enforces the same window). */
 const GRACE_MS = 15 * 60_000;
 
@@ -213,7 +215,7 @@ function SessionCard({ s, tz, now }: { s: TodaySession; tz: string; now: number 
   const inWindow = s.status === 'scheduled' && now >= Date.parse(s.scheduledStart) - GRACE_MS && now <= Date.parse(s.scheduledEnd) + GRACE_MS;
   const canScan = !manual && !s.marked && (live || inWindow);
   return (
-    <Card style={[styles.session, live && { borderColor: 'rgba(34,211,238,0.35)' }]} padded={false}>
+    <Card style={[styles.session, live && { borderColor: 'rgba(255, 255, 255, 0.35)' }]} padded={false}>
       <View style={[styles.accent, { backgroundColor: live ? colors.cyan : s.marked ? colors.green : colors.borderHi }]} />
       <View style={{ flex: 1, paddingVertical: 14, paddingLeft: 14, gap: 3 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -239,8 +241,8 @@ function SessionCard({ s, tz, now }: { s: TodaySession; tz: string; now: number 
             accessibilityLabel={`Scan for ${s.courseTitle}`}
             style={({ pressed }) => [styles.scanBtn, { opacity: pressed ? 0.8 : 1 }]}
           >
-            <ScanLine color="#04141c" size={15} strokeWidth={2.4} />
-            <Text style={{ fontFamily: fonts.semibold, fontSize: 13, color: '#04141c' }}>Scan</Text>
+            <ScanLine color="#0a0a0a" size={15} strokeWidth={2.4} />
+            <Text style={{ fontFamily: fonts.semibold, fontSize: 13, color: '#0a0a0a' }}>Scan</Text>
           </Pressable>
         ) : s.marked ? (
           <Badge label="Present" tone="green" />
@@ -257,6 +259,8 @@ function SessionCard({ s, tz, now }: { s: TodaySession; tz: string; now: number 
 }
 
 const styles = StyleSheet.create({
+  upRow: { flexDirection: 'row', gap: 12, padding: 14, alignItems: 'center' },
+  upDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4 },
   between: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   delta: { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4, marginBottom: 10 },

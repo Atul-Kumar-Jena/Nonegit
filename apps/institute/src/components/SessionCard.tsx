@@ -17,7 +17,7 @@ export function SessionCard({ s, tz, showDate }: { s: StaffSession & { pendingSy
   const live = s.status === 'live';
   return (
     <Pressable onPress={() => router.push({ pathname: '/session/[id]', params: { id: s.id } })} accessibilityRole="button" accessibilityLabel={`${s.courseCode} ${s.courseTitle}, ${s.status}`}>
-      <Card style={[styles.card, live && { borderColor: 'rgba(34,211,238,0.4)' }, s.status === 'cancelled' && { opacity: 0.6 }]} padded={false}>
+      <Card style={[styles.card, live && { borderColor: 'rgba(255, 255, 255, 0.4)' }, s.status === 'cancelled' && { opacity: 0.6 }]} padded={false}>
         <View style={[styles.accent, { backgroundColor: live ? colors.cyan : s.status === 'closed' ? colors.green : s.status === 'cancelled' ? colors.red : colors.borderHi }]} />
         <View style={{ flex: 1, paddingVertical: 13, paddingLeft: 14, gap: 3 }}>
           <View style={styles.row}>

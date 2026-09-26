@@ -35,6 +35,8 @@ import { Board, type DragSource, type DropTarget } from '@/planner/Board';
 import { describeOp, type KnownSession } from '@/planner/describe';
 import { useDraft } from '@/planner/useDraft';
 import { useIsAdmin, useOverview, usePlannerWeek } from '@/queries';
+import { InfoButton } from '@kit/components/Features';
+import { HELP } from '@/help';
 import { ymdIn } from '@/time';
 
 type Scope = 'once' | 'weekly';
@@ -195,6 +197,7 @@ export default function Planner() {
         <IconButton label="Undo" onPress={() => history.length && (d.setOps(history[history.length - 1]!), setHistory((h) => h.slice(0, -1)))}>
           <Undo2 color={history.length ? colors.text : colors.textDim} size={18} />
         </IconButton>
+        <InfoButton title={HELP.planner!.title} text={HELP.planner!.text} />
       </View>
 
       <View style={styles.controls}>
@@ -291,7 +294,7 @@ export default function Planner() {
             {errorsCount ? `${errorsCount} ${errorsCount === 1 ? 'clash' : 'clashes'} to fix` : warnCount ? `${warnCount} to check` : d.ops.length ? 'No clashes' : 'Long-press a class to drag it'}
           </Text>
         </View>
-        <Button title="Review & publish" compact onPress={() => setReview(true)} disabled={!d.ops.length} icon={<ListChecks color="#03141c" size={16} />} />
+        <Button title="Review & publish" compact onPress={() => setReview(true)} disabled={!d.ops.length} icon={<ListChecks color="#0a0a0a" size={16} />} />
       </View>
 
       {selected && week ? (

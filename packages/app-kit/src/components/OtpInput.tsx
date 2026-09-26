@@ -53,7 +53,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  active: { borderColor: 'rgba(34,211,238,0.6)', backgroundColor: 'rgba(34,211,238,0.06)' },
+  active: { borderColor: 'rgba(255, 255, 255, 0.6)', backgroundColor: 'rgba(255, 255, 255, 0.06)' },
   digit: { fontFamily: fonts.monoMedium, fontSize: 24, color: colors.text },
   hidden: { position: 'absolute', opacity: 0, width: 1, height: 1 },
 });

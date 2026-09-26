@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Stack, type ErrorBoundaryProps } from 'expo-router';
-import { useSession } from '@kit/state/session';
+import { useSession, type NotificationTarget } from '@kit/state/session';
 import { OutboxRunner } from '@kit/components/OutboxRunner';
 import { NotificationRunner } from '@kit/lib/notifications';
 import { CrashScreen, RootShell } from '@kit/components/RootShell';
@@ -14,6 +14,7 @@ const AUDIENCE = {
   allowedRoles: ['teacher', 'admin'] as const,
   wrongRoleMessage: 'This app is for teachers and administrators. Students use the Attendly app.',
   requestsRoute: '/inbox',
+  routeFor: (d: NotificationTarget) => (d.kind === 'request' ? '/inbox' : d.sessionId ? `/session/${d.sessionId}` : '/timetable'),
 };
 
 /** Offline class state belongs to the signed-in account: forget it on sign-out. */

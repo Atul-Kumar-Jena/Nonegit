@@ -107,7 +107,7 @@ describe('one-off adjustments by a teacher', () => {
     const na = await notificationsOf(aarav);
     expect(na.unread).toBe(1);
     expect(na.items[0]!.title).toBe('Class moved · CS-301');
-    expect(na.items[0]!.body).toMatch(/CS-301 moved: .* 10:00 → .* 14:00 · LH-2/);
+    expect(na.items[0]!.body).toMatch(/CS-301 moved: .* 10:00 AM → .* 2:00 PM · LH-2/);
     expect((await notificationsOf(priya)).unread).toBe(1);
     // The teacher who made the change isn't notified of their own change.
     expect((await notificationsOf(t1)).unread).toBe(0);

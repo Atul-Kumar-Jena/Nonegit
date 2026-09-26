@@ -6,7 +6,7 @@ import { ArrowLeft, MessageSquareText } from 'lucide-react-native';
 import { ChangeRequest, STUDENT_TOPIC_LABELS } from '@attendly/protocol';
 import { Screen } from '@kit/components/Screen';
 import { Badge, Button, Card, ErrorState, IconButton, Loading, Notice, Text } from '@kit/components/ui';
-import { dayLabel, timeAgo, zoned } from '@kit/lib/format';
+import { dayLabel, timeAgo, zoned, clock } from '@kit/lib/format';
 import { useApi } from '@kit/state/session';
 import { colors, type Tone } from '@kit/theme';
 import { qk, useMyRequests, useTimetable } from '@/state/queries';
@@ -99,7 +99,7 @@ function RequestItem({ r, tz }: { r: ChangeRequest; tz?: string }) {
         <Badge label={st.label} tone={st.tone} dot={false} />
       </View>
       <Text variant="small">
-        {r.session.courseCode} · {dayLabel(r.session.start, tz)} {zoned(r.session.start, tz).hm} · to {r.to.name}
+        {r.session.courseCode} · {dayLabel(r.session.start, tz)} {clock(r.session.start, tz)} · to {r.to.name}
       </Text>
       {r.noteToTeacher ? <Text variant="body">“{r.noteToTeacher}”</Text> : null}
       {r.reply ? (

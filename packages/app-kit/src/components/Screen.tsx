@@ -4,12 +4,11 @@ import { SafeAreaView, type Edge } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors } from '../theme';
 
-/** Dark canvas with the soft cyan/violet glows from the design. */
+/** Near-black canvas with one soft grey glow, like attendly's site. */
 export function Backdrop() {
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      <LinearGradient colors={['rgba(34,211,238,0.10)', 'rgba(34,211,238,0)']} start={{ x: 1, y: 0 }} end={{ x: 0.3, y: 0.45 }} style={StyleSheet.absoluteFill} />
-      <LinearGradient colors={['rgba(139,92,246,0)', 'rgba(139,92,246,0.07)']} start={{ x: 0.7, y: 0.5 }} end={{ x: 0, y: 1 }} style={StyleSheet.absoluteFill} />
+      <LinearGradient colors={['rgba(255, 255, 255, 0.07)', 'rgba(255, 255, 255, 0)']} start={{ x: 0.9, y: 0 }} end={{ x: 0.35, y: 0.5 }} style={StyleSheet.absoluteFill} />
     </View>
   );
 }
@@ -67,5 +66,6 @@ export function Screen({
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  content: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 32 },
+  // Bottom padding clears the tab bar, so the last item always scrolls fully into view.
+  content: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 140 },
 });

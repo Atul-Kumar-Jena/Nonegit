@@ -38,7 +38,7 @@ export default function Classes() {
         <Text variant="title" style={{ flex: 1, marginTop: 4 }}>
           Classes
         </Text>
-        {admin ? <Button title="New course" compact onPress={() => router.push('/course-form')} icon={<Plus color="#03141c" size={16} />} /> : null}
+        {admin ? <Button title="New course" compact onPress={() => router.push('/course-form')} icon={<Plus color="#0a0a0a" size={16} />} /> : null}
       </View>
       {(q.data?.length ?? 0) > 6 ? (
         <View style={{ marginTop: 14 }}>

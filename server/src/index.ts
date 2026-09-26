@@ -5,6 +5,7 @@ import { migrate } from './migrate';
 import { seedDemo } from './seed';
 import { bootstrapInstitution } from './bootstrap';
 import { materializeTimetable } from './lib/timetable';
+import { createPushSender, parseServiceAccount, startPushDispatcher } from './lib/push';
 
 async function main() {
   const config = loadConfig();
@@ -24,12 +25,16 @@ async function main() {
   app.log.info({ kid: deps.signer.kid }, 'server signing key loaded');
 
   const stopJanitor = startJanitor(deps);
+  const fcm = parseServiceAccount(process.env.FCM_SERVICE_ACCOUNT);
+  const stopPush = fcm ? startPushDispatcher(db, createPushSender(fcm, (m, x) => app.log.warn(x, m)), (m, x) => app.log.warn(x, m)) : () => {};
+  app.log.info(fcm ? `instant push on (Firebase project ${fcm.project_id})` : 'instant push off (FCM_SERVICE_ACCOUNT not set): apps check for news themselves');
   let closing = false;
   const shutdown = async (signal: string) => {
     if (closing) return;
     closing = true;
     app.log.info(`${signal} received, shutting down gracefully`);
     stopJanitor();
+    stopPush();
     const force = setTimeout(() => process.exit(1), 10_000);
     force.unref();
     try {

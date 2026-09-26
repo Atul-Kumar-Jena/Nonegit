@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from 'react';
+import { installNavigationGuard } from '../lib/nav-guard';
 import { StyleSheet, View } from 'react-native';
 import type { ErrorBoundaryProps } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -20,6 +21,7 @@ import { Button, Text } from './ui';
 
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 void SystemUI.setBackgroundColorAsync(colors.bg).catch(() => undefined);
+installNavigationGuard();
 
 /** Fonts, splash handling and providers — the same boot sequence for every Attendly app. */
 export function RootShell({ audience, children }: { audience: AppAudience; children: ReactNode }) {

@@ -39,7 +39,7 @@ export default function Busy() {
 
   return (
     <Screen onRefresh={() => void q.refetch()} refreshing={q.isRefetching}>
-      <Header title="Who’s busy where" />
+      <Header info="busy" title="Who’s busy where" />
       <DateField value={date} onChange={setDate} />
       <View style={{ marginTop: 12 }}>
         <Segmented value={view} options={[{ value: 'teachers', label: 'Teachers' }, { value: 'rooms', label: 'Rooms' }]} onChange={setView} />
@@ -84,7 +84,7 @@ export default function Busy() {
                       onPress={() => router.push({ pathname: '/session/[id]', params: { id: b.sessionId } })}
                       accessibilityRole="button"
                       accessibilityLabel={`${b.courseCode} ${b.start} to ${b.end}${b.room ? ` in ${b.room}` : ''}`}
-                      style={[styles.block, { left: x(b.start), width: Math.max(6, x(b.end) - x(b.start)) }, b.substitute && { backgroundColor: 'rgba(139,92,246,0.55)' }]}
+                      style={[styles.block, { left: x(b.start), width: Math.max(6, x(b.end) - x(b.start)) }, b.substitute && { backgroundColor: 'rgba(255, 255, 255, 0.55)' }]}
                     >
                       <Text style={styles.blockText} numberOfLines={1}>
                         {b.courseCode}
@@ -114,7 +114,7 @@ const styles = StyleSheet.create({
   axis: { height: 16 },
   hour: { position: 'absolute', width: 16, textAlign: 'center', fontFamily: fonts.mono, fontSize: 10, color: colors.textDim },
   track: { height: 26, borderRadius: 8, backgroundColor: colors.bgRaised, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' },
-  block: { position: 'absolute', top: 2, bottom: 2, borderRadius: 6, backgroundColor: 'rgba(34,211,238,0.55)', justifyContent: 'center', paddingHorizontal: 4 },
+  block: { position: 'absolute', top: 2, bottom: 2, borderRadius: 6, backgroundColor: 'rgba(255, 255, 255, 0.55)', justifyContent: 'center', paddingHorizontal: 4 },
   blockText: { fontFamily: fonts.semibold, fontSize: 10, color: '#fff' },
   cursor: { position: 'absolute', top: 0, bottom: 0, width: 2, backgroundColor: colors.amber },
 });

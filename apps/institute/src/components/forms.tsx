@@ -3,10 +3,12 @@ import { Alert, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, Styl
 import { router } from 'expo-router';
 import { ArrowLeft, Check, ChevronDown, Minus, Plus, Search, X } from 'lucide-react-native';
 import { IconButton, Input, Text } from '@kit/components/ui';
+import { InfoButton } from '@kit/components/Features';
+import { HELP } from '@/help';
 import { colors, fonts, radius } from '@kit/theme';
 
 /** Top bar: back button, title, optional action on the right. */
-export function Header({ title, subtitle, right, onBack }: { title: string; subtitle?: string; right?: ReactNode; onBack?: () => void }) {
+export function Header({ title, subtitle, right, onBack, info }: { title: string; subtitle?: string; right?: ReactNode; onBack?: () => void; info?: keyof typeof HELP }) {
   return (
     <View style={styles.header}>
       <IconButton label="Back" onPress={onBack ?? (() => (router.canGoBack() ? router.back() : router.replace('/home')))}>
@@ -23,6 +25,7 @@ export function Header({ title, subtitle, right, onBack }: { title: string; subt
         </Text>
       </View>
       {right}
+      {info ? <InfoButton title={HELP[info]!.title} text={HELP[info]!.text} /> : null}
     </View>
   );
 }
@@ -87,7 +90,7 @@ export function Checkbox({ checked, tone = 'cyan', size = 24 }: { checked: boole
   const c = tone === 'green' ? colors.green : tone === 'amber' ? colors.amber : colors.cyan;
   return (
     <View style={[styles.box, { width: size, height: size, borderColor: checked ? c : colors.borderHi, backgroundColor: checked ? c : 'transparent' }]}>
-      {checked ? <Check color="#04141c" size={size - 8} strokeWidth={3} /> : null}
+      {checked ? <Check color="#0a0a0a" size={size - 8} strokeWidth={3} /> : null}
     </View>
   );
 }
@@ -232,14 +235,41 @@ export function fromMinutes(min: number): string {
   return `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
 }
 
-/** 24h time picker: hour and 5-minute steppers (no keyboard, no invalid input possible). */
+/** "14:05" → "2:05 PM". */
+export function hm12(hhmm: string): string {
+  const [h = 0, m = 0] = hhmm.split(':').map(Number);
+  return `${h % 12 === 0 ? 12 : h % 12}:${pad(m)} ${h < 12 ? 'AM' : 'PM'}`;
+}
+
+/** Time picker in 12-hour form: hour and 5-minute steppers plus AM / PM (no invalid input possible). Value stays "HH:MM". */
 export function TimeField({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) {
   const min = toMinutes(value);
+  const h24 = Math.floor(min / 60);
+  const pm = h24 >= 12;
+  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
   return (
-    <View style={styles.timeRow}>
-      <Stepper label={`${label} hour`} value={value.slice(0, 2)} onDec={() => onChange(fromMinutes(min - 60))} onInc={() => onChange(fromMinutes(min + 60))} />
-      <Text style={styles.colon}>:</Text>
-      <Stepper label={`${label} minutes`} value={value.slice(3)} onDec={() => onChange(fromMinutes(min % 5 ? min - (min % 5) : min - 5))} onInc={() => onChange(fromMinutes(min - (min % 5) + 5))} />
+    <View style={{ gap: 8 }}>
+      <View style={styles.timeRow}>
+        <Stepper label={`${label} hour`} value={String(h12)} onDec={() => onChange(fromMinutes(min - 60))} onInc={() => onChange(fromMinutes(min + 60))} />
+        <Text style={styles.colon}>:</Text>
+        <Stepper label={`${label} minutes`} value={value.slice(3)} onDec={() => onChange(fromMinutes(min % 5 ? min - (min % 5) : min - 5))} onInc={() => onChange(fromMinutes(min - (min % 5) + 5))} />
+        <View style={styles.ampm} accessibilityRole="radiogroup" accessibilityLabel={`${label} AM or PM`}>
+          {(['AM', 'PM'] as const).map((p) => {
+            const on = (p === 'PM') === pm;
+            return (
+              <Pressable
+                key={p}
+                onPress={() => !on && onChange(fromMinutes(min + (p === 'PM' ? 720 : -720)))}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: on }}
+                style={[styles.ampmBtn, on && styles.ampmOn]}
+              >
+                <Text style={[styles.ampmText, on && { color: colors.bg }]}>{p}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
     </View>
   );
 }
@@ -304,7 +334,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4, marginBottom: 8 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
-  chipOn: { borderColor: 'rgba(34,211,238,0.55)', backgroundColor: 'rgba(34,211,238,0.10)' },
+  chipOn: { borderColor: 'rgba(255, 255, 255, 0.55)', backgroundColor: 'rgba(255, 255, 255, 0.10)' },
   chipText: { fontFamily: fonts.medium, fontSize: 13.5, color: colors.textMuted },
   toggle: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 6 },
   box: { borderRadius: 7, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
@@ -318,7 +348,11 @@ const styles = StyleSheet.create({
   stepBtn: { width: 40, height: 40, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bgRaised },
   stepVal: { fontFamily: fonts.monoMedium, fontSize: 20, color: colors.text, minWidth: 34, textAlign: 'center' },
   colon: { fontFamily: fonts.monoMedium, fontSize: 20, color: colors.textMuted },
-  timeRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  timeRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  ampm: { flexDirection: 'row', borderRadius: 999, borderWidth: 1, borderColor: colors.border, padding: 3, gap: 2, marginLeft: 4 },
+  ampmBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999 },
+  ampmOn: { backgroundColor: colors.text },
+  ampmText: { fontFamily: fonts.semibold, fontSize: 13, color: colors.textMuted },
   dateRow: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 6, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bgRaised },
   dateBtn: { width: 38, height: 38, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
 });

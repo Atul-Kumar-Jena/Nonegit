@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Switch, View } from 'react-native';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { LogOut, RefreshCw, Server, ShieldCheck, Smartphone, Trash2, MessageSquareText, KeyRound } from 'lucide-react-native';
+import { Bell, BookOpen, CalendarDays, KeyRound, LogOut, MessageSquareText, RefreshCw, ScanLine, Server, ShieldCheck, Smartphone, Trash2 } from 'lucide-react-native';
 import { Screen } from '@kit/components/Screen';
+import { FeatureGrid, InfoButton } from '@kit/components/Features';
 import { SyncBanner } from '@kit/components/SyncBanner';
 import { useOutbox } from '@kit/lib/outbox';
 import { Avatar, Badge, Button, Card, Divider, ErrorState, IconTile, InfoRow, Input, Loading, Notice, SectionLabel, Text } from '@kit/components/ui';
@@ -79,12 +80,20 @@ export default function Profile() {
 
   return (
     <Screen onRefresh={() => void q.refetch()} refreshing={q.isRefetching}>
-      <Text variant="label" style={{ marginTop: 4 }}>
-        Account
-      </Text>
-      <Text variant="title" style={{ marginTop: 4 }}>
-        Profile
-      </Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+        <Text variant="title" style={{ flex: 1 }}>
+          Profile
+        </Text>
+        <InfoButton
+          title="Attendly for students"
+          text={[
+            'Scan the QR your teacher shows (on their phone or the classroom screen) from inside the room to be marked present. It works offline too.',
+            'Subjects shows your % in each course and how many classes you can still miss. Timetable shows every change the moment it’s published.',
+            'Tap “Ask” on a class to ask your teacher to move it or hold an extra one.',
+            'Your account works on one phone. Changing phones? Request a reset below; your admin approves it.',
+          ]}
+        />
+      </View>
 
       <Card style={styles.idCard}>
         <Avatar text={initials(u.fullName)} size={68} />
@@ -104,6 +113,19 @@ export default function Profile() {
           <Badge label="Active" tone="green" />
         </View>
       </Card>
+
+      <SectionLabel>All features</SectionLabel>
+      <FeatureGrid
+        items={[
+          { icon: <ScanLine color={colors.text} size={18} />, label: 'Scan QR', href: '/scan' },
+          { icon: <CalendarDays color={colors.text} size={18} />, label: 'Timetable', href: '/timetable' },
+          { icon: <BookOpen color={colors.text} size={18} />, label: 'Subjects', href: '/subjects' },
+          { icon: <MessageSquareText color={colors.text} size={18} />, label: 'My requests', href: '/requests' },
+          { icon: <Bell color={colors.text} size={18} />, label: 'Notifications', href: '/notifications' },
+          { icon: <KeyRound color={colors.text} size={18} />, label: 'Sign-in security', href: '/security' },
+          { icon: <ShieldCheck color={colors.text} size={18} />, label: 'Permissions', href: '/permissions' },
+        ]}
+      />
 
       <SectionLabel>Bound device</SectionLabel>
       <Card>
@@ -161,15 +183,12 @@ export default function Profile() {
         </View>
       </Card>
 
-      <Button title="Permissions & notifications" kind="secondary" onPress={() => router.push('/permissions')} icon={<ShieldCheck color={colors.text} size={16} />} style={{ marginTop: 12 }} />
-      <Button title="My requests to teachers" kind="secondary" onPress={() => router.push('/requests')} icon={<MessageSquareText color={colors.text} size={16} />} style={{ marginTop: 10 }} />
-      <Button title="Sign-in security (Google Authenticator)" kind="secondary" onPress={() => router.push('/security')} icon={<KeyRound color={colors.text} size={16} />} style={{ marginTop: 10 }} />
 
       <SectionLabel>App</SectionLabel>
       <Card>
         <View style={styles.row}>
           <IconTile tone="violet">
-            <Server color="#a78bfa" size={17} />
+            <Server color="#d4d4d4" size={17} />
           </IconTile>
           <View style={{ flex: 1 }}>
             <Text variant="bodyStrong">{server ? displayHost(server.url) : '—'}</Text>

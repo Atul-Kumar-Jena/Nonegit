@@ -21,7 +21,7 @@ export default function Batches() {
 
   return (
     <Screen onRefresh={() => void q.refetch()} refreshing={q.isRefetching}>
-      <Header title="Batches" right={admin ? <Button title="New" compact onPress={() => setOpen(true)} icon={<Plus color="#03141c" size={15} />} /> : undefined} />
+      <Header info="batches" title="Batches" right={admin ? <Button title="New" compact onPress={() => setOpen(true)} icon={<Plus color="#0a0a0a" size={15} />} /> : undefined} />
       <Text variant="small">
         A batch is a group of students who study together (e.g. “CSE 2024 · Sec A”). Attach it to courses and every member is enrolled — new members too. Timetable changes reach exactly the batches affected.
       </Text>

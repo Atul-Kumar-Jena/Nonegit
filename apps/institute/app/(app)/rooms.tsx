@@ -28,7 +28,7 @@ export default function Rooms() {
 
   return (
     <Screen onRefresh={() => void q.refetch()} refreshing={q.isRefetching}>
-      <Header title="Rooms" right={admin ? <Button title="Add" compact onPress={() => setEditing('new')} icon={<Plus color="#03141c" size={15} />} /> : undefined} />
+      <Header info="rooms" title="Rooms" right={admin ? <Button title="Add" compact onPress={() => setEditing('new')} icon={<Plus color="#0a0a0a" size={15} />} /> : undefined} />
       <Text variant="small">Stand inside the room and tap “Use my location” to save it. QR classes in this room then only accept scans from inside the circle.</Text>
       <View style={{ gap: 10, marginTop: 14 }}>
         {q.isPending ? (

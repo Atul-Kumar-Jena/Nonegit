@@ -1,3 +1,4 @@
+import type { NotificationTarget } from '@kit/state/session';
 import { Stack, type ErrorBoundaryProps } from 'expo-router';
 import { OutboxRunner } from '@kit/components/OutboxRunner';
 import { NotificationRunner } from '@kit/lib/notifications';
@@ -10,6 +11,7 @@ const AUDIENCE = {
   allowedRoles: ['student'] as const,
   wrongRoleMessage: 'This is the student app. Staff accounts sign in with the Attendly Institute app.',
   requestsRoute: '/requests',
+  routeFor: (d: NotificationTarget) => (d.kind === 'request' ? '/requests' : d.courseId ? `/subject/${d.courseId}` : '/timetable'),
 };
 
 export default function RootLayout() {

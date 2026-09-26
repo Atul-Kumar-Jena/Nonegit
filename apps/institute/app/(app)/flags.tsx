@@ -37,7 +37,7 @@ export default function Flags() {
 
   return (
     <Screen onRefresh={() => void q.refetch()} refreshing={q.isRefetching}>
-      <Header title="Suspicious scans" />
+      <Header info="flags" title="Suspicious scans" />
       <Segmented
         value={filter}
         options={[

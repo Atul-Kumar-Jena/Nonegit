@@ -1,12 +1,12 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View, type LayoutRectangle } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { CheckCircle2, Hand, Inbox, UserRound, XOctagon } from 'lucide-react-native';
 import type { Availability, StaffSession } from '@attendly/protocol';
 import { Screen } from '@kit/components/Screen';
 import { Avatar, Badge, Card, ErrorState, Loading, Notice, SectionLabel, Text } from '@kit/components/ui';
-import { dayLabel, initials, zoned } from '@kit/lib/format';
+import { dayLabel, initials, zoned, clock } from '@kit/lib/format';
 import { useApi } from '@kit/state/session';
 import { colors, fonts } from '@kit/theme';
 import { Empty, Header, addDays } from '@/components/forms';
@@ -43,6 +43,7 @@ export default function Cover() {
   const nowHm = zoned(nowMs, tz).hm;
 
   const [picked, setPicked] = useState<string | null>(null); // tap-to-assign alternative
+  const [allTeachers, setAllTeachers] = useState(false);
   const [sheet, setSheet] = useState<{ session: StaffSession; teacherId: string | null } | null>(null);
   const [toast, setToast] = useState<{ tone: 'red' | 'green' | 'amber'; text: string } | null>(null);
 
@@ -97,8 +98,10 @@ export default function Cover() {
   const listBoxRef = useRef<View>(null);
   const root = useRef({ x: 0, y: 0 });
   const list = useRef({ x: 0, y: 0, w: 0, h: 0, scroll: 0 });
-  const cards = useRef(new Map<string, LayoutRectangle>());
-  const listTop = useRef(0); // y of the class list inside the scroll content
+  const cardRefs = useRef(new Map<string, View | null>());
+  // Card rectangles in page coordinates (the finger's space), measured when a drag starts.
+  const cards = useRef(new Map<string, { x: number; y: number; w: number; h: number }>());
+  const scrollAtMeasure = useRef(0);
   const [drag, setDrag] = useState<{ t: Teacher; x: number; y: number } | null>(null);
   const [over, setOver] = useState<{ id: string; v: Verdict } | null>(null);
   const autoScroll = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -108,11 +111,12 @@ export default function Cover() {
     (x: number, y: number): StaffSession | null => {
       const L = list.current;
       if (x < L.x || x > L.x + L.w || y < L.y || y > L.y + L.h) return null;
+      const shift = L.scroll - scrollAtMeasure.current; // auto-scrolled since measuring
       for (const s of classes) {
         const r = cards.current.get(s.id);
         if (!r) continue;
-        const top = L.y + listTop.current + r.y - L.scroll;
-        if (y >= top && y <= top + r.height) return s;
+        const top = r.y - shift;
+        if (y >= top && y <= top + r.h && x >= r.x && x <= r.x + r.w) return s;
       }
       return null;
     },
@@ -137,14 +141,20 @@ export default function Cover() {
     [hit, verdict],
   );
 
+  const measureCards = useCallback(() => {
+    scrollAtMeasure.current = list.current.scroll;
+    for (const [id, ref] of cardRefs.current) ref?.measure((_x, _y, w, h, px, py) => cards.current.set(id, { x: px, y: py, w, h }));
+  }, []);
+
   const onStart = useCallback((t: Teacher, x: number, y: number) => {
-    rootRef.current?.measureInWindow((rx, ry) => (root.current = { x: rx, y: ry }));
-    listBoxRef.current?.measureInWindow((lx, ly, lw, lh) => (list.current = { ...list.current, x: lx, y: ly, w: lw, h: lh }));
+    rootRef.current?.measure((_x, _y, _w, _h, rx, ry) => (root.current = { x: rx, y: ry }));
+    listBoxRef.current?.measure((_x, _y, lw, lh, lx, ly) => (list.current = { ...list.current, x: lx, y: ly, w: lw, h: lh }));
+    measureCards();
     setPicked(null);
     setToast(null);
     pointer.current = { x, y };
     setDrag({ t, x, y });
-  }, []);
+  }, [measureCards]);
 
   const onMove = useCallback(
     (t: Teacher, x: number, y: number) => {
@@ -192,21 +202,21 @@ export default function Cover() {
   if (me.data && !admin)
     return (
       <Screen>
-        <Header title="Cover a class" />
+        <Header info="cover" title="Cover a class" />
         <Empty title="For admins only" message="Only the principal or an HOD hands classes to other teachers. When they ask you to take one, it appears in Requests — accept or decline it there." />
       </Screen>
     );
   if (sessionsQ.isPending || avail.isPending)
     return (
       <Screen scroll={false}>
-        <Header title="Cover a class" />
+        <Header info="cover" title="Cover a class" />
         <Loading label="Loading teachers and classes…" />
       </Screen>
     );
   if (sessionsQ.error || avail.error)
     return (
       <Screen>
-        <Header title="Cover a class" />
+        <Header info="cover" title="Cover a class" />
         <ErrorState message={(sessionsQ.error ?? avail.error)?.message ?? 'Couldn’t load.'} onRetry={() => (void sessionsQ.refetch(), void avail.refetch())} />
       </Screen>
     );
@@ -218,7 +228,7 @@ export default function Cover() {
   return (
     <Screen scroll={false}>
       <View ref={rootRef} style={{ flex: 1 }} collapsable={false}>
-        <Header title="Cover a class" subtitle="Admin · any class, any teacher" />
+        <Header info="cover" title="Cover a class" subtitle="Admin · any class, any teacher" />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={{ gap: 8, paddingRight: 16 }}>
           {[0, 1, 2, 3, 4, 5, 6].map((i) => {
             const on = offset === i;
@@ -242,8 +252,9 @@ export default function Cover() {
         </ScrollView>
 
         <SectionLabel right={<Text variant="monoSmall">{offset === 0 ? `now ${nowHm}` : dayLabel(`${date}T12:00:00Z`, 'UTC')}</Text>}>Teachers</SectionLabel>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={{ gap: 8, paddingRight: 16, alignItems: 'flex-start' }} scrollEnabled={!drag}>
-          {teachers.map(({ t, free, status }) => (
+        {/* A plain wrapped grid (no scrolling parent), so a scroll view can never steal the finger mid-drag. */}
+        <View style={styles.tray}>
+          {(allTeachers ? teachers : teachers.slice(0, 6)).map(({ t, free, status }) => (
             <TeacherChip
               key={t.id}
               t={t}
@@ -259,7 +270,14 @@ export default function Cover() {
               onCancel={onCancel}
             />
           ))}
-        </ScrollView>
+          {teachers.length > 6 ? (
+            <Pressable onPress={() => setAllTeachers((v) => !v)} accessibilityRole="button" style={[styles.chip, { borderColor: colors.border }]}>
+              <Text variant="small" color={colors.text}>
+                {allTeachers ? 'Show fewer' : `+${teachers.length - 6} more`}
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
         <View style={[styles.row, { marginTop: 8 }]}>
           <Hand color={colors.textDim} size={13} />
           <Text variant="small" style={{ flex: 1 }}>
@@ -291,7 +309,7 @@ export default function Cover() {
                 Requests
               </Text>
             </Pressable>
-            <View onLayout={(e) => (listTop.current = e.nativeEvent.layout.y)} style={{ gap: 10 }}>
+            <View style={{ gap: 10 }}>
               {classes.length === 0 ? (
                 <Empty title="No classes to cover" message={offset === 0 ? 'Nothing left today that could be handed over.' : 'No scheduled classes that day.'} />
               ) : (
@@ -301,7 +319,10 @@ export default function Cover() {
                   return (
                     <Pressable
                       key={s.id}
-                      onLayout={(e) => cards.current.set(s.id, e.nativeEvent.layout)}
+                      ref={(r) => {
+                        cardRefs.current.set(s.id, r as View | null);
+                      }}
+                      collapsable={false}
                       onPress={() => {
                         if (pickedTeacher) {
                           const v = verdict(pickedTeacher, s);
@@ -311,7 +332,7 @@ export default function Cover() {
                         } else setSheet({ session: s, teacherId: null });
                       }}
                       accessibilityRole="button"
-                      accessibilityLabel={`${s.courseCode} ${zoned(s.scheduledStart, tz).hm}. ${waiting ? `Waiting for ${waiting}. ` : ''}Tap to choose who covers it.`}
+                      accessibilityLabel={`${s.courseCode} ${clock(s.scheduledStart, tz)}. ${waiting ? `Waiting for ${waiting}. ` : ''}Tap to choose who covers it.`}
                     >
                       <Card
                         style={[
@@ -321,8 +342,8 @@ export default function Cover() {
                         ]}
                       >
                         <View style={styles.time}>
-                          <Text style={styles.timeText}>{zoned(s.scheduledStart, tz).hm}</Text>
-                          <Text variant="monoSmall">{zoned(s.scheduledEnd, tz).hm}</Text>
+                          <Text style={styles.timeText}>{clock(s.scheduledStart, tz)}</Text>
+                          <Text variant="monoSmall">{clock(s.scheduledEnd, tz)}</Text>
                         </View>
                         <View style={{ flex: 1, gap: 2 }}>
                           <Text variant="bodyStrong" numberOfLines={1}>
@@ -422,7 +443,7 @@ function TeacherChip({
       style={[styles.chip, { borderColor: picked ? colors.cyan : free ? 'rgba(52,211,153,0.5)' : colors.border, opacity: dragging ? 0.35 : 1 }, picked && { backgroundColor: colors.cyanSoft }]}
     >
       <Avatar text={initials(t.name)} size={30} />
-      <View style={{ maxWidth: 150 }}>
+      <View style={{ maxWidth: 130 }}>
         <Text variant="bodyStrong" numberOfLines={1}>
           {t.name}
           {me ? ' (you)' : ''}
@@ -439,11 +460,12 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   day: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bgRaised },
   dayOn: { borderColor: colors.cyan, backgroundColor: colors.cyanSoft },
+  tray: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 16, borderWidth: 1.5, backgroundColor: colors.card },
   inbox: { padding: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.border, marginBottom: 10 },
   classCard: { flexDirection: 'row', gap: 12, alignItems: 'center', borderWidth: 1, borderColor: colors.border },
-  time: { width: 50, alignItems: 'center' },
-  timeText: { fontFamily: fonts.bold, fontSize: 16, color: colors.text },
+  time: { width: 72, alignItems: 'center' },
+  timeText: { fontFamily: fonts.bold, fontSize: 14, color: colors.text },
   ghost: {
     position: 'absolute',
     flexDirection: 'row',

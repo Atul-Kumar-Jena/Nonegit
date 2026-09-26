@@ -17,3 +17,4 @@ ios/
 .pgdata/
 expo-env.d.ts
 dist-android/
+google-services.json

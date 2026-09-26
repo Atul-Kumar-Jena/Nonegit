@@ -24,9 +24,9 @@ export default function People() {
 
   return (
     <Screen scroll={false} keyboard>
-      <Header
+      <Header info="people"
         title="People"
-        right={<Button title="Add" compact onPress={() => router.push({ pathname: '/person-form', params: { role } })} icon={<UserPlus color="#03141c" size={15} />} />}
+        right={<Button title="Add" compact onPress={() => router.push({ pathname: '/person-form', params: { role } })} icon={<UserPlus color="#0a0a0a" size={15} />} />}
       />
       <Segmented
         value={role}

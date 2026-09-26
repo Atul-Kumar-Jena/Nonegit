@@ -15,19 +15,31 @@ import { router } from 'expo-router';
 import * as BackgroundTask from 'expo-background-task';
 import * as Notifications from 'expo-notifications';
 import * as TaskManager from 'expo-task-manager';
+import { z } from 'zod';
 import { NotificationsResponse, OkResponse, type AppNotification } from '@attendly/protocol';
+
+const PushTokenResponse = z.object({ ok: z.literal(true), push: z.boolean() });
 import { ApiClient } from './api-core';
 import { deviceKeys } from './device-key';
 import { StorageKeys, getItem } from './storage';
 import { loadServerConfig } from './server-config';
 import { tokenStore } from './tokens';
 import { vault } from './vault';
-import { useSession } from '../state/session';
+import { useSession, type NotificationTarget } from '../state/session';
 
 const isWeb = Platform.OS === 'web';
 /** High-importance channel: heads-up banner, the phone's default sound, vibration, shown on the lock screen. */
 const CHANNEL = 'timetable-alerts';
 const SEEN_KEY = 'notify.last-announced.v1';
+/** Set when the server pushes to this phone through Firebase (then the app doesn't raise duplicates). */
+const PUSH_KEY = 'notify.push-active.v1';
+
+/** What a notification is about: the class, the course, or a request. */
+export function targetOf(n: Pick<AppNotification, 'kind' | 'data'>): NotificationTarget {
+  const first = (n.data.changes as { sessionId?: string | null; courseId?: string }[] | undefined)?.[0];
+  const str = (v: unknown) => (typeof v === 'string' ? v : undefined);
+  return { kind: n.kind, sessionId: first?.sessionId ?? str(n.data.sessionId), courseId: first?.courseId, requestId: str(n.data.requestId) };
+}
 export const NOTIFICATION_TASK = 'attendly-notification-check';
 export const notificationsKey = ['notifications'] as const;
 
@@ -39,7 +51,8 @@ export function useNotifications() {
     queryKey: notificationsKey,
     queryFn: () => api!.authed('GET', '/v1/notifications?limit=50', NotificationsResponse),
     enabled: !!api && phase === 'signed-in',
-    refetchInterval: 60_000,
+    // While the app is open, news shows up within seconds.
+    refetchInterval: 15_000,
   });
 }
 
@@ -122,6 +135,7 @@ export async function enablePhoneNotifications(): Promise<'granted' | 'denied' |
   try {
     await ensureChannel();
     let status = (await Notifications.getPermissionsAsync()).status;
+    // (After a first grant the runner registers this phone for instant push.)
     if (status !== 'granted') status = (await Notifications.requestPermissionsAsync({ ios: { allowAlert: true, allowSound: true, allowBadge: true } })).status;
     if (status !== 'granted') return 'denied';
     await ensureBackgroundCheck();
@@ -151,6 +165,7 @@ export async function announceNew(items: AppNotification[], unread: number): Pro
     // First run on this phone: remember where we are instead of replaying history.
     if (maxId > (last ?? 0) || last === null) await vault.set(SEEN_KEY, maxId);
     if (!fresh.length) return;
+    if (await vault.get<boolean>(PUSH_KEY, (v) => v === true)) return; // Firebase already buzzed the phone
     if ((await Notifications.getPermissionsAsync()).status !== 'granted') return;
     const shown = fresh.length > 3 ? [{ id: fresh.at(-1)!.id, title: `${fresh.length} timetable updates`, body: fresh.map((f) => f.title).join(' · ') }] : fresh;
     for (const n of shown)
@@ -158,7 +173,7 @@ export async function announceNew(items: AppNotification[], unread: number): Pro
         content: {
           title: n.title,
           body: n.body,
-          data: { notificationId: n.id },
+          data: { notificationId: n.id, ...('kind' in n ? targetOf(n as AppNotification) : {}) },
           sound: 'default',
           priority: Notifications.AndroidNotificationPriority.MAX,
           ...(Platform.OS === 'ios' ? { badge: unread } : {}),
@@ -186,8 +201,23 @@ async function backgroundCheck(): Promise<void> {
  * Keeps phone notifications flowing while the app is open: announces anything new
  * that the in-app list fetches, and refreshes when the app comes to the foreground.
  */
+/** Registers this phone for instant (Firebase) notifications, if the build and the server support it. */
+async function registerPush(api: ApiClient): Promise<void> {
+  if (isWeb) return;
+  try {
+    if ((await Notifications.getPermissionsAsync()).status !== 'granted') return;
+    const t = await Notifications.getDevicePushTokenAsync();
+    if (typeof t.data !== 'string') return;
+    const r = await api.authed('POST', '/v1/me/push-token', PushTokenResponse, { token: t.data, platform: Platform.OS === 'ios' ? 'ios' : 'android' });
+    await vault.set(PUSH_KEY, r.push);
+  } catch {
+    // No Firebase in this build, or offline: the app's own checks deliver instead.
+    await vault.set(PUSH_KEY, false).catch(() => undefined);
+  }
+}
+
 export function NotificationRunner() {
-  const { phase } = useSession();
+  const { phase, api, audience } = useSession();
   const qc = useQueryClient();
   const q = useNotifications();
   const data = q.data;
@@ -202,6 +232,30 @@ export function NotificationRunner() {
     if (seen.current !== null && newest > seen.current) void qc.invalidateQueries({ predicate: (query) => query.queryKey[0] !== notificationsKey[0] });
     seen.current = newest;
   }, [newest, qc]);
+  // Tapping a phone notification opens what it is about.
+  useEffect(() => {
+    if (isWeb) return;
+    const open = (data: unknown) => {
+      const d = (data ?? {}) as NotificationTarget;
+      const route = audience.routeFor?.(d) ?? (d.kind === 'request' ? audience.requestsRoute : null) ?? '/notifications';
+      setTimeout(() => router.push(route as never), 300);
+    };
+    let sub: { remove(): void } | null = null;
+    try {
+      sub = Notifications.addNotificationResponseReceivedListener((r) => open(r.notification.request.content.data));
+      void Notifications.getLastNotificationResponseAsync()
+        .then((r) => {
+          if (r && Date.now() - r.notification.date < 60_000) open(r.notification.request.content.data);
+        })
+        .catch(() => undefined);
+    } catch {
+      // no native module
+    }
+    return () => sub?.remove();
+  }, [audience]);
+  useEffect(() => {
+    if (phase === 'signed-in' && api) void registerPush(api);
+  }, [phase, api]);
   useEffect(() => {
     if (phase !== 'signed-in') return;
     const sub = AppState.addEventListener('change', (s) => {

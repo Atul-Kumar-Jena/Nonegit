@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { router, type Href } from 'expo-router';
-import { Bell, Building2, CalendarRange, ChevronRight, Clock4, Lock, LogOut, MapPin, ShieldAlert, Smartphone, Trash2, Users, UsersRound, Wand2, Inbox, UserPlus, KeyRound } from 'lucide-react-native';
+import { Bell, Building2, CalendarDays, CalendarRange, ChevronRight, Clock4, Inbox, KeyRound, Library, Lock, LogOut, MapPin, Play, Plus, ShieldAlert, Smartphone, Trash2, UserPlus, Users, UsersRound, Wand2 } from 'lucide-react-native';
 import { Screen } from '@kit/components/Screen';
 import { SyncBanner } from '@kit/components/SyncBanner';
 import { Avatar, Badge, Button, Card, Divider, InfoRow, SectionLabel, Text } from '@kit/components/ui';
@@ -12,6 +12,8 @@ import { displayHost } from '@kit/lib/server-config';
 import { useSession } from '@kit/state/session';
 import { colors } from '@kit/theme';
 import { confirmAction } from '@/components/forms';
+import { FeatureGrid, InfoButton } from '@kit/components/Features';
+import { HELP } from '@/help';
 import { localSessions } from '@/local-sessions';
 import { useMe, useOverview } from '@/queries';
 
@@ -34,9 +36,12 @@ export default function More() {
 
   return (
     <Screen onRefresh={() => void me.refetch()} refreshing={me.isRefetching}>
-      <Text variant="title" style={{ marginTop: 4 }}>
-        More
-      </Text>
+      <View style={[styles.row, { marginTop: 4 }]}>
+        <Text variant="title" style={{ flex: 1 }}>
+          More
+        </Text>
+        <InfoButton title={HELP.more!.title} text={HELP.more!.text} />
+      </View>
       <Card style={[styles.row, { marginTop: 16 }]}>
         <Avatar text={initials(u?.fullName ?? 'A')} size={48} />
         <View style={{ flex: 1 }}>
@@ -46,44 +51,40 @@ export default function More() {
         </View>
         {u ? <Badge label={admin ? 'Admin' : 'Teacher'} tone={admin ? 'violet' : 'cyan'} dot={false} /> : null}
       </Card>
-      {u ? (
-        <Card tone={admin ? 'violet' : undefined} style={{ marginTop: 10, gap: 4 }}>
-          <Text variant="label">{admin ? 'Your role · Admin (principal / HOD)' : 'Your role · Teacher'}</Text>
-          {(admin
-            ? ['Set up the institution: rooms, people, courses, batches, timetable', 'Plan and publish timetable changes for any batch', 'Hand any class to a free teacher (they accept first)', 'Approve phone changes and review suspicious scans']
-            : ['Run your classes: QR code, big screen or register', 'Move or cancel your own classes (students are told)', 'Accept or decline classes your admin asks you to take', 'Answer your students’ requests']
-          ).map((line) => (
-            <Text key={line} variant="small">
-              • {line}
-            </Text>
-          ))}
-        </Card>
-      ) : null}
 
       <SyncBanner />
 
-      <SectionLabel>Manage</SectionLabel>
-      <Card padded={false}>
-        {admin ? <Item icon={<Wand2 color={colors.violet} size={18} />} label="Setup checklist" href="/setup" /> : null}
-        {admin ? <Item icon={<CalendarRange color={colors.cyan} size={18} />} label="Timetable planner" sub="Drag & drop changes, then publish" href="/planner" /> : null}
-        <Item icon={<Clock4 color={colors.green} size={18} />} label="Who’s busy where" sub="Teachers and rooms, hour by hour" href="/busy" />
-        {admin ? <Item icon={<UserPlus color={colors.violet} size={18} />} label="Cover a class" sub="Drag a free teacher onto a class; they accept, students are told" href="/cover" /> : null}
-        <Item icon={<Inbox color={colors.amber} size={18} />} label="Requests" sub={admin ? 'Cover requests you sent, and replies' : 'Classes you’re asked to take · students’ questions'} href="/inbox" />
-        <Item icon={<Bell color={colors.amber} size={18} />} label="Notifications" href="/notifications" />
-        <Item icon={<Lock color={colors.textMuted} size={18} />} label="Permissions" sub="Location and notifications" href="/permissions" />
-        <Item icon={<KeyRound color={colors.textMuted} size={18} />} label="Sign-in security" sub="Google Authenticator codes" href="/security" />
-        {admin ? <Item icon={<Users color={colors.cyan} size={18} />} label="People" sub="Students, teachers, admins" href="/people" /> : null}
-        <Item icon={<UsersRound color={colors.violet} size={18} />} label="Batches" sub="Sections and the courses they take" href="/batches" />
-        <Item icon={<MapPin color={colors.green} size={18} />} label="Rooms" sub="Classroom locations" href="/rooms" />
-        <Item
-          icon={<Smartphone color={colors.violet} size={18} />}
-          label="Phone requests"
-          href="/requests"
-          badge={overview.data?.pendingRequests ? String(overview.data.pendingRequests) : undefined}
-        />
-        <Item icon={<ShieldAlert color={colors.amber} size={18} />} label="Suspicious scans" href="/flags" badge={overview.data?.flaggedOpen ? String(overview.data.flaggedOpen) : undefined} />
-        <Item icon={<Building2 color={colors.textMuted} size={18} />} label="Institution settings" href="/institution" last />
-      </Card>
+      <SectionLabel>All features</SectionLabel>
+      <FeatureGrid
+        items={[
+          { icon: <Play color={colors.text} size={18} />, label: 'Take attendance', href: '/attend' },
+          { icon: <CalendarDays color={colors.text} size={18} />, label: 'Timetable', href: '/timetable' },
+          { icon: <Library color={colors.text} size={18} />, label: 'Classes & reports', href: '/classes' },
+          { icon: <Plus color={colors.text} size={18} />, label: 'Extra class', href: '/extra-class' },
+          { icon: <Inbox color={colors.text} size={18} />, label: 'Requests', href: '/inbox' },
+          { icon: <Clock4 color={colors.text} size={18} />, label: 'Who’s busy', href: '/busy' },
+          ...(admin
+            ? [
+                { icon: <UserPlus color={colors.text} size={18} />, label: 'Cover a class', href: '/cover' as Href },
+                { icon: <CalendarRange color={colors.text} size={18} />, label: 'Planner', href: '/planner' as Href },
+                { icon: <Users color={colors.text} size={18} />, label: 'People', href: '/people' as Href },
+              ]
+            : []),
+          { icon: <UsersRound color={colors.text} size={18} />, label: 'Batches', href: '/batches' },
+          { icon: <MapPin color={colors.text} size={18} />, label: 'Rooms', href: '/rooms' },
+          ...(admin
+            ? [
+                { icon: <Smartphone color={colors.text} size={18} />, label: 'Phone requests', href: '/requests' as Href, badge: overview.data?.pendingRequests ? String(overview.data.pendingRequests) : null },
+                { icon: <ShieldAlert color={colors.text} size={18} />, label: 'Suspicious scans', href: '/flags' as Href, badge: overview.data?.flaggedOpen ? String(overview.data.flaggedOpen) : null },
+                { icon: <Building2 color={colors.text} size={18} />, label: 'Institution', href: '/institution' as Href },
+                { icon: <Wand2 color={colors.text} size={18} />, label: 'Setup checklist', href: '/setup' as Href },
+              ]
+            : []),
+          { icon: <Bell color={colors.text} size={18} />, label: 'Notifications', href: '/notifications' },
+          { icon: <KeyRound color={colors.text} size={18} />, label: 'Sign-in security', href: '/security' },
+          { icon: <Lock color={colors.text} size={18} />, label: 'Permissions', href: '/permissions' },
+        ]}
+      />
 
       <SectionLabel>This phone</SectionLabel>
       <Card>

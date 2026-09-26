@@ -83,7 +83,7 @@ export default function Login() {
 
   return (
     <Screen keyboard contentStyle={{ paddingTop: 28 }}>
-      <LogoMark size={44} />
+      <LogoMark size={30} withName />
       <View style={{ gap: 6, marginTop: 22 }}>
         <Text variant="title">Sign in</Text>
         <Text variant="body">
@@ -137,7 +137,7 @@ export default function Login() {
           <Notice message={error} tone="red" />
         </View>
       ) : null}
-      <Button title="Send OTP" onPress={() => void submit()} loading={busy} disabled={!value.trim()} style={{ marginTop: 22 }} icon={<ArrowRight color="#03141c" size={18} />} />
+      <Button title="Send OTP" onPress={() => void submit()} loading={busy} disabled={!value.trim()} style={{ marginTop: 22 }} icon={<ArrowRight color="#0a0a0a" size={18} />} />
       {demoAccounts.length ? (
         <View style={{ marginTop: 26, gap: 8 }}>
           <Text variant="label">Demo accounts{server.demo?.institution ? ` · ${server.demo.institution}` : ''}</Text>

@@ -108,6 +108,6 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
   chip: { borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, borderRadius: radius.pill, paddingHorizontal: 12, paddingVertical: 8 },
-  chipOn: { borderColor: 'rgba(34,211,238,0.45)', backgroundColor: 'rgba(34,211,238,0.08)' },
+  chipOn: { borderColor: 'rgba(255, 255, 255, 0.45)', backgroundColor: 'rgba(255, 255, 255, 0.08)' },
   chipText: { fontFamily: fonts.medium, fontSize: 13, color: colors.textMuted },
 });

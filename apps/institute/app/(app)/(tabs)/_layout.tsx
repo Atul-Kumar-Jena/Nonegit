@@ -39,7 +39,7 @@ function TabBar({ state, navigation }: BottomTabBarProps) {
       {items[1]}
       <Pressable accessibilityRole="button" accessibilityLabel="Take attendance now" onPress={() => router.push('/attend')} style={styles.centerWrap} hitSlop={6}>
         <LinearGradient colors={gradients.brand} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.center}>
-          <Play color="#04141c" size={22} strokeWidth={2.4} fill="#04141c" />
+          <Play color="#0a0a0a" size={22} strokeWidth={2.4} fill="#0a0a0a" />
         </LinearGradient>
       </Pressable>
       {items[2]}
@@ -63,7 +63,7 @@ const styles = StyleSheet.create({
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(8,13,28,0.98)',
+    backgroundColor: 'rgba(10,10,10,0.97)',
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
     paddingTop: 8,
@@ -79,7 +79,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: -22,
-    shadowColor: '#22d3ee',
+    shadowColor: '#ffffff',
     shadowOpacity: 0.5,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 4 },

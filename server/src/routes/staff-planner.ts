@@ -37,6 +37,7 @@ import { loadPlannerWeek, localNow, publishOps } from '../lib/planner-server';
 import { createCoverRequest, needsApproval } from '../lib/requests';
 import { localDayBounds } from '../lib/staff-sessions';
 import { materializeTimetable } from '../lib/timetable';
+import { parseServiceAccount } from '../lib/push';
 import { loadInstitution, staffAudit } from './staff-admin';
 
 const IdParam = z.object({ id: z.uuid() });
@@ -428,6 +429,19 @@ export async function staffPlannerRoutes(app: FastifyInstance, deps: Deps) {
       items: items.rows.map((r) => ({ id: Number(r.id), kind: r.kind, title: r.title, body: r.body, data: r.data, createdAt: r.created_at.toISOString(), read: false })),
       unread: unread.rows[0]!.n,
     };
+  });
+
+  /** The phone's Firebase token, so notifications arrive instantly even when the app is closed. */
+  const pushOn = parseServiceAccount(process.env.FCM_SERVICE_ACCOUNT) !== null;
+  app.post('/v1/me/push-token', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req) => {
+    const auth = await requireDevice(req, deps);
+    const b = z.object({ token: z.string().min(10).max(4096), platform: z.enum(['android', 'ios']) }).parse(req.body);
+    await deps.db.query(
+      `insert into push_tokens(device_id, user_id, token, platform, updated_at) values ($1, $2, $3, $4, now())
+       on conflict (device_id) do update set token = excluded.token, platform = excluded.platform, user_id = excluded.user_id, updated_at = now()`,
+      [auth.deviceId, auth.userId, b.token, b.platform],
+    );
+    return { ok: true as const, push: pushOn };
   });
 
   app.post('/v1/notifications/read', async (req) => {

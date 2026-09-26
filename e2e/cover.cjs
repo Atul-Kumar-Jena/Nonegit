@@ -115,7 +115,7 @@ async function demoSignIn(browser, url, name) {
     const p = teacher.page;
     // (The server refuses it too — see server/test/requests.test.ts.)
     await p.getByRole('tab', { name: 'More' }).click();
-    await p.getByText('Your role · Teacher').waitFor({ timeout: 20_000 });
+    await p.getByText('All features').waitFor({ timeout: 20_000 });
     if (await p.getByText('Cover a class', { exact: true }).count()) throw new Error('cover shown to a teacher');
     await shot(p, 'teacher-role');
   });
@@ -132,12 +132,14 @@ async function demoSignIn(browser, url, name) {
     student = await demoSignIn(browser, STUDENT, 'Aarav Reddy');
     const p = student.page;
     await p.getByRole('button', { name: /^Notifications/ }).first().click();
-    await p.getByText(/Different teacher · CS-301/).first().waitFor({ timeout: 30_000 });
-    await p.getByText(/bring your OS notebooks/).first().waitFor();
+    await p.getByText(/Different teacher · CS-301/).locator('visible=true').first().waitFor({ timeout: 30_000 });
+    await p.getByText(/bring your OS notebooks/).locator('visible=true').first().waitFor();
     await shot(p, 'student-notified');
     await p.getByRole('button', { name: 'Back' }).first().click();
     await p.getByRole('tab', { name: 'Timetable' }).click();
-    await p.getByText(/Taken by Dr\. S\. Banerjee — Dr\. Banerjee takes this class/).first().waitFor({ timeout: 20_000 });
+    await p.waitForTimeout(1500);
+    await shot(p, 'student-timetable');
+    await p.getByText(/Taken by Dr\. S\. Banerjee — Dr\. Banerjee takes this class/).locator('visible=true').first().waitFor({ timeout: 20_000 });
     await p.getByRole('button', { name: /Ask the teacher about/ }).first().click();
     await p.getByPlaceholder(/lab exam/).fill('Half the class has a lab viva at this time — could we move it?');
     await shot(p, 'student-ask');

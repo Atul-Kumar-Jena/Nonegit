@@ -171,7 +171,7 @@ export default function BatchDetail() {
           )}
           <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
             <Button title={picked.size === candidates.length && candidates.length ? 'Clear' : `Select all ${candidates.length}`} kind="secondary" compact disabled={!candidates.length} onPress={() => setPicked(picked.size === candidates.length ? new Set() : new Set(candidates.map((c) => c.id)))} />
-            <Button title={`Add ${picked.size || ''}`.trim()} onPress={() => void update({ addMembers: [...picked] }, `${picked.size} added — enrolled in the batch’s courses.`)} loading={busy} disabled={!picked.size} icon={<UserPlus color="#03141c" size={16} />} style={{ flex: 1 }} />
+            <Button title={`Add ${picked.size || ''}`.trim()} onPress={() => void update({ addMembers: [...picked] }, `${picked.size} added — enrolled in the batch’s courses.`)} loading={busy} disabled={!picked.size} icon={<UserPlus color="#0a0a0a" size={16} />} style={{ flex: 1 }} />
           </View>
         </View>
       ) : null}
