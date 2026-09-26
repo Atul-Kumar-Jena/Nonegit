@@ -19,7 +19,7 @@ const CHANNELS = [
 /** 02 · Login · OTP — institution-issued ID. */
 export default function Login() {
   const { server, requestOtp, notice, clearNotice, pendingOtp } = useSession();
-  const [channel, setChannel] = useState<Channel>(pendingOtp?.channel ?? 'email');
+  const [channel, setChannel] = useState<Channel>(pendingOtp?.channel === 'phone' && server?.channels.includes('phone') ? 'phone' : 'email');
   const [value, setValue] = useState(pendingOtp?.identifier ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,17 +60,19 @@ export default function Login() {
           <Notice message={notice} onDismiss={clearNotice} />
         </View>
       ) : null}
-      <View style={{ marginTop: 24 }}>
-        <Segmented
-          value={channel}
-          options={CHANNELS}
-          onChange={(c) => {
-            setChannel(c);
-            setValue('');
-            setError(null);
-          }}
-        />
-      </View>
+      {server.channels.includes('phone') ? (
+        <View style={{ marginTop: 24 }}>
+          <Segmented
+            value={channel}
+            options={CHANNELS}
+            onChange={(c) => {
+              setChannel(c);
+              setValue('');
+              setError(null);
+            }}
+          />
+        </View>
+      ) : null}
       <Text variant="label" style={{ marginTop: 22, marginBottom: 8 }}>
         {channel === 'email' ? 'Institution email' : 'Registered mobile number'}
       </Text>
@@ -102,7 +104,7 @@ export default function Login() {
       ) : null}
       <Button title="Send OTP" onPress={() => void submit()} loading={busy} disabled={!value.trim()} style={{ marginTop: 22 }} icon={<ArrowRight color="#03141c" size={18} />} />
       <Text variant="body" style={{ marginTop: 22, color: colors.text }}>
-        By continuing you agree to your institution’s <Text color={colors.cyan}>attendance policy</Text> and <Text color={colors.cyan}>privacy terms</Text>.
+        By continuing you agree to your institution’s attendance policy and privacy terms.
       </Text>
       <Pressable onPress={() => router.push('/server')} accessibilityRole="button" style={{ marginTop: 28, alignSelf: 'flex-start' }} hitSlop={8}>
         <Text variant="monoSmall">

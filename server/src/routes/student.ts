@@ -13,7 +13,7 @@ import {
 import type { Deps } from '../deps';
 import { isUniqueViolation, withTx } from '../db';
 import { appendAudit } from '../lib/audit';
-import { requireDevice, type AuthContext } from '../lib/auth';
+import { perDeviceKey, requireDevice, type AuthContext } from '../lib/auth';
 import { ApiError } from '../lib/errors';
 import { courseStats, loadTenantTerm } from '../lib/stats';
 import { loadDevice, loadUser, toDeviceSummary, toUserSummary } from '../lib/users';
@@ -142,7 +142,7 @@ export async function studentRoutes(app: FastifyInstance, deps: Deps) {
   });
 
   /** "I'm changing phones" — asks an admin to unbind this device. */
-  app.post('/v1/me/device-reset', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (req): Promise<DeviceRequestResponse> => {
+  app.post('/v1/me/device-reset', { config: { rateLimit: { max: 5, timeWindow: '1 minute', keyGenerator: perDeviceKey } } }, async (req): Promise<DeviceRequestResponse> => {
     const auth = await requireDevice(req, deps, STUDENT);
     const body = ResetRequestBody.parse(req.body);
     const term = await loadTenantTerm(deps.db, auth.tenantId);

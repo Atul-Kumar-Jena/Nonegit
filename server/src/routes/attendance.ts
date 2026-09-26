@@ -16,7 +16,7 @@ import {
 import type { Deps } from '../deps';
 import { isUniqueViolation, withTx } from '../db';
 import { appendAudit } from '../lib/audit';
-import { requireDevice, type AuthContext } from '../lib/auth';
+import { perDeviceKey, requireDevice, type AuthContext } from '../lib/auth';
 import { ApiError, ScanRejection } from '../lib/errors';
 import { courseStats, loadTenantTerm } from '../lib/stats';
 
@@ -103,7 +103,7 @@ export async function attendanceRoutes(app: FastifyInstance, deps: Deps) {
     }
   }
 
-  app.post('/v1/attendance/mark', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (req, reply) => {
+  app.post('/v1/attendance/mark', { config: { rateLimit: { max: 30, timeWindow: '1 minute', keyGenerator: perDeviceKey } } }, async (req, reply) => {
     const auth = await requireDevice(req, deps, ['student']);
     const body = MarkBody.parse(req.body);
     const now = deps.clock();

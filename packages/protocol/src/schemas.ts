@@ -37,6 +37,8 @@ export const MetaResponse = z.object({
   serverTime: z.number(),
   serverKey: z.object({ kid: z.string(), publicKey: PublicKeyB64 }),
   minAppVersion: z.string(),
+  /** Sign-in channels this server can deliver codes over. */
+  channels: z.array(z.enum(['email', 'phone'])).min(1),
 });
 export type MetaResponse = z.infer<typeof MetaResponse>;
 

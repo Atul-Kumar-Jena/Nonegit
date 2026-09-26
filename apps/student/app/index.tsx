@@ -18,8 +18,12 @@ export default function Splash() {
 
   useEffect(() => {
     const t = setTimeout(() => setMinElapsed(true), MIN_SPLASH_MS);
-    Animated.loop(Animated.timing(progress, { toValue: 1, duration: 1100, easing: Easing.inOut(Easing.quad), useNativeDriver: true })).start();
-    return () => clearTimeout(t);
+    const loop = Animated.loop(Animated.timing(progress, { toValue: 1, duration: 1100, easing: Easing.inOut(Easing.quad), useNativeDriver: true }));
+    loop.start();
+    return () => {
+      clearTimeout(t);
+      loop.stop();
+    };
   }, [progress]);
 
   if (minElapsed && phase !== 'booting') {

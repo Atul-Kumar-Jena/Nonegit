@@ -33,6 +33,10 @@ export async function buildApp(opts: BuildOptions): Promise<{ app: FastifyInstan
         ? false
         : {
             level: config.logLevel,
+            serializers: {
+              // Never log query strings (the dev console token travels in one).
+              req: (req) => ({ method: req.method, url: req.url.split('?')[0], remoteAddress: req.ip }),
+            },
             redact: {
               paths: ['req.headers.authorization', 'req.headers["x-attendly-sig"]', 'req.headers["x-dev-token"]', 'req.query.token'],
               remove: true,
@@ -65,9 +69,11 @@ export async function buildApp(opts: BuildOptions): Promise<{ app: FastifyInstan
     }
   });
 
+  // Per-IP flood guard. Deliberately generous: a whole class on campus Wi-Fi shares one
+  // public IP. Fine-grained limits are keyed per device on the routes themselves.
   if (opts.rateLimit !== false) await app.register(rateLimit, {
     global: true,
-    max: 300,
+    max: 3000,
     timeWindow: '1 minute',
     errorResponseBuilder: (_req, ctx) => {
       const err = new ApiError(429, 'RATE_LIMITED', undefined, { retryAfterSec: Math.ceil(ctx.ttl / 1000) });

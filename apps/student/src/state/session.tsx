@@ -146,7 +146,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         // Background identity check + clock sync; offline is fine.
         client
           .meta()
-          .then((meta) => checkServerIdentity(cfg.url, meta, cfg))
+          .then(async (meta) => {
+            const fresh = checkServerIdentity(cfg.url, meta, cfg);
+            if (!cancelled && fresh.channels.join() !== cfg.channels.join()) {
+              await saveServerConfig(fresh);
+              setServer(fresh);
+            }
+          })
           .catch((err) => {
             if (err instanceof ServerIdentityError && !cancelled) {
               setIdentityError(err.message);

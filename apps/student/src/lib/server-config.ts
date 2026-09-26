@@ -12,6 +12,8 @@ export const ServerConfig = z.object({
   url: z.string().min(1),
   kid: z.string().min(1),
   publicKey: z.string().refine((s) => isB64urlOfLength(s, 32)),
+  /** Sign-in channels the server supports (older stored configs default to email only). */
+  channels: z.array(z.enum(['email', 'phone'])).default(['email']),
 });
 export type ServerConfig = z.infer<typeof ServerConfig>;
 
@@ -35,7 +37,7 @@ export function checkServerIdentity(url: string, meta: MetaResponse, existing: S
     throw new ServerIdentityError('This server’s identity does not match the one built into the app. Do not continue.');
   if (existing && existing.url === url && existing.publicKey !== meta.serverKey.publicKey)
     throw new ServerIdentityError('The server’s signing identity has changed since you last used it. This can mean someone is intercepting your connection. Contact your institution before continuing.');
-  return { url, kid: meta.serverKey.kid, publicKey: meta.serverKey.publicKey };
+  return { url, kid: meta.serverKey.kid, publicKey: meta.serverKey.publicKey, channels: meta.channels };
 }
 
 export function pinnedKey(c: ServerConfig): { kid: string; publicKey: Uint8Array } {

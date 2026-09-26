@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Typecheck & tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Typecheck (protocol, server, student app)
+        run: npm run typecheck
+      - name: Protocol unit tests
+        run: npm test -w packages/protocol
+      - name: Server integration tests (real PostgreSQL)
+        run: npm test -w server
+      - name: Student app ⇄ server end-to-end
+        run: npm test -w apps/student
+      - name: Server production bundle
+        run: npm run build -w server
+      - name: Student app JS bundle (Android)
+        working-directory: apps/student
+        run: npx expo export --platform android --output-dir /tmp/dist-android
+
+  docker:
+    name: Server Docker image
+    runs-on: ubuntu-latest
+    needs: test
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f server/Dockerfile -t attendly-api .
+      - name: Smoke test the image
+        run: |
+          docker network create t
+          docker run -d --name db --network t -e POSTGRES_PASSWORD=pw postgres:16-alpine
+          for i in $(seq 1 30); do docker exec db pg_isready -U postgres && break; sleep 1; done
+          KEYS=$(docker run --rm attendly-api node dist/cli.cjs keys | grep -v '^#')
+          docker run -d --name api --network t -p 4000:4000 \
+            -e DATABASE_URL=postgres://postgres:pw@db:5432/postgres -e OTP_DELIVERY=console \
+            $(echo "$KEYS" | sed 's/^/-e /') attendly-api
+          for i in $(seq 1 30); do curl -fs localhost:4000/healthz && break; sleep 1; done
+          curl -fs localhost:4000/v1/meta
+          docker exec api node dist/cli.cjs seed
+          docker exec api node dist/cli.cjs audit:verify
+
+  android-apk:
+    name: Android APK (Student)
+    runs-on: ubuntu-latest
+    needs: test
+    timeout-minutes: 60
+    env:
+      # Set these under Settings → Secrets and variables → Actions → Variables.
+      EXPO_PUBLIC_API_URL: ${{ vars.ATTENDLY_API_URL }}
+      EXPO_PUBLIC_SERVER_KEY: ${{ vars.ATTENDLY_SERVER_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - run: npm ci
+      - name: Generate native Android project
+        working-directory: apps/student
+        run: npx expo prebuild --platform android --no-install
+      - name: Build release APK
+        working-directory: apps/student/android
+        run: ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a,armeabi-v7a
+      - uses: actions/upload-artifact@v4
+        with:
+          name: attendly-student-apk
+          path: apps/student/android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 30

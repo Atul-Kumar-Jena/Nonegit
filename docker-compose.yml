@@ -1,0 +1,35 @@
+# Local / single-server deployment:  docker compose up -d
+# First run:  cp server/.env.example server/.env  and paste the output of
+#             docker compose run --rm api node dist/cli.cjs keys
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: attendly
+      POSTGRES_PASSWORD: attendly
+      POSTGRES_DB: attendly
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U attendly']
+      interval: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    env_file: server/.env
+    environment:
+      DATABASE_URL: postgres://attendly:attendly@db:5432/attendly
+      NODE_ENV: production
+    ports:
+      - '4000:4000'
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

@@ -33,7 +33,12 @@ export const OTP_RESEND_AFTER_MS = 30_000;
 export const OTP_MAX_PER_HOUR = 6;
 export const TICKET_TTL_MS = 10 * 60_000;
 
-const strictLimit = { rateLimit: { max: 10, timeWindow: '1 minute' } };
+/**
+ * Per-IP flood guard for unauthenticated auth routes. Brute force is stopped by the
+ * per-challenge attempt limit and per-identifier throttle, not by this; it is sized
+ * so a class signing in together behind one campus NAT is never blocked.
+ */
+const strictLimit = { rateLimit: { max: 120, timeWindow: '1 minute' } };
 
 function checkDeviceIntegrity(deps: Deps, device: DeviceInfo) {
   if (device.platform === 'web' && !deps.config.allowWebClients) throw new ApiError(403, 'INTEGRITY', 'Web clients are not allowed on this server.');

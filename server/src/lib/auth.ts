@@ -22,6 +22,15 @@ const NONCE_TTL_MS = 2 * MAX_CLOCK_SKEW_MS + 30_000;
 /** A retried refresh (lost response) within this window re-issues instead of tripping reuse detection. */
 const REFRESH_RETRY_GRACE_MS = 60_000;
 
+/**
+ * Rate-limit key for authenticated routes: one bucket per access token (i.e. per
+ * device session), so students sharing a campus NAT never throttle each other.
+ */
+export function perDeviceKey(req: FastifyRequest): string {
+  const a = req.headers.authorization;
+  return typeof a === 'string' && a.startsWith('Bearer ') ? `tok:${sha256Hex(a).slice(0, 32)}` : `ip:${req.ip}`;
+}
+
 export const HDR_TS = 'x-attendly-ts';
 export const HDR_NONCE = 'x-attendly-nonce';
 export const HDR_SIG = 'x-attendly-sig';

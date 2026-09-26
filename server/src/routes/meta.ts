@@ -9,6 +9,7 @@ export async function metaRoutes(app: FastifyInstance, deps: Deps) {
     serverTime: deps.clock(),
     serverKey: { kid: deps.signer.kid, publicKey: deps.signer.publicKeyB64 },
     minAppVersion: deps.config.minAppVersion,
+    channels: deps.sender.supports('phone') ? ['email', 'phone'] : ['email'],
   }));
 
   /** Liveness + DB readiness, for load balancers and uptime monitors. */
