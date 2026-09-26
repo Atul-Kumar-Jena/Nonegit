@@ -1,0 +1,251 @@
+/**
+ * API contract — zod schemas used by the server to validate requests and by
+ * clients to validate responses. One source of truth, so the apps and the
+ * server can never silently disagree about a payload.
+ */
+import { z } from 'zod';
+import { isB64urlOfLength } from './encoding';
+import { QR_MAX_LENGTH } from './qr';
+
+export const API_VERSION = 1;
+
+const b64url = (bytes: number, label: string) =>
+  z.string().refine((s) => isB64urlOfLength(s, bytes), { message: `${label} must be ${bytes} bytes of base64url` });
+
+export const PublicKeyB64 = b64url(32, 'publicKey');
+export const SignatureB64 = b64url(64, 'signature');
+/** Opaque bearer secrets: 32 random bytes, base64url. */
+export const OpaqueToken = b64url(32, 'token');
+export const IsoDate = z.string().datetime({ offset: true });
+
+const shortText = (max: number) => z.string().trim().min(1).max(max);
+
+export const Channel = z.enum(['email', 'phone']);
+export type Channel = z.infer<typeof Channel>;
+
+export const Platform = z.enum(['ios', 'android', 'web']);
+export type Platform = z.infer<typeof Platform>;
+
+export const Role = z.enum(['student', 'admin', 'developer']);
+export type Role = z.infer<typeof Role>;
+
+// ───────────────────────────── meta ─────────────────────────────
+
+export const MetaResponse = z.object({
+  name: z.string(),
+  apiVersion: z.number().int(),
+  serverTime: z.number(),
+  serverKey: z.object({ kid: z.string(), publicKey: PublicKeyB64 }),
+  minAppVersion: z.string(),
+});
+export type MetaResponse = z.infer<typeof MetaResponse>;
+
+// ───────────────────────────── auth ─────────────────────────────
+
+export const EmailIdentifier = z.string().trim().toLowerCase().pipe(z.email().max(254));
+/** E.164 phone number, e.g. +919876543210 */
+export const PhoneIdentifier = z.string().trim().regex(/^\+[1-9][0-9]{7,14}$/, 'Phone must be in +<country><number> format');
+
+export const OtpRequestBody = z.discriminatedUnion('channel', [
+  z.object({ channel: z.literal('email'), identifier: EmailIdentifier }),
+  z.object({ channel: z.literal('phone'), identifier: PhoneIdentifier }),
+]);
+export type OtpRequestBody = z.infer<typeof OtpRequestBody>;
+
+export const OtpRequestResponse = z.object({
+  challengeId: z.uuid(),
+  expiresAt: IsoDate,
+  resendAfterSec: z.number().int().nonnegative(),
+  destination: z.string(),
+});
+export type OtpRequestResponse = z.infer<typeof OtpRequestResponse>;
+
+export const DeviceInfo = z.object({
+  publicKey: PublicKeyB64,
+  platform: Platform,
+  model: shortText(80),
+  osVersion: shortText(40),
+  appVersion: shortText(20),
+  integrity: z.object({ rooted: z.boolean(), emulator: z.boolean() }),
+});
+export type DeviceInfo = z.infer<typeof DeviceInfo>;
+
+export const OtpVerifyBody = z.object({
+  challengeId: z.uuid(),
+  code: z.string().regex(/^[0-9]{6}$/, 'Code must be 6 digits'),
+  device: DeviceInfo,
+  proof: SignatureB64,
+});
+export type OtpVerifyBody = z.infer<typeof OtpVerifyBody>;
+
+export const AuthTokens = z.object({
+  accessToken: OpaqueToken,
+  accessExpiresAt: IsoDate,
+  refreshToken: OpaqueToken,
+  refreshExpiresAt: IsoDate,
+});
+export type AuthTokens = z.infer<typeof AuthTokens>;
+
+export const UserSummary = z.object({
+  id: z.uuid(),
+  role: Role,
+  fullName: z.string(),
+  email: z.string().nullable(),
+  phone: z.string().nullable(),
+  rollNo: z.string().nullable(),
+  department: z.string().nullable(),
+  semester: z.number().int().nullable(),
+  institution: z.object({ slug: z.string(), name: z.string() }),
+});
+export type UserSummary = z.infer<typeof UserSummary>;
+
+export const DeviceSummary = z.object({
+  id: z.uuid(),
+  platform: Platform,
+  model: z.string(),
+  osVersion: z.string(),
+  fingerprint: z.string(),
+  status: z.enum(['active', 'revoked']),
+  boundAt: IsoDate.nullable(),
+  lastSeenAt: IsoDate.nullable(),
+});
+export type DeviceSummary = z.infer<typeof DeviceSummary>;
+
+export const OtpVerifyResponse = z.discriminatedUnion('status', [
+  z.object({ status: z.literal('ok'), auth: AuthTokens, user: UserSummary, device: DeviceSummary }),
+  z.object({ status: z.literal('bind_required'), ticket: OpaqueToken, user: UserSummary }),
+  z.object({
+    status: z.literal('device_mismatch'),
+    ticket: OpaqueToken,
+    user: UserSummary,
+    boundDevice: z.object({ model: z.string(), platform: Platform, fingerprint: z.string(), boundAt: IsoDate.nullable() }),
+    pendingRequest: z.object({ id: z.uuid(), createdAt: IsoDate }).nullable(),
+  }),
+]);
+export type OtpVerifyResponse = z.infer<typeof OtpVerifyResponse>;
+
+export const BindBody = z.object({ ticket: OpaqueToken, proof: SignatureB64 });
+export type BindBody = z.infer<typeof BindBody>;
+
+export const BindResponse = z.object({ auth: AuthTokens, user: UserSummary, device: DeviceSummary });
+export type BindResponse = z.infer<typeof BindResponse>;
+
+export const RebindRequestBody = z.object({ ticket: OpaqueToken, proof: SignatureB64, reason: z.string().trim().min(3).max(200) });
+export type RebindRequestBody = z.infer<typeof RebindRequestBody>;
+
+export const DeviceRequestResponse = z.object({ requestId: z.uuid(), status: z.enum(['pending', 'approved', 'denied', 'cancelled']) });
+export type DeviceRequestResponse = z.infer<typeof DeviceRequestResponse>;
+
+export const RefreshBody = z.object({ refreshToken: OpaqueToken });
+export type RefreshBody = z.infer<typeof RefreshBody>;
+
+// ───────────────────────────── student data ─────────────────────────────
+
+export const SessionStatus = z.enum(['scheduled', 'live', 'closed', 'cancelled']);
+export type SessionStatus = z.infer<typeof SessionStatus>;
+
+export const TodaySession = z.object({
+  sessionId: z.uuid(),
+  courseCode: z.string(),
+  courseTitle: z.string(),
+  room: z.string().nullable(),
+  status: SessionStatus,
+  scheduledStart: IsoDate,
+  scheduledEnd: IsoDate,
+  marked: z.boolean(),
+});
+export type TodaySession = z.infer<typeof TodaySession>;
+
+export const DashboardResponse = z.object({
+  user: UserSummary,
+  device: DeviceSummary,
+  term: z.object({
+    name: z.string(),
+    attended: z.number().int().nonnegative(),
+    held: z.number().int().nonnegative(),
+    percent: z.number().nullable(),
+    weekDelta: z.number().nullable(),
+    minPercent: z.number(),
+  }),
+  today: z.array(TodaySession),
+  timezone: z.string(),
+  serverTime: z.number(),
+});
+export type DashboardResponse = z.infer<typeof DashboardResponse>;
+
+export const SubjectStat = z.object({
+  courseId: z.uuid(),
+  code: z.string(),
+  title: z.string(),
+  kind: z.enum(['theory', 'lab']),
+  instructor: z.string().nullable(),
+  attended: z.number().int().nonnegative(),
+  held: z.number().int().nonnegative(),
+  percent: z.number().nullable(),
+  standing: z.enum(['no-data', 'safe', 'at-risk']),
+  needToReach: z.number().int().nonnegative(),
+  safeToMiss: z.number().int().nonnegative(),
+});
+export type SubjectStat = z.infer<typeof SubjectStat>;
+
+export const SubjectsResponse = z.object({
+  termName: z.string(),
+  termWeek: z.number().int().positive(),
+  minPercent: z.number(),
+  subjects: z.array(SubjectStat),
+});
+export type SubjectsResponse = z.infer<typeof SubjectsResponse>;
+
+export const ProfileResponse = z.object({
+  user: UserSummary,
+  device: DeviceSummary,
+  lastScanAt: IsoDate.nullable(),
+  resetRequests: z.object({
+    used: z.number().int().nonnegative(),
+    limit: z.number().int().nonnegative(),
+    pending: z.object({ id: z.uuid(), createdAt: IsoDate, reason: z.string() }).nullable(),
+  }),
+});
+export type ProfileResponse = z.infer<typeof ProfileResponse>;
+
+export const ResetRequestBody = z.object({ reason: z.string().trim().min(3).max(200) });
+export type ResetRequestBody = z.infer<typeof ResetRequestBody>;
+
+// ───────────────────────────── attendance ─────────────────────────────
+
+export const MarkBody = z.object({
+  qr: z.string().min(1).max(QR_MAX_LENGTH),
+  location: z.object({
+    lat: z.number().gte(-90).lte(90),
+    lng: z.number().gte(-180).lte(180),
+    accuracyM: z.number().nonnegative().max(100_000),
+    mocked: z.boolean(),
+    capturedAt: z.number().int().positive(),
+  }),
+});
+export type MarkBody = z.infer<typeof MarkBody>;
+
+export const MarkResponse = z.object({
+  status: z.literal('present'),
+  alreadyMarked: z.boolean(),
+  record: z.object({
+    id: z.uuid(),
+    sessionId: z.uuid(),
+    sessionCode: z.string(),
+    lectureNo: z.number().int().nullable(),
+    courseCode: z.string(),
+    courseTitle: z.string(),
+    kind: z.enum(['theory', 'lab']),
+    markedAt: IsoDate,
+    qrSeq: z.number().int().nonnegative(),
+    distanceM: z.number().nonnegative(),
+  }),
+  receipt: z.object({
+    userId: z.uuid(),
+    deviceFingerprint: z.string(),
+    serverKeyId: z.string(),
+    signature: SignatureB64,
+  }),
+  course: z.object({ before: z.number().nullable(), after: z.number().nullable() }),
+});
+export type MarkResponse = z.infer<typeof MarkResponse>;

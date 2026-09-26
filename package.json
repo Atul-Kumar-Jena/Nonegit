@@ -1,0 +1,18 @@
+{
+  "name": "attendly",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Attendly — attendance, unforgeable. Monorepo: shared protocol, API server, and mobile apps.",
+  "workspaces": [
+    "packages/*",
+    "server",
+    "apps/*"
+  ],
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20.19"
+  }
+}

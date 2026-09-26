@@ -1,0 +1,118 @@
+import { z } from 'zod';
+import { fromB64url } from '@attendly/protocol';
+
+const bool = z
+  .enum(['1', '0', 'true', 'false', 'yes', 'no', ''])
+  .optional()
+  .transform((v) => v === '1' || v === 'true' || v === 'yes');
+
+const b64Key = (min: number) =>
+  z.string().refine(
+    (s) => {
+      try {
+        return fromB64url(s).length >= min;
+      } catch {
+        return false;
+      }
+    },
+    { message: `must be base64url encoding at least ${min} bytes — run "npm run keys" to generate one` },
+  );
+
+const EnvSchema = z
+  .object({
+    NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+    HOST: z.string().default('0.0.0.0'),
+    PORT: z.coerce.number().int().min(1).max(65535).default(4000),
+    DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
+    DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
+    DATABASE_SSL: bool,
+    SERVER_SIGNING_KEY: b64Key(32),
+    TOKEN_PEPPER: b64Key(32),
+    OTP_DELIVERY: z.enum(['console', 'smtp']).optional(),
+    SMTP_URL: z.string().optional(),
+    SMTP_FROM: z.string().default('Attendly <no-reply@attendly.app>'),
+    SMS_DELIVERY: z.enum(['console', 'twilio', 'disabled']).optional(),
+    TWILIO_ACCOUNT_SID: z.string().optional(),
+    TWILIO_AUTH_TOKEN: z.string().optional(),
+    TWILIO_FROM: z.string().optional(),
+    TRUST_PROXY: bool,
+    CORS_ORIGINS: z.string().optional(),
+    DEV_TOOLS_TOKEN: z.string().optional(),
+    ALLOW_WEB_CLIENTS: bool,
+    ALLOW_EMULATORS: bool,
+    MIN_APP_VERSION: z.string().default('1.0.0'),
+    LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
+  })
+  .superRefine((e, ctx) => {
+    const otp = e.OTP_DELIVERY ?? (e.NODE_ENV === 'production' ? undefined : 'console');
+    if (!otp) ctx.addIssue({ code: 'custom', path: ['OTP_DELIVERY'], message: 'must be set explicitly in production (smtp, or console for private testing)' });
+    if (otp === 'smtp' && !e.SMTP_URL) ctx.addIssue({ code: 'custom', path: ['SMTP_URL'], message: 'required when OTP_DELIVERY=smtp' });
+    if (e.SMS_DELIVERY === 'twilio' && !(e.TWILIO_ACCOUNT_SID && e.TWILIO_AUTH_TOKEN && e.TWILIO_FROM))
+      ctx.addIssue({ code: 'custom', path: ['SMS_DELIVERY'], message: 'twilio requires TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_FROM' });
+    if (e.DEV_TOOLS_TOKEN !== undefined && e.DEV_TOOLS_TOKEN.length > 0 && e.DEV_TOOLS_TOKEN.length < 24)
+      ctx.addIssue({ code: 'custom', path: ['DEV_TOOLS_TOKEN'], message: 'must be at least 24 characters' });
+    if (e.SERVER_SIGNING_KEY === e.TOKEN_PEPPER) ctx.addIssue({ code: 'custom', path: ['TOKEN_PEPPER'], message: 'must differ from SERVER_SIGNING_KEY' });
+  });
+
+export interface Config {
+  env: 'development' | 'production' | 'test';
+  host: string;
+  port: number;
+  databaseUrl: string;
+  databasePoolMax: number;
+  databaseSsl: boolean;
+  serverSigningSeed: Uint8Array;
+  tokenPepper: Uint8Array;
+  otpDelivery: 'console' | 'smtp';
+  smtpUrl: string | undefined;
+  smtpFrom: string;
+  smsDelivery: 'console' | 'twilio' | 'disabled';
+  twilio: { accountSid: string; authToken: string; from: string } | undefined;
+  trustProxy: boolean;
+  corsOrigins: string[];
+  devToolsToken: string | undefined;
+  allowWebClients: boolean;
+  allowEmulators: boolean;
+  minAppVersion: string;
+  logLevel: string;
+}
+
+export class ConfigError extends Error {}
+
+export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
+  const parsed = EnvSchema.safeParse(env);
+  if (!parsed.success) {
+    const lines = parsed.error.issues.map((i) => `  • ${i.path.join('.') || '(env)'}: ${i.message}`);
+    throw new ConfigError(`Invalid server configuration:\n${lines.join('\n')}`);
+  }
+  const e = parsed.data;
+  const seed = fromB64url(e.SERVER_SIGNING_KEY);
+  return {
+    env: e.NODE_ENV,
+    host: e.HOST,
+    port: e.PORT,
+    databaseUrl: e.DATABASE_URL,
+    databasePoolMax: e.DATABASE_POOL_MAX,
+    databaseSsl: e.DATABASE_SSL,
+    serverSigningSeed: seed.slice(0, 32),
+    tokenPepper: fromB64url(e.TOKEN_PEPPER),
+    otpDelivery: e.OTP_DELIVERY ?? 'console',
+    smtpUrl: e.SMTP_URL,
+    smtpFrom: e.SMTP_FROM,
+    smsDelivery: e.SMS_DELIVERY ?? (e.NODE_ENV === 'production' ? 'disabled' : 'console'),
+    twilio:
+      e.TWILIO_ACCOUNT_SID && e.TWILIO_AUTH_TOKEN && e.TWILIO_FROM
+        ? { accountSid: e.TWILIO_ACCOUNT_SID, authToken: e.TWILIO_AUTH_TOKEN, from: e.TWILIO_FROM }
+        : undefined,
+    trustProxy: e.TRUST_PROXY,
+    corsOrigins: (e.CORS_ORIGINS ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+    devToolsToken: e.DEV_TOOLS_TOKEN || undefined,
+    allowWebClients: e.ALLOW_WEB_CLIENTS,
+    allowEmulators: e.ALLOW_EMULATORS,
+    minAppVersion: e.MIN_APP_VERSION,
+    logLevel: e.LOG_LEVEL,
+  };
+}

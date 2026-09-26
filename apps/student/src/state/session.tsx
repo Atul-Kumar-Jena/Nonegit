@@ -1,0 +1,284 @@
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import type { Channel, OtpVerifyResponse, UserSummary } from '@attendly/protocol';
+import { ApiClient, ApiRequestError, normalizeBaseUrl } from '@/lib/api-core';
+import { collectDeviceInfo } from '@/lib/device-info';
+import { destroyDeviceKey, deviceKeys } from '@/lib/device-key';
+import { ALLOW_HTTP, DEFAULT_SERVER_URL } from '@/lib/env';
+import {
+  ServerIdentityError,
+  checkServerIdentity,
+  clearServerConfig,
+  loadServerConfig,
+  saveServerConfig,
+  type ServerConfig,
+} from '@/lib/server-config';
+import { tokenStore } from '@/lib/tokens';
+
+export type Phase = 'booting' | 'needs-server' | 'signed-out' | 'signed-in' | 'identity-error';
+
+export interface PendingOtp {
+  channel: Channel;
+  identifier: string;
+  challengeId: string;
+  destination: string;
+  expiresAt: string;
+  resendAt: number;
+}
+
+export type PendingDevice =
+  | { kind: 'bind'; ticket: string; user: UserSummary }
+  | Extract<OtpVerifyResponse, { status: 'device_mismatch' }> & { kind: 'mismatch' };
+
+interface SessionValue {
+  phase: Phase;
+  server: ServerConfig | null;
+  api: ApiClient | null;
+  notice: string | null;
+  identityError: string | null;
+  pendingOtp: PendingOtp | null;
+  pendingDevice: PendingDevice | null;
+  suggestedServerUrl: string;
+  connect(url: string): Promise<void>;
+  requestOtp(channel: Channel, identifier: string): Promise<PendingOtp>;
+  verifyOtp(code: string): Promise<'signed-in' | 'bind' | 'mismatch'>;
+  bindDevice(): Promise<void>;
+  requestRebind(reason: string): Promise<void>;
+  signOut(): Promise<void>;
+  resetPhone(): Promise<void>;
+  clearNotice(): void;
+}
+
+const Ctx = createContext<SessionValue | null>(null);
+
+export function useSession(): SessionValue {
+  const v = useContext(Ctx);
+  if (!v) throw new Error('useSession must be used inside <SessionProvider>');
+  return v;
+}
+
+/** Convenience for screens that only render when signed in. */
+export function useApi(): ApiClient {
+  const { api } = useSession();
+  if (!api) throw new Error('API client not ready');
+  return api;
+}
+
+export function SessionProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
+  const [phase, setPhase] = useState<Phase>('booting');
+  const [server, setServer] = useState<ServerConfig | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [identityError, setIdentityError] = useState<string | null>(null);
+  const [pendingOtp, setPendingOtp] = useState<PendingOtp | null>(null);
+  const [pendingDevice, setPendingDevice] = useState<PendingDevice | null>(null);
+  const apiRef = useRef<ApiClient | null>(null);
+  const [api, setApi] = useState<ApiClient | null>(null);
+
+  const makeClient = useCallback(
+    (url: string) => {
+      const client = new ApiClient({
+        baseUrl: url,
+        keys: deviceKeys,
+        tokens: tokenStore,
+        onSessionLost: (err) => {
+          queryClient.clear();
+          setNotice(
+            err.code === 'DEVICE_REVOKED'
+              ? 'This phone was unbound from your account. Sign in again to bind it.'
+              : err.code === 'ACCOUNT_SUSPENDED'
+                ? 'Your account is suspended. Contact your institution.'
+                : 'Your session ended. Please sign in again.',
+          );
+          setPhase('signed-out');
+        },
+      });
+      apiRef.current = client;
+      setApi(client);
+      return client;
+    },
+    [queryClient],
+  );
+
+  /** Fetches /v1/meta, enforces the key pin, and stores the server. */
+  const connect = useCallback(
+    async (rawUrl: string) => {
+      const url = normalizeBaseUrl(rawUrl, ALLOW_HTTP);
+      const existing = await loadServerConfig();
+      const client = makeClient(url);
+      const meta = await client.meta();
+      const cfg = checkServerIdentity(url, meta, existing);
+      if (existing && existing.url !== url) {
+        // Switching servers: the old session is meaningless here.
+        await tokenStore.clear();
+        queryClient.clear();
+      }
+      await saveServerConfig(cfg);
+      setServer(cfg);
+      setPhase((await tokenStore.get()) ? 'signed-in' : 'signed-out');
+    },
+    [makeClient, queryClient],
+  );
+
+  // ── boot ──
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const cfg = await loadServerConfig();
+        if (cancelled) return;
+        if (!cfg) {
+          if (DEFAULT_SERVER_URL) {
+            try {
+              await connect(DEFAULT_SERVER_URL);
+              return;
+            } catch (err) {
+              if (err instanceof ServerIdentityError) throw err;
+              setNotice(err instanceof Error ? err.message : 'Could not reach the server.');
+            }
+          }
+          setPhase('needs-server');
+          return;
+        }
+        setServer(cfg);
+        const client = makeClient(cfg.url);
+        setPhase((await tokenStore.get()) ? 'signed-in' : 'signed-out');
+        // Background identity check + clock sync; offline is fine.
+        client
+          .meta()
+          .then((meta) => checkServerIdentity(cfg.url, meta, cfg))
+          .catch((err) => {
+            if (err instanceof ServerIdentityError && !cancelled) {
+              setIdentityError(err.message);
+              setPhase('identity-error');
+            }
+          });
+      } catch (err) {
+        if (cancelled) return;
+        if (err instanceof ServerIdentityError) {
+          setIdentityError(err.message);
+          setPhase('identity-error');
+        } else {
+          setNotice('Secure storage could not be read. Restart the app; if this persists, reinstall it.');
+          setPhase('needs-server');
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const requestOtp = useCallback(async (channel: Channel, identifier: string) => {
+    const client = apiRef.current;
+    if (!client) throw new Error('Choose a server first.');
+    const r = await client.requestOtp(channel === 'email' ? { channel, identifier } : { channel, identifier });
+    const p: PendingOtp = {
+      channel,
+      identifier,
+      challengeId: r.challengeId,
+      destination: r.destination,
+      expiresAt: r.expiresAt,
+      resendAt: Date.now() + r.resendAfterSec * 1000,
+    };
+    setPendingOtp(p);
+    setNotice(null);
+    return p;
+  }, []);
+
+  const verifyOtp = useCallback(
+    async (code: string) => {
+      const client = apiRef.current;
+      if (!client || !pendingOtp) throw new Error('Request a new code.');
+      const info = await collectDeviceInfo();
+      const res = await client.verifyOtp(pendingOtp.challengeId, code, info);
+      if (res.status === 'ok') {
+        setPendingOtp(null);
+        setPendingDevice(null);
+        queryClient.clear();
+        setPhase('signed-in');
+        return 'signed-in' as const;
+      }
+      if (res.status === 'bind_required') {
+        setPendingDevice({ kind: 'bind', ticket: res.ticket, user: res.user });
+        return 'bind' as const;
+      }
+      setPendingDevice({ ...res, kind: 'mismatch' });
+      return 'mismatch' as const;
+    },
+    [pendingOtp, queryClient],
+  );
+
+  const bindDevice = useCallback(async () => {
+    const client = apiRef.current;
+    if (!client || pendingDevice?.kind !== 'bind') throw new ApiRequestError('TICKET_INVALID', 'This sign-in step expired. Please sign in again.');
+    await client.bind(pendingDevice.ticket);
+    setPendingOtp(null);
+    setPendingDevice(null);
+    queryClient.clear();
+    setPhase('signed-in');
+  }, [pendingDevice, queryClient]);
+
+  const requestRebind = useCallback(
+    async (reason: string) => {
+      const client = apiRef.current;
+      if (!client || pendingDevice?.kind !== 'mismatch') throw new ApiRequestError('TICKET_INVALID', 'This sign-in step expired. Please sign in again.');
+      await client.requestRebind(pendingDevice.ticket, reason);
+    },
+    [pendingDevice],
+  );
+
+  const signOut = useCallback(async () => {
+    try {
+      await apiRef.current?.logout();
+    } catch {
+      // Offline or already revoked: local sign-out still proceeds.
+      await tokenStore.clear();
+    }
+    queryClient.clear();
+    setPendingOtp(null);
+    setPendingDevice(null);
+    setPhase('signed-out');
+  }, [queryClient]);
+
+  const resetPhone = useCallback(async () => {
+    try {
+      await apiRef.current?.logout();
+    } catch {
+      /* best effort */
+    }
+    await tokenStore.clear();
+    await destroyDeviceKey();
+    await clearServerConfig();
+    queryClient.clear();
+    setServer(null);
+    setPendingOtp(null);
+    setPendingDevice(null);
+    setIdentityError(null);
+    setPhase('needs-server');
+  }, [queryClient]);
+
+  const value = useMemo<SessionValue>(
+    () => ({
+      phase,
+      server,
+      api,
+      notice,
+      identityError,
+      pendingOtp,
+      pendingDevice,
+      suggestedServerUrl: server?.url ?? DEFAULT_SERVER_URL,
+      connect,
+      requestOtp,
+      verifyOtp,
+      bindDevice,
+      requestRebind,
+      signOut,
+      resetPhone,
+      clearNotice: () => setNotice(null),
+    }),
+    [phase, server, api, notice, identityError, pendingOtp, pendingDevice, connect, requestOtp, verifyOtp, bindDevice, requestRebind, signOut, resetPhone],
+  );
+
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+}
