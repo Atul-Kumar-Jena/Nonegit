@@ -321,8 +321,8 @@ export default function SessionScreen() {
               </Card>
             </>
           ) : null}
-          <SectionLabel right={<Text variant="monoSmall">{feed.isError && !feed.data ? 'offline' : `${present.length} / ${entries.length}`}</Text>}>Present</SectionLabel>
-          {feed.isError && !feed.data ? (
+          <SectionLabel right={<Text variant="monoSmall">{(feed.isError || feed.fetchStatus === 'paused') && !feed.data ? 'offline' : `${present.length} / ${entries.length}`}</Text>}>Present</SectionLabel>
+          {(feed.isError || feed.fetchStatus === 'paused') && !feed.data ? (
             <Card style={styles.hintRow}>
               <CloudOff color={colors.textDim} size={16} />
               <Text variant="small" style={{ flex: 1 }}>

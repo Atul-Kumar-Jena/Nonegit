@@ -38,7 +38,7 @@ export default function Home() {
     );
 
   const d = q.data!;
-  const offline = q.isError;
+  const offline = q.isError || q.fetchStatus === 'paused';
   return (
     <Screen onRefresh={() => void q.refetch()} refreshing={q.isRefetching}>
       <Header d={d} />

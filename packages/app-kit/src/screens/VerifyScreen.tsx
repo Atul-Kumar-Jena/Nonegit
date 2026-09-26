@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
-import { Redirect, router } from 'expo-router';
+import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { ArrowLeft } from 'lucide-react-native';
 import { Screen } from '../components/Screen';
@@ -12,7 +12,7 @@ import { colors } from '../theme';
 
 /** Enter the 6-digit code (step 1 of 2). */
 export default function Verify() {
-  const { pendingOtp, verifyOtp, requestOtp } = useSession();
+  const { pendingOtp, verifyOtp, requestOtp, phase } = useSession();
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,7 +49,15 @@ export default function Verify() {
     if (code.length === 6) void submit(code);
   }, [code]);
 
-  if (!pendingOtp) return <Redirect href="/login" />;
+  // No code pending (expired, or refused for this app): step back to the sign-in screen
+  // rather than stacking a second one.
+  useEffect(() => {
+    if (pendingOtp || phase === 'signed-in') return;
+    if (router.canGoBack()) router.back();
+    else router.replace('/login');
+  }, [pendingOtp, phase]);
+
+  if (!pendingOtp) return null;
 
   const resendIn = Math.max(0, Math.ceil((pendingOtp.resendAt - now) / 1000));
   const expired = Date.parse(pendingOtp.expiresAt) <= now;

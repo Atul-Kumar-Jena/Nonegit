@@ -87,13 +87,13 @@ export default function LiveQr() {
       }
       void qc.invalidateQueries({ queryKey: ['staff'] });
       setEnding(false);
-      router.replace({ pathname: '/session/[id]', params: { id } });
+      close();
     });
   }
 
   const marked = feed.data?.session.marked ?? s?.marked ?? 0;
   const enrolled = feed.data?.session.enrolled ?? s?.enrolled ?? 0;
-  const offlineNow = feed.isError;
+  const offlineNow = feed.isError || feed.fetchStatus === 'paused';
 
   return (
     <Screen scroll={false} edges={['top', 'bottom']} contentStyle={{ alignItems: 'center' }}>

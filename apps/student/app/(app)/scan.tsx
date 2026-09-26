@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, Easing, Linking, StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
+import { useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import { useQueryClient } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -14,6 +14,7 @@ import { LocationError, getFreshFix, type LocationFix } from '@kit/lib/location'
 import { loadPrefs } from '@kit/lib/prefs';
 import { outbox } from '@kit/lib/outbox';
 import { pinnedKey } from '@kit/lib/server-config';
+import { QrScanner } from '@/components/QrScanner';
 import { studentQueryKeys } from '@/state/queries';
 import { setScanOutcome } from '@/state/scan-result';
 import { useApi, useSession } from '@kit/state/session';
@@ -76,18 +77,15 @@ export default function Scan() {
   }
 
   const onScanned = useCallback(
-    async ({ data }: BarcodeScanningResult) => {
+    async (data: string) => {
       if (busy.current) return;
-      // Reject foreign QR codes locally, so a random poster never counts against the student.
-      if (!parseQrToken(data)) {
-        flash('That’s not an Attendly session code.');
-        return;
-      }
+      // Foreign QR codes are filtered by the scanner; checked again here as defence in depth.
+      if (!parseQrToken(data)) return;
       busy.current = true;
+      setStage('locating');
       // The moment of scanning on the server's clock — what an offline upload is judged against.
       const scannedAt = Math.round(api.serverNow());
       let body: MarkBody | null = null;
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
       try {
         if ((await loadPrefs()).biometricForScans) {
           setStage('confirming');
@@ -112,14 +110,15 @@ export default function Scan() {
         void Haptics.notificationAsync(receiptVerified ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Warning).catch(() => undefined);
         for (const queryKey of studentQueryKeys) void qc.invalidateQueries({ queryKey });
       } catch (err) {
-        if (body && err instanceof ApiRequestError && (err.code === 'NETWORK' || err.code === 'TIMEOUT' || err.status >= 500)) {
+        const notStarted = err instanceof ApiRequestError && err.rejection?.code === 'E-NOT-STARTED';
+        if (body && err instanceof ApiRequestError && (notStarted || err.code === 'NETWORK' || err.code === 'TIMEOUT' || err.status >= 500)) {
           // No internet (or the server is down): keep the signed-off scan encrypted on the phone
           // and upload it automatically. The server re-checks everything against the scan time.
           const label = `${course ? course.split(' · ')[0] : 'Class'} scan · ${new Date(scannedAt).toTimeString().slice(0, 5)}`;
           try {
             await outbox.enqueue('mark', label, { ...body, scannedAt });
             void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => undefined);
-            setScanOutcome({ kind: 'queued', label });
+            setScanOutcome({ kind: 'queued', label, reason: notStarted ? 'not-started' : 'offline' });
             router.replace('/result');
             return;
           } catch {
@@ -143,18 +142,10 @@ export default function Scan() {
 
   return (
     <View style={styles.root}>
-      {granted ? (
-        <CameraView
-          style={StyleSheet.absoluteFill}
-          facing="back"
-          barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-          onBarcodeScanned={stage === 'scanning' ? (r) => void onScanned(r) : undefined}
-          accessibilityLabel="Camera viewfinder"
-        />
-      ) : null}
+      {granted ? <QrScanner active={stage === 'scanning'} onCode={(d) => void onScanned(d)} onForeign={() => flash('That’s not an Attendly session code.')} /> : null}
       <View style={[StyleSheet.absoluteFill, styles.dim]} pointerEvents="none" />
 
-      <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom']}>
+      <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom']} pointerEvents="box-none">
         <View style={styles.header}>
           <IconButton label="Close scanner" onPress={() => router.back()} style={styles.headerBtn}>
             <ArrowLeft color={colors.text} size={18} />
@@ -169,7 +160,7 @@ export default function Scan() {
           </View>
         </View>
 
-        <View style={styles.center}>
+        <View style={styles.center} pointerEvents="box-none">
           {permission && !granted ? (
             <Card style={styles.panel}>
               <IconTile tone="cyan" size={48}>
@@ -188,7 +179,7 @@ export default function Scan() {
               )}
             </Card>
           ) : (
-            <View style={styles.frame} accessibilityElementsHidden>
+            <View style={styles.frame} accessibilityElementsHidden pointerEvents="none">
               <View style={[styles.corner, styles.tl]} />
               <View style={[styles.corner, styles.tr]} />
               <View style={[styles.corner, styles.bl]} />
@@ -231,7 +222,7 @@ export default function Scan() {
             </Card>
           ) : (
             <Text variant="small" style={{ textAlign: 'center' }}>
-              Hold steady inside the classroom. The code rotates every few seconds — screenshots won’t work.
+              Point at the class QR — it’s picked up anywhere on screen. Tap to focus, pinch or 2×/4× to zoom on a far screen.
             </Text>
           )}
         </View>

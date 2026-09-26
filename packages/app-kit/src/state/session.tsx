@@ -268,6 +268,8 @@ export function SessionProvider({ children, audience }: { children: ReactNode; a
       if (!audience.allowedRoles.includes(res.user.role)) {
         // Wrong app for this account: never bind this phone, and drop any session just issued.
         if (res.status === 'ok') await client.logout().catch(() => tokenStore.clear());
+        // Shown on the sign-in screen (the code screen closes as the pending code is dropped).
+        setNotice(audience.wrongRoleMessage);
         setPendingOtp(null);
         setPendingDevice(null);
         throw new ApiRequestError('FORBIDDEN', audience.wrongRoleMessage, 403);

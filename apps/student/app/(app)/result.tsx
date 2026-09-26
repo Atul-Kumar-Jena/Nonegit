@@ -15,7 +15,7 @@ export default function Result() {
   useEffect(() => () => clearScanOutcome(), []);
   if (!outcome) return <Redirect href="/home" />;
   if (outcome.kind === 'success') return <Success o={outcome} />;
-  if (outcome.kind === 'queued') return <Queued label={outcome.label} />;
+  if (outcome.kind === 'queued') return <Queued label={outcome.label} reason={outcome.reason} />;
   if (outcome.kind === 'rejected') return <Rejected code={outcome.rejection.code} title={outcome.rejection.title} hint={outcome.rejection.hint} detail={outcome.rejection.detail} />;
   return <Failure title={outcome.title} message={outcome.message} />;
 }
@@ -173,21 +173,23 @@ function Rejected({ code, title, hint, detail }: { code: RejectionCode; title: s
   );
 }
 
-function Queued({ label }: { label: string }) {
+function Queued({ label, reason }: { label: string; reason: 'offline' | 'not-started' }) {
   return (
     <Screen edges={['top', 'bottom']} contentStyle={{ paddingTop: 28 }}>
       <Halo tone="amber">
         <CloudUpload color="#3b2303" size={32} />
       </Halo>
       <Text variant="title" style={styles.center}>
-        Saved offline
+        {reason === 'offline' ? 'Saved offline' : 'Saved — waiting for class'}
       </Text>
       <Text variant="body" style={[styles.center, { marginTop: 6 }]}>
         {label}
       </Text>
       <Card style={{ marginTop: 20, gap: 8 }}>
         <Text variant="body" color={colors.text}>
-          You’re offline, so your scan was sealed and stored on this phone. It uploads by itself as soon as you’re back online — keep the app installed and stay signed in.
+          {reason === 'offline'
+            ? 'You’re offline, so your scan was sealed and stored on this phone. It uploads by itself as soon as you’re back online — keep the app installed and stay signed in.'
+            : 'Your instructor’s phone hasn’t synced this class yet (it may be offline). Your scan is stored on this phone and is submitted automatically once the class appears on the server.'}
         </Text>
         <Text variant="small">
           The server still checks the code, your location and the time you scanned. Upload within 24 hours. You’ll see the result on the home screen.

@@ -8,7 +8,7 @@ import type { Rejection } from '@kit/lib/api-core';
 export type ScanOutcome =
   | { kind: 'success'; res: MarkResponse; receiptVerified: boolean }
   | { kind: 'rejected'; rejection: Rejection }
-  | { kind: 'queued'; label: string }
+  | { kind: 'queued'; label: string; reason: 'offline' | 'not-started' }
   | { kind: 'error'; title: string; message: string };
 
 let outcome: ScanOutcome | null = null;
