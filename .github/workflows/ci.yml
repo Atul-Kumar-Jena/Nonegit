@@ -128,6 +128,8 @@ jobs:
         with:
           pattern: attendly-*-apk
           merge-multiple: true
+      - name: Zip both apps
+        run: zip -9 attendly-apps.zip attendly-student.apk attendly-institute.apk
       # Direct, login-free links that always point at the newest build:
       # https://github.com/<owner>/<repo>/releases/latest/download/attendly-student.apk
       # https://github.com/<owner>/<repo>/releases/latest/download/attendly-institute.apk
@@ -138,10 +140,12 @@ jobs:
           target_commitish: ${{ github.sha }}
           make_latest: 'true'
           files: |
+            attendly-apps.zip
             attendly-student.apk
             attendly-institute.apk
           body: |
             Test build of both Attendly Android apps, commit ${{ github.sha }}.
+            • attendly-apps.zip — both apps in one zip
             • attendly-student.apk — for students (scan the class QR, see attendance)
             • attendly-institute.apk — for teachers and admins (timetable, classes, QR, register)
             Install: open this page on the phone, tap the APK, allow "install unknown apps".
