@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { CalendarDays, ChevronRight, ClipboardList, Clock3, MapPin, ScanLine, ShieldCheck, Smartphone, TrendingDown, TrendingUp } from 'lucide-react-native';
 import type { DashboardResponse, TodaySession } from '@attendly/protocol';
@@ -8,7 +8,7 @@ import { SyncBanner } from '@kit/components/SyncBanner';
 import { Avatar, Badge, Card, ErrorState, Loading, ProgressBar, SectionLabel, Text } from '@kit/components/ui';
 import { dayLabel, drift, greeting, initials, pct, shortFingerprint, timeRange } from '@kit/lib/format';
 import { integrityReport } from '@kit/lib/device-info';
-import { locationStatus } from '@kit/lib/location';
+import { ensureLocationPermission, locationStatus } from '@kit/lib/location';
 import { useDashboard } from '@/state/queries';
 import { useApi } from '@kit/state/session';
 import { colors, fonts, toneColor } from '@kit/theme';
@@ -51,7 +51,18 @@ export default function Home() {
           label="GPS"
           value={gps === 'ready' ? 'Ready' : gps === 'permission' ? 'Allow' : gps === 'off' ? 'Off' : '…'}
           tone={gps === 'ready' ? 'green' : 'amber'}
-          sub={gps === 'ready' ? 'Precise · on demand' : gps === 'permission' ? 'Asked when you scan' : 'Turn on location'}
+          sub={gps === 'ready' ? 'Precise · on demand' : gps === 'permission' ? 'Tap to allow' : 'Tap to turn on'}
+          onPress={
+            gps === 'permission'
+              ? () =>
+                  void ensureLocationPermission().then((r) => {
+                    if (r === 'blocked') void Linking.openSettings();
+                    void locationStatus().then(setGps);
+                  })
+              : gps === 'off'
+                ? () => void Linking.openSettings()
+                : undefined
+          }
         />
         <Tile
           icon={<ShieldCheck color={colors.textMuted} size={14} />}
@@ -154,9 +165,9 @@ function TermCard({ d, offline, updatedAt }: { d: DashboardResponse; offline: bo
   );
 }
 
-function Tile({ icon, label, value, sub, tone }: { icon: ReactNode; label: string; value: string; sub: string; tone: 'green' | 'amber' | 'cyan' }) {
-  return (
-    <Card style={styles.tile}>
+function Tile({ icon, label, value, sub, tone, onPress }: { icon: ReactNode; label: string; value: string; sub: string; tone: 'green' | 'amber' | 'cyan'; onPress?: () => void }) {
+  const card = (
+    <Card style={onPress ? styles.tileInner : styles.tile}>
       <View style={styles.tileHead}>
         {icon}
         <Text variant="label">{label}</Text>
@@ -166,6 +177,13 @@ function Tile({ icon, label, value, sub, tone }: { icon: ReactNode; label: strin
         {sub}
       </Text>
     </Card>
+  );
+  return onPress ? (
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`${label}: ${value}. ${sub}`} style={styles.tileWrap}>
+      {card}
+    </Pressable>
+  ) : (
+    card
   );
 }
 
@@ -239,6 +257,8 @@ const styles = StyleSheet.create({
   delta: { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4, marginBottom: 10 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 },
   tile: { flexBasis: '47%', flexGrow: 1, padding: 14 },
+  tileWrap: { flexBasis: '47%', flexGrow: 1 },
+  tileInner: { padding: 14, flex: 1 },
   tileHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   session: { flexDirection: 'row', alignItems: 'center', overflow: 'hidden' },
   accent: { width: 3, alignSelf: 'stretch' },
