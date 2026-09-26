@@ -75,9 +75,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const apiRef = useRef<ApiClient | null>(null);
   const [api, setApi] = useState<ApiClient | null>(null);
 
-  const makeClient = useCallback(
-    (url: string) => {
-      const client = new ApiClient({
+  const buildClient = useCallback(
+    (url: string) =>
+      new ApiClient({
         baseUrl: url,
         keys: deviceKeys,
         tokens: tokenStore,
@@ -92,22 +92,26 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           );
           setPhase('signed-out');
         },
-      });
-      apiRef.current = client;
-      setApi(client);
-      return client;
-    },
+      }),
     [queryClient],
   );
+
+  const installClient = useCallback((client: ApiClient) => {
+    apiRef.current = client;
+    setApi(client);
+    return client;
+  }, []);
 
   /** Fetches /v1/meta, enforces the key pin, and stores the server. */
   const connect = useCallback(
     async (rawUrl: string) => {
       const url = normalizeBaseUrl(rawUrl, ALLOW_HTTP);
       const existing = await loadServerConfig();
-      const client = makeClient(url);
+      // Probe with a throw-away client; it only becomes the app's client once the identity check passes.
+      const client = buildClient(url);
       const meta = await client.meta();
       const cfg = checkServerIdentity(url, meta, existing);
+      installClient(client);
       if (existing && existing.url !== url) {
         // Switching servers: the old session is meaningless here.
         await tokenStore.clear();
@@ -117,7 +121,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setServer(cfg);
       setPhase((await tokenStore.get()) ? 'signed-in' : 'signed-out');
     },
-    [makeClient, queryClient],
+    [buildClient, installClient, queryClient],
   );
 
   // ── boot ──
@@ -141,7 +145,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           return;
         }
         setServer(cfg);
-        const client = makeClient(cfg.url);
+        const client = installClient(buildClient(cfg.url));
         setPhase((await tokenStore.get()) ? 'signed-in' : 'signed-out');
         // Background identity check + clock sync; offline is fine.
         client

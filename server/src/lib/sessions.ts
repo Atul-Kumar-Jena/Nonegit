@@ -1,4 +1,4 @@
-import { randomBytes, QR_SECRET_BYTES } from '@attendly/protocol';
+import { bytesToHex, randomBytes, QR_SECRET_BYTES } from '@attendly/protocol';
 import type { PoolClient } from 'pg';
 import { isUniqueViolation } from '../db';
 import { appendAudit } from './audit';
@@ -21,13 +21,14 @@ export interface NewSession {
 }
 
 function shortCode(bytes: number): string {
-  return 'S-' + Array.from(randomBytes(bytes), (b) => b.toString(16).padStart(2, '0')).join('').toUpperCase();
+  return `S-${bytesToHex(randomBytes(bytes)).toUpperCase()}`;
 }
 
 /** Creates a class session with a fresh 256-bit QR secret. */
 export async function createSession(tx: PoolClient, s: NewSession): Promise<{ id: string; shortCode: string }> {
   const lecture = await tx.query<{ n: number }>(`select count(*) + 1 as n from class_sessions where course_id = $1 and status <> 'cancelled'`, [s.courseId]);
-  for (let attempt = 0; ; attempt++) {
+  let created: { id: string; shortCode: string } | undefined;
+  for (let attempt = 0; !created; attempt++) {
     const code = shortCode(attempt < 3 ? 2 : 4);
     await tx.query('savepoint new_session');
     try {
@@ -55,19 +56,21 @@ export async function createSession(tx: PoolClient, s: NewSession): Promise<{ id
         ],
       );
       await tx.query('release savepoint new_session');
-      if (s.audit !== false)
-        await appendAudit(tx, {
-          tenantId: s.tenantId,
-          actorType: s.createdBy ? 'user' : 'system',
-          actorId: s.createdBy,
-          action: 'session.create',
-          subject: `session:${rows[0]!.id}`,
-          data: { code, status: s.status, radiusM: s.radiusM, rotationS: s.rotationS },
-        });
-      return { id: rows[0]!.id, shortCode: code };
+      created = { id: rows[0]!.id, shortCode: code };
     } catch (err) {
       await tx.query('rollback to savepoint new_session');
       if (!isUniqueViolation(err, 'class_sessions_short_code_key') || attempt >= 6) throw err;
     }
   }
+  // Outside the retry block, so an audit failure surfaces as itself.
+  if (s.audit !== false)
+    await appendAudit(tx, {
+      tenantId: s.tenantId,
+      actorType: s.createdBy ? 'user' : 'system',
+      actorId: s.createdBy,
+      action: 'session.create',
+      subject: `session:${created.id}`,
+      data: { code: created.shortCode, status: s.status, radiusM: s.radiusM, rotationS: s.rotationS },
+    });
+  return created;
 }

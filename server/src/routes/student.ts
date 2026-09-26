@@ -19,6 +19,8 @@ import { courseStats, loadTenantTerm } from '../lib/stats';
 import { loadDevice, loadUser, toDeviceSummary, toUserSummary } from '../lib/users';
 
 const STUDENT = ['student'] as const;
+/** Sentinel for "cannot be reached / unlimited" in needToReach and safeToMiss. */
+export const UNREACHABLE = 10_000;
 
 async function userAndDevice(deps: Deps, auth: AuthContext) {
   const [user, device] = await Promise.all([loadUser(deps.db, auth.userId), loadDevice(deps.db, auth.deviceId)]);
@@ -109,8 +111,9 @@ export async function studentRoutes(app: FastifyInstance, deps: Deps) {
         held: s.held,
         percent: attendancePercent(s.attended, s.held),
         standing: standing(s.attended, s.held, min),
-        needToReach: sessionsNeededToReach(s.attended, s.held, min),
-        safeToMiss: Math.min(sessionsSafeToMiss(s.attended, s.held, min), 10_000),
+        // Both helpers can return Infinity (e.g. a 100% rule); JSON has no Infinity, so cap them.
+        needToReach: Math.min(sessionsNeededToReach(s.attended, s.held, min), UNREACHABLE),
+        safeToMiss: Math.min(sessionsSafeToMiss(s.attended, s.held, min), UNREACHABLE),
       })),
     };
   });

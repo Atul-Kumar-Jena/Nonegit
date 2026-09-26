@@ -22,7 +22,7 @@ The backend (`server/`) and the shared crypto/contract package (`packages/protoc
 | Database | **PostgreSQL 16** | Transactions and unique constraints enforce "one student, one device" and "one mark per session" at the database level. |
 | Contract | **zod** schemas shared by the server and apps | Every request and response is validated on both sides. A mismatch shows a clean error; it never crashes. |
 | Data fetching | TanStack Query | Caching, retry with backoff, refresh when the app returns to the foreground, offline display. |
-| Tests | Vitest + real PostgreSQL + Playwright | 72 automated tests, plus a browser-driven run of the whole student journey. |
+| Tests | Vitest + real PostgreSQL + Playwright | 77 automated tests, plus a browser-driven run of the whole student journey. |
 | CI | GitHub Actions | Typecheck, all tests, Docker image smoke test, and a downloadable **Android APK** on every push. |
 
 ## How the three apps sync securely
@@ -47,6 +47,8 @@ What stops proxy attendance and forged records:
 6. **Tamper-evident history.** Every sign-in, binding, mark and rejection goes into an append-only audit log. Each entry includes the SHA-256 of the previous one, and the database forbids UPDATE and DELETE on it. `npm run audit:verify -w server` recomputes the chain and reports the first altered entry.
 7. **Secrets at rest.** OTP codes, access/refresh tokens and tickets are stored only as HMAC hashes, keyed with a server-side pepper.
 8. **Tokens.** Access tokens last 15 minutes. Refresh tokens rotate on every use, and reusing an old one revokes the whole session family.
+
+The test suite also covers what an independent code review found and I fixed: re-binding a phone after an admin unbinds it, a 100% attendance rule, rate-limited refreshes on campus NAT, and pauses that must never lock students out.
 
 **Honest limits** (and where they get closed):
 - Hardware attestation (Google Play Integrity / Apple App Attest) isn't wired in yet. Today the app reports root/jailbreak and emulator signals, which the server enforces. Real attestation needs your own Google Cloud and Apple accounts, and it's planned for App 3's "feature flags" work.
@@ -157,8 +159,8 @@ Migrations run automatically on boot. Liveness check: `GET /healthz`.
 ```bash
 npm run typecheck                      # protocol + server + app
 npm test -w packages/protocol          # 28 unit tests (RFC 8032 vector, OpenSSL interop, malleability, QR, geofence, 75% maths)
-npm test -w server                     # 36 integration tests on real Postgres (replay, tampering, token theft, refresh reuse, OTP lockout, fake GPS, concurrency…)
-npm test -w apps/student               # 8 end-to-end tests: the phone's API client over HTTP against the real server
+npm test -w server                     # 40 integration tests on real Postgres (replay, tampering, token theft, refresh reuse, OTP lockout, fake GPS, concurrency…)
+npm test -w apps/student               # 9 end-to-end tests: the phone's API client over HTTP against the real server
 ```
 
 The server tests need Postgres at `postgres://postgres@127.0.0.1:5432/postgres`; override with `TEST_DATABASE_URL`. Each test file gets its own throwaway database.

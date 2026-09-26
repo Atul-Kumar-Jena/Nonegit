@@ -35,17 +35,22 @@ function chain(prev: Uint8Array, body: string): Buffer {
 }
 
 /**
- * Appends to the hash-chained audit log. Must be called inside a transaction:
- * the advisory lock serialises writers so the chain never forks.
+ * Appends to the hash-chained audit log. There is one chain per tenant (and one
+ * for system-wide events), so institutions never queue behind each other.
+ * Must be called inside a transaction, ideally as its last statement: the
+ * per-chain advisory lock serialises writers until commit so a chain never forks.
  */
 export async function appendAudit(tx: Queryable, entry: AuditEntry): Promise<void> {
-  await tx.query('select pg_advisory_xact_lock($1)', [AUDIT_LOCK]);
-  const prev = await tx.query<{ hash: Buffer }>('select hash from audit_log order by id desc limit 1');
+  const tenantId = entry.tenantId ?? null;
+  await tx.query('select pg_advisory_xact_lock($1, hashtext($2))', [AUDIT_LOCK, tenantId ?? 'global']);
+  const prev = tenantId
+    ? await tx.query<{ hash: Buffer }>('select hash from audit_log where tenant_id = $1 order by id desc limit 1', [tenantId])
+    : await tx.query<{ hash: Buffer }>('select hash from audit_log where tenant_id is null order by id desc limit 1');
   const prevHash = prev.rows[0]?.hash ?? GENESIS;
   // Millisecond precision so the value survives the timestamptz round-trip exactly.
   const at = new Date().toISOString();
   const e = {
-    tenantId: entry.tenantId ?? null,
+    tenantId,
     actorType: entry.actorType,
     actorId: entry.actorId ?? null,
     action: entry.action,
@@ -63,13 +68,15 @@ export async function appendAudit(tx: Queryable, entry: AuditEntry): Promise<voi
 export interface AuditVerification {
   ok: boolean;
   checked: number;
+  chains: number;
   brokenAtId?: number;
-  headHash?: string;
+  /** Head hash of each chain, keyed by tenant id ("global" for system events). */
+  heads?: Record<string, string>;
 }
 
-/** Recomputes the whole chain; any edit, deletion or reordering is detected. */
+/** Recomputes every chain; any edit, deletion or reordering is detected. */
 export async function verifyAuditChain(db: Queryable, batch = 5000): Promise<AuditVerification> {
-  let prevHash: Buffer = GENESIS;
+  const heads = new Map<string, Buffer>();
   let lastId = 0;
   let checked = 0;
   for (;;) {
@@ -87,7 +94,9 @@ export async function verifyAuditChain(db: Queryable, batch = 5000): Promise<Aud
     }>('select * from audit_log where id > $1 order by id limit $2', [lastId, batch]);
     if (rows.length === 0) break;
     for (const r of rows) {
-      if (!r.prev_hash.equals(prevHash)) return { ok: false, checked, brokenAtId: r.id };
+      const key = r.tenant_id ?? 'global';
+      const prevHash = heads.get(key) ?? GENESIS;
+      if (!r.prev_hash.equals(prevHash)) return { ok: false, checked, chains: heads.size, brokenAtId: r.id };
       const expected = chain(
         prevHash,
         entryBytes(r.at.toISOString(), {
@@ -99,11 +108,11 @@ export async function verifyAuditChain(db: Queryable, batch = 5000): Promise<Aud
           data: r.data,
         }),
       );
-      if (!expected.equals(r.hash)) return { ok: false, checked, brokenAtId: r.id };
-      prevHash = r.hash;
+      if (!expected.equals(r.hash)) return { ok: false, checked, chains: heads.size, brokenAtId: r.id };
+      heads.set(key, r.hash);
       lastId = r.id;
       checked++;
     }
   }
-  return { ok: true, checked, headHash: prevHash.toString('hex') };
+  return { ok: true, checked, chains: heads.size, heads: Object.fromEntries([...heads].map(([k, v]) => [k, v.toString('hex')])) };
 }

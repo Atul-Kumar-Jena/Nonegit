@@ -60,7 +60,9 @@ export default function Subjects() {
               {risky.length} {risky.length === 1 ? 'subject' : 'subjects'} below {pct(d.minPercent)}%
             </Text>
             <Text variant="small">
-              Attend the next {worst.needToReach} {worst.code} {worst.needToReach === 1 ? 'session' : 'sessions'} in a row to get back to {pct(d.minPercent)}%.
+              {worst.needToReach >= 10_000
+                ? `${worst.code} can no longer reach ${pct(d.minPercent)}% this term. Talk to your instructor.`
+                : `Attend the next ${worst.needToReach} ${worst.code} ${worst.needToReach === 1 ? 'session' : 'sessions'} in a row to get back to ${pct(d.minPercent)}%.`}
             </Text>
           </View>
         </Card>
@@ -122,7 +124,9 @@ function SubjectCard({ s, min }: { s: SubjectStat; min: number }) {
         {s.standing === 'no-data'
           ? 'No sessions held yet'
           : risk
-            ? `Attend next ${s.needToReach} to reach ${pct(min)}%`
+            ? s.needToReach >= 10_000
+              ? `${pct(min)}% can no longer be reached this term`
+              : `Attend next ${s.needToReach} to reach ${pct(min)}%`
             : s.safeToMiss > 0
               ? `Can miss ${s.safeToMiss} and stay ≥ ${pct(min)}%`
               : `Don’t miss the next one`}

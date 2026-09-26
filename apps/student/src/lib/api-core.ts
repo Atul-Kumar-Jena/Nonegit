@@ -222,7 +222,9 @@ export class ApiClient {
           result = await this.send('POST', path, body, await this.signedHeaders('POST', path, body));
         if (result.status !== 200) {
           const err = this.toError(result.status, result.json);
-          if (!err.transient) {
+          // Only a definitive "this session is dead" ends it. Rate limits, outages and
+          // network trouble keep the (still valid) refresh token for the next attempt.
+          if (SESSION_FATAL.includes(err.code)) {
             await this.tokens.clear();
             this.onSessionLost?.(err);
           }

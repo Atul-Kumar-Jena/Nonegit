@@ -23,6 +23,8 @@ import { courseStats, loadTenantTerm } from '../lib/stats';
 /** Too many refused scans from one device in a short window looks like probing. */
 const MAX_SUSPICIOUS_PER_10_MIN = 10;
 const MAX_REJECTIONS_PER_10_MIN = 40;
+/** Refusals caused by the institution, not the student — never count towards the throttle. */
+const NOT_STUDENTS_FAULT = ['E-PAUSED', 'E-SESSION-CLOSED'];
 
 interface SessionRow {
   id: string;
@@ -79,7 +81,19 @@ function toResponse(s: SessionRow, userId: string, r: RecordRow, alreadyMarked: 
   };
 }
 
+const RECORD_COLUMNS = 'id, marked_at, qr_seq, distance_m, receipt_signature, server_key_id, device_fingerprint';
+
 export async function attendanceRoutes(app: FastifyInstance, deps: Deps) {
+  /** The student's existing record for this session, if any, with their current course percentage. */
+  async function existingReceipt(session: SessionRow, auth: AuthContext): Promise<MarkResponse | null> {
+    const { rows } = await deps.db.query<RecordRow>(`select ${RECORD_COLUMNS} from attendance_records where session_id = $1 and user_id = $2`, [session.id, auth.userId]);
+    if (!rows[0]) return null;
+    const term = await loadTenantTerm(deps.db, auth.tenantId);
+    const [st] = await courseStats(deps.db, auth.userId, term, session.course_id);
+    const pct = st ? attendancePercent(st.attended, st.held) : null;
+    return toResponse(session, auth.userId, rows[0], true, pct, pct);
+  }
+
   async function recordRejection(auth: AuthContext, sessionId: string | null, rej: ScanRejection) {
     const suspicious = REJECTION_CODES[rej.code].suspicious;
     try {
@@ -111,8 +125,9 @@ export async function attendanceRoutes(app: FastifyInstance, deps: Deps) {
 
     try {
       const recent = await deps.db.query<{ n: number; suspicious: number }>(
-        `select count(*) as n, count(*) filter (where suspicious) as suspicious from scan_rejections where device_id = $1 and created_at > $2`,
-        [auth.deviceId, new Date(now - 10 * 60_000)],
+        `select count(*) as n, count(*) filter (where suspicious) as suspicious from scan_rejections
+          where device_id = $1 and created_at > $2 and code <> all($3::text[])`,
+        [auth.deviceId, new Date(now - 10 * 60_000), NOT_STUDENTS_FAULT],
       );
       const r = recent.rows[0]!;
       if (r.n >= MAX_REJECTIONS_PER_10_MIN || r.suspicious >= MAX_SUSPICIOUS_PER_10_MIN) throw new ApiError(429, 'RATE_LIMITED', 'Too many failed scans. Wait a few minutes and try again.');
@@ -134,17 +149,8 @@ export async function attendanceRoutes(app: FastifyInstance, deps: Deps) {
       sessionId = session.id;
 
       // 2. Idempotency: a retry after a lost response returns the original receipt.
-      const existing = await deps.db.query<RecordRow>(
-        `select id, marked_at, qr_seq, distance_m, receipt_signature, server_key_id, device_fingerprint
-           from attendance_records where session_id = $1 and user_id = $2`,
-        [session.id, auth.userId],
-      );
-      if (existing.rows[0]) {
-        const term = await loadTenantTerm(deps.db, auth.tenantId);
-        const [st] = await courseStats(deps.db, auth.userId, term, session.course_id);
-        const pct = st ? attendancePercent(st.attended, st.held) : null;
-        return toResponse(session, auth.userId, existing.rows[0], true, pct, pct);
-      }
+      const existing = await existingReceipt(session, auth);
+      if (existing) return existing;
 
       // 3. Session state and roster.
       if (session.status !== 'live' || !session.started_at) throw new ScanRejection('E-SESSION-CLOSED', undefined, { status: session.status });
@@ -178,6 +184,8 @@ export async function attendanceRoutes(app: FastifyInstance, deps: Deps) {
       const term = await loadTenantTerm(deps.db, auth.tenantId);
       const [beforeStats] = await courseStats(deps.db, auth.userId, term, session.course_id);
       const before = beforeStats ? attendancePercent(beforeStats.attended, beforeStats.held) : null;
+      // An unmarked live session is not yet "held" for this student; marking it adds one to both.
+      const after = beforeStats ? attendancePercent(beforeStats.attended + 1, beforeStats.held + 1) : null;
       try {
         const record = await withTx(deps.db, async (tx) => {
           const markedAt = new Date(now);
@@ -197,7 +205,7 @@ export async function attendanceRoutes(app: FastifyInstance, deps: Deps) {
             `insert into attendance_records(id, session_id, user_id, device_id, marked_at, qr_seq, lat, lng, accuracy_m, distance_m,
                                             device_signature, request_digest, receipt_signature, server_key_id, device_fingerprint)
              values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-             returning id, marked_at, qr_seq, distance_m, receipt_signature, server_key_id, device_fingerprint`,
+             returning ${RECORD_COLUMNS}`,
             [
               recordId,
               session.id,
@@ -226,20 +234,13 @@ export async function attendanceRoutes(app: FastifyInstance, deps: Deps) {
           });
           return ins.rows[0]!;
         });
-        const [afterStats] = await courseStats(deps.db, auth.userId, term, session.course_id);
-        const after = afterStats ? attendancePercent(afterStats.attended, afterStats.held) : null;
         return toResponse(session, auth.userId, record, false, before, after);
       } catch (err) {
         // Two concurrent submissions: the loser returns the winner's receipt.
         if (!isUniqueViolation(err, 'attendance_records_session_id_user_id_key')) throw err;
-        const again = await deps.db.query<RecordRow>(
-          `select id, marked_at, qr_seq, distance_m, receipt_signature, server_key_id, device_fingerprint
-             from attendance_records where session_id = $1 and user_id = $2`,
-          [session.id, auth.userId],
-        );
-        const [st] = await courseStats(deps.db, auth.userId, term, session.course_id);
-        const pct = st ? attendancePercent(st.attended, st.held) : null;
-        return toResponse(session, auth.userId, again.rows[0]!, true, pct, pct);
+        const winner = await existingReceipt(session, auth);
+        if (!winner) throw err;
+        return winner;
       }
     } catch (err) {
       if (err instanceof ScanRejection) {

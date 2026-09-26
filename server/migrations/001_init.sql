@@ -34,7 +34,7 @@ create table users (
 create table devices (
   id            uuid primary key default gen_random_uuid(),
   user_id       uuid not null references users(id) on delete cascade,
-  public_key    bytea not null unique check (length(public_key) = 32),
+  public_key    bytea not null check (length(public_key) = 32),
   fingerprint   text not null,
   platform      text not null check (platform in ('ios', 'android', 'web')),
   model         text not null,
@@ -47,8 +47,10 @@ create table devices (
   last_seen_at  timestamptz,
   created_at    timestamptz not null default now()
 );
--- One student, one device.
+-- One student, one device — and one device, one student. Revoked rows are kept as history,
+-- so a phone that was unbound can be bound again.
 create unique index devices_one_active_per_user on devices(user_id) where status = 'active';
+create unique index devices_one_active_per_key on devices(public_key) where status = 'active';
 
 create table otp_challenges (
   id           uuid primary key default gen_random_uuid(),
@@ -224,6 +226,9 @@ create table audit_log (
   prev_hash   bytea not null check (length(prev_hash) = 32),
   hash        bytea not null unique check (length(hash) = 32)
 );
+-- One hash chain per tenant (plus one for system-wide events), so tenants never wait on each other.
+create index audit_log_tenant_chain on audit_log(tenant_id, id desc) where tenant_id is not null;
+create index audit_log_global_chain on audit_log(id desc) where tenant_id is null;
 
 create function audit_log_immutable() returns trigger language plpgsql as $$
 begin

@@ -114,6 +114,33 @@ describe('student app ⇄ server', () => {
     ctx.clock.now = Date.now();
   });
 
+  it('keeps the session when a refresh is rate-limited (campus NAT burst)', async () => {
+    await ctx.db.query(`insert into users(tenant_id, role, full_name, email) values ($1, 'student', 'Burst', 'burst@iit.ac.in')`, [seed.tenantId]);
+    const setup = phone(() => ctx.clock.now);
+    await signIn(setup, 'burst@iit.ac.in');
+    let throttle = true;
+    const lost: string[] = [];
+    const client = new ApiClient({
+      baseUrl,
+      keys: { secretKey: async () => setup.kp.secretKey, publicKey: async () => setup.kp.publicKey },
+      tokens: setup.tokens,
+      now: () => ctx.clock.now,
+      onSessionLost: (e) => lost.push(e.code),
+      fetchImpl: async (url, init) =>
+        throttle && String(url).endsWith('/v1/auth/refresh')
+          ? new Response(JSON.stringify({ error: { code: 'RATE_LIMITED', message: 'Too many attempts.' } }), { status: 429 })
+          : fetch(url, init),
+    });
+    ctx.clock.now += 16 * 60_000;
+    const err = await client.profile().catch((e) => e);
+    expect(err.code).toBe('RATE_LIMITED');
+    expect(lost).toEqual([]);
+    expect(setup.tokens.value).not.toBeNull(); // still signed in
+    throttle = false;
+    expect((await client.profile()).user.fullName).toBe('Burst'); // next try refreshes fine
+    ctx.clock.now = Date.now();
+  });
+
   it('recovers from a badly wrong phone clock', async () => {
     await ctx.db.query(`insert into users(tenant_id, role, full_name, email) values ($1, 'student', 'Skew', 'skew@iit.ac.in')`, [seed.tenantId]);
     const setup = phone();

@@ -309,7 +309,10 @@ async function main() {
       const pool = db(config);
       try {
         const r = await verifyAuditChain(pool);
-        if (r.ok) console.log(`Audit chain intact: ${r.checked} entries, head ${r.headHash}`);
+        if (r.ok) {
+          console.log(`Audit log intact: ${r.checked} entries across ${r.chains} chain(s).`);
+          for (const [chain, head] of Object.entries(r.heads ?? {})) console.log(`  ${chain}  head ${head}`);
+        }
         else {
           console.error(`AUDIT CHAIN BROKEN at entry #${r.brokenAtId} (after ${r.checked} valid entries)`);
           process.exitCode = 2;

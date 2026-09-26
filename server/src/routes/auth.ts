@@ -233,7 +233,7 @@ export async function authRoutes(app: FastifyInstance, deps: Deps) {
         return { auth, user: toUserSummary(user), device: toDeviceSummary(device) };
       });
     } catch (err) {
-      if (isUniqueViolation(err, 'devices_public_key_key')) throw new ApiError(409, 'CONFLICT', 'This phone is already registered to another account.');
+      if (isUniqueViolation(err, 'devices_one_active_per_key')) throw new ApiError(409, 'CONFLICT', 'This phone is already registered to another account.');
       if (isUniqueViolation(err, 'devices_one_active_per_user')) throw new ApiError(409, 'CONFLICT', 'Another device was bound to this account in the meantime.');
       throw err;
     }
@@ -270,7 +270,9 @@ export async function authRoutes(app: FastifyInstance, deps: Deps) {
     });
   });
 
-  app.post('/v1/auth/refresh', { config: strictLimit }, async (req) => {
+  // Refreshes are signed by the device key, so a larger per-IP budget is safe (a whole
+  // class's tokens can expire in the same minute behind one campus NAT).
+  app.post('/v1/auth/refresh', { config: { rateLimit: { max: 600, timeWindow: '1 minute' } } }, async (req) => {
     const body = RefreshBody.parse(req.body);
     return rotateRefreshToken(req, deps, body.refreshToken);
   });
