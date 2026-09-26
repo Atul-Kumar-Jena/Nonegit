@@ -55,6 +55,7 @@ export default function More() {
         {admin ? <Item icon={<CalendarRange color={colors.cyan} size={18} />} label="Timetable planner" sub="Drag & drop changes, then publish" href="/planner" /> : null}
         <Item icon={<Clock4 color={colors.green} size={18} />} label="Who’s busy where" sub="Teachers and rooms, hour by hour" href="/busy" />
         <Item icon={<Bell color={colors.amber} size={18} />} label="Notifications" href="/notifications" />
+        <Item icon={<Lock color={colors.textMuted} size={18} />} label="Permissions" sub="Location and notifications" href="/permissions" />
         {admin ? <Item icon={<Users color={colors.cyan} size={18} />} label="People" sub="Students, teachers, admins" href="/people" /> : null}
         <Item icon={<UsersRound color={colors.violet} size={18} />} label="Batches" sub="Sections and the courses they take" href="/batches" />
         <Item icon={<MapPin color={colors.green} size={18} />} label="Rooms" sub="Classroom locations" href="/rooms" />

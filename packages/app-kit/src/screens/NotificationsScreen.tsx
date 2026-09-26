@@ -16,6 +16,9 @@ export default function NotificationsScreen() {
 
   useEffect(() => {
     void phoneNotificationStatus().then(setPhone);
+    // Opening the list always shows the latest, not the last background poll.
+    void q.refetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const back = (

@@ -11,6 +11,7 @@
 import { useEffect, useRef } from 'react';
 import { AppState, Platform } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { router } from 'expo-router';
 import * as BackgroundTask from 'expo-background-task';
 import * as Notifications from 'expo-notifications';
 import * as TaskManager from 'expo-task-manager';
@@ -24,7 +25,8 @@ import { vault } from './vault';
 import { useSession } from '../state/session';
 
 const isWeb = Platform.OS === 'web';
-const CHANNEL = 'timetable';
+/** High-importance channel: heads-up banner, the phone's default sound, vibration, shown on the lock screen. */
+const CHANNEL = 'timetable-alerts';
 const SEEN_KEY = 'notify.last-announced.v1';
 export const NOTIFICATION_TASK = 'attendly-notification-check';
 export const notificationsKey = ['notifications'] as const;
@@ -88,21 +90,41 @@ export function initPhoneNotifications(): void {
   }
 }
 
+async function ensureChannel(): Promise<void> {
+  if (Platform.OS !== 'android') return;
+  await Notifications.setNotificationChannelAsync(CHANNEL, {
+    name: 'Class changes',
+    description: 'Moved, cancelled, substituted and extra classes',
+    importance: Notifications.AndroidImportance.MAX,
+    sound: 'default',
+    enableVibrate: true,
+    vibrationPattern: [0, 300, 200, 300],
+    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    showBadge: true,
+  });
+}
+
+/** Schedules the background check (only once notifications are allowed). */
+export async function ensureBackgroundCheck(): Promise<void> {
+  if (isWeb) return;
+  try {
+    await ensureChannel();
+    if ((await Notifications.getPermissionsAsync()).status !== 'granted') return;
+    if (!(await TaskManager.isTaskRegisteredAsync(NOTIFICATION_TASK))) await BackgroundTask.registerTaskAsync(NOTIFICATION_TASK, { minimumInterval: 15 });
+  } catch {
+    // best effort
+  }
+}
+
 /** Asks for permission (Android 13+ / iOS) and schedules the background check. */
 export async function enablePhoneNotifications(): Promise<'granted' | 'denied' | 'unavailable'> {
   if (isWeb) return 'unavailable';
   try {
-    if (Platform.OS === 'android')
-      await Notifications.setNotificationChannelAsync(CHANNEL, {
-        name: 'Timetable changes',
-        description: 'Moved, cancelled and extra classes',
-        importance: Notifications.AndroidImportance.HIGH,
-      });
+    await ensureChannel();
     let status = (await Notifications.getPermissionsAsync()).status;
-    if (status !== 'granted') status = (await Notifications.requestPermissionsAsync()).status;
+    if (status !== 'granted') status = (await Notifications.requestPermissionsAsync({ ios: { allowAlert: true, allowSound: true, allowBadge: true } })).status;
     if (status !== 'granted') return 'denied';
-    const registered = await TaskManager.isTaskRegisteredAsync(NOTIFICATION_TASK);
-    if (!registered) await BackgroundTask.registerTaskAsync(NOTIFICATION_TASK, { minimumInterval: 15 });
+    await ensureBackgroundCheck();
     return 'granted';
   } catch {
     return 'unavailable';
@@ -133,7 +155,14 @@ export async function announceNew(items: AppNotification[], unread: number): Pro
     const shown = fresh.length > 3 ? [{ id: fresh.at(-1)!.id, title: `${fresh.length} timetable updates`, body: fresh.map((f) => f.title).join(' · ') }] : fresh;
     for (const n of shown)
       await Notifications.scheduleNotificationAsync({
-        content: { title: n.title, body: n.body, data: { notificationId: n.id }, ...(Platform.OS === 'ios' ? { badge: unread } : {}) },
+        content: {
+          title: n.title,
+          body: n.body,
+          data: { notificationId: n.id },
+          sound: 'default',
+          priority: Notifications.AndroidNotificationPriority.MAX,
+          ...(Platform.OS === 'ios' ? { badge: unread } : {}),
+        },
         trigger: Platform.OS === 'android' ? { channelId: CHANNEL } : null,
       });
   } catch {
@@ -183,23 +212,26 @@ export function NotificationRunner() {
   return null;
 }
 
-/** Asks for notification permission once per install (first time the home screen opens after sign-in). */
-export function useAskForPhoneNotificationsOnce() {
+/**
+ * First time the home screen opens after sign-in (on a phone): show the
+ * permissions screen once. Afterwards just keep the background check scheduled.
+ */
+export function usePermissionsOnboarding() {
   const { phase } = useSession();
   useEffect(() => {
     if (isWeb || phase !== 'signed-in') return;
     void (async () => {
       try {
-        const asked = await vault.get<boolean>('notify.asked.v1', (v) => v === true);
-        const status = await phoneNotificationStatus();
-        // Already allowed: make sure the background check is scheduled (e.g. after an update).
-        if (status === 'granted' || !asked) {
-          await enablePhoneNotifications();
-          await vault.set('notify.asked.v1', true);
-        }
+        const done = await vault.get<boolean>('perms.onboarded.v1', (v) => v === true);
+        if (!done) router.push('/permissions');
+        else await ensureBackgroundCheck();
       } catch {
         // best effort
       }
     })();
   }, [phase]);
+}
+
+export async function markPermissionsOnboarded(): Promise<void> {
+  await vault.set('perms.onboarded.v1', true).catch(() => undefined);
 }

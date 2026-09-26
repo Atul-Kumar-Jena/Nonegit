@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Switch, View } from 'react-native';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { router } from 'expo-router';
 import { LogOut, RefreshCw, Server, ShieldCheck, Smartphone, Trash2 } from 'lucide-react-native';
 import { Screen } from '@kit/components/Screen';
 import { SyncBanner } from '@kit/components/SyncBanner';
@@ -159,6 +160,8 @@ export default function Profile() {
           />
         </View>
       </Card>
+
+      <Button title="Permissions & notifications" kind="secondary" onPress={() => router.push('/permissions')} icon={<ShieldCheck color={colors.text} size={16} />} style={{ marginTop: 12 }} />
 
       <SectionLabel>App</SectionLabel>
       <Card>

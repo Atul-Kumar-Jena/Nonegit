@@ -4,7 +4,7 @@ import { router } from 'expo-router';
 import { ChevronRight, CloudDownload, Plus, Radio, ShieldAlert, Smartphone, UserCheck, Wand2 } from 'lucide-react-native';
 import { NotificationBell } from '@kit/components/NotificationBell';
 import { Screen } from '@kit/components/Screen';
-import { useAskForPhoneNotificationsOnce } from '@kit/lib/notifications';
+import { usePermissionsOnboarding } from '@kit/lib/notifications';
 import { SyncBanner } from '@kit/components/SyncBanner';
 import { Avatar, Badge, Button, Card, ErrorState, Loading, SectionLabel, Text } from '@kit/components/ui';
 import { dayLabel, greeting, initials, timeAgo } from '@kit/lib/format';
@@ -19,7 +19,7 @@ import { useApi } from '@kit/state/session';
 
 /** Today — what's running, what's next, and anything that needs you. */
 export default function Today() {
-  useAskForPhoneNotificationsOnce();
+  usePermissionsOnboarding();
   const me = useMe();
   const q = useOverview();
   const pack = useOfflinePack();

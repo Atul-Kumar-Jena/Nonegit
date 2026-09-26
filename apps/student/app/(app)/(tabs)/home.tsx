@@ -5,7 +5,7 @@ import { CalendarDays, ChevronRight, ClipboardList, Clock3, MapPin, ScanLine, Sh
 import type { DashboardResponse, TodaySession } from '@attendly/protocol';
 import { NotificationBell } from '@kit/components/NotificationBell';
 import { Screen } from '@kit/components/Screen';
-import { useAskForPhoneNotificationsOnce } from '@kit/lib/notifications';
+import { usePermissionsOnboarding } from '@kit/lib/notifications';
 import { SyncBanner } from '@kit/components/SyncBanner';
 import { Avatar, Badge, Card, ErrorState, Loading, ProgressBar, SectionLabel, Text } from '@kit/components/ui';
 import { dayLabel, drift, greeting, initials, pct, shortFingerprint, timeRange } from '@kit/lib/format';
@@ -18,7 +18,7 @@ import { colors, fonts, toneColor } from '@kit/theme';
 
 /** 04 · Home dashboard — today's classes and term attendance. */
 export default function Home() {
-  useAskForPhoneNotificationsOnce();
+  usePermissionsOnboarding();
   const q = useDashboard();
   const api = useApi();
   const [gps, setGps] = useState<'ready' | 'permission' | 'off' | null>(null);
