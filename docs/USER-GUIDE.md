@@ -1,0 +1,121 @@
+# Attendly — how to install, demo, beta-test and use everything
+
+Two phone apps talk to one server (`https://attendly-api-bt9r.onrender.com`, built into the apps):
+
+| App | Icon | Who |
+|---|---|---|
+| **Attendly** | black tile, white squares + dot | Students |
+| **Attendly Institute** | white tile, black squares + building | Admins (principal / HOD) and teachers |
+
+The server keeps its data in your **Supabase** database (Render → Environment → `DATABASE_URL`). Every schema change is applied automatically when Render deploys; there is nothing to run by hand.
+
+---
+
+## 1 · Install (Android)
+
+1. Open the zip link on the phone → download → open the zip → tap the `.apk`.
+2. Allow "Install unknown apps" for your browser/file manager → **Install**. If Play Protect warns "unknown developer": **More details → Install anyway** (it's a test-signed build).
+3. Open the app. It connects to the server by itself (the first open after a quiet hour takes up to a minute: the free server wakes up).
+4. After signing in, a **Permissions** screen asks for camera (student), location and notifications → **Allow all**. You can change them later in Settings → Apps → Attendly → Permissions.
+
+## 2 · Demo test (dummy accounts, no codes)
+
+The server contains a ready-made **Demo Institute of Technology** with a timetable and 3 months of attendance. On the sign-in screen, scroll to **Demo accounts** and tap one: no code is needed. Then tap **Bind this device**.
+
+| Tap this | Role | Use it for |
+|---|---|---|
+| **Dr. N. Iyer** | Admin (HOD) + teaches CS-301 | Cover classes, planner, people, everything |
+| **Dr. S. Banerjee** · **Dr. R. Khanna** · **Prof. A. Joshi** | Teachers | Accept cover requests, run classes |
+| **Aarav Reddy** (and 10 more) | Students | Scan, timetable, "Ask" a teacher |
+
+(Typing the email works too, e.g. `aarav@demo.attendly.app`.) Demo accounts may hop between phones; real accounts can't.
+
+**A 10-minute tour with two phones** (Phone A = Institute app, Phone B = Attendly app):
+
+1. **A:** tap *Dr. N. Iyer* → Today → **Cover a class**.
+2. Pick a day with classes (e.g. Monday). Teachers show *Free* (green) or their class (amber).
+3. **Long-press** *Dr. S. Banerjee* and drop them on **CS-301** (the card turns green = free). Or tap the teacher, then the class.
+4. Write a note to the teacher and one to the students → **Send request**.
+5. **A:** More → sign out, tap *Dr. S. Banerjee* → Today shows the request with your note → type a reply → **Accept**.
+6. **B:** tap *Aarav Reddy* → a notification arrives (bell); tap it → the class shows "Taken by Dr. S. Banerjee — your note".
+7. **B:** Timetable → **Ask** on any class → "Please move this class" + a message → Send. **A** (as the class's teacher) sees it in **Requests** and answers.
+8. Try dragging a teacher onto a class at a time they already teach: it's refused with the reason.
+9. Teachers can't hand classes out: the cover board and "Give to a teacher" are admin-only.
+
+## 3 · Beta test (your own institution, new accounts)
+
+Your real institution is the one you named in Render (`BOOTSTRAP_INSTITUTION_NAME`), with you as admin (`BOOTSTRAP_ADMIN_EMAIL`).
+
+**Sign-in codes for real accounts** (until email is set up):
+- Open `https://attendly-api-bt9r.onrender.com/dev?token=<DEV_TOOLS_TOKEN>` on a laptop (the token is in Render → Environment). Codes appear there a second after someone taps "Send OTP".
+- Or switch to **Google Authenticator** (below): no codes to fetch at all.
+
+**Steps**
+1. Institute app → type your admin email → **Send OTP** → type the code from the /dev page → **Bind this device**.
+2. Today → **Finish setting up**:
+   1. institution settings (time zone, term, minimum %);
+   2. **Rooms**: stand in each room → *Use my location*;
+   3. **Teachers**;
+   4. **Courses**;
+   5. **Students**: paste from Excel/Sheets;
+   6. **Batches**, optional;
+   7. **Timetable** slots.
+3. For each teacher/student: **More → People → the person → Authenticator → Set up authenticator**, then show them the QR. They scan it in Google Authenticator (**+ → Scan a QR code**) and from then on sign in with *email + the app's 6-digit code*.
+4. Anyone can also set it up themselves: *More / Profile → Sign-in security → Set up Google Authenticator → Open in Google Authenticator → type the first code*.
+5. Run a class (below) with 2–3 real students; check **Classes → course → CSV**.
+
+## 4 · Everyday use
+
+### Admin (principal / HOD) — Institute app
+- **Today**: your classes, requests waiting for you, *Coming up*.
+- **More → All features**: every screen in one box. The ⓘ on each screen explains it.
+- **Cover a class**: drag a free teacher onto a class. They accept, then the students are told. You're notified of the answer.
+- **Planner**: drag classes to another day/time (drop on a class to swap), add extra classes from the tray, change teacher/room, cancel. Everything stays a draft (red = clash) until **Review & publish**. Giving a class to another teacher sends them a request first.
+- **Who's busy**: every teacher/room hour by hour, with "Free at".
+- **People · Batches · Rooms · Phone requests · Suspicious scans · Institution**.
+
+### Teacher — Institute app
+- Tap a class → **QR** (the code rotates every few seconds), **Show on a big screen**, or **Register**.
+- **Big screen**: on the classroom PC open `attendly-api-bt9r.onrender.com/present` (or tap **Share link** and open it there). It shows a code like `KXF7-M2QD`. Type it in the app → check the device → **Approve & show QR**. **End class** blanks the screen.
+- **Register**: "Tap who's absent" (everyone starts present) or "Tap who's present". Tick *I have checked every name* → Save. Works offline.
+- **Move / Cancel** your own class (with a note to students). **Requests**: accept/decline classes you're asked to take; answer students.
+
+### Student — Attendly app
+- **Scan** (centre button) inside the room. The camera finds the code anywhere in view (tap to focus, 2×/4× zoom). It works offline and uploads later.
+- **Home**: term %, today, *Coming up*. **Subjects**: % per course, "you can miss N", plan-ahead. **Timetable**: every change with its note; **Ask** a teacher.
+- **Profile → All features**: requests, notifications, sign-in security, permissions, phone reset.
+
+## 5 · Notifications
+
+- In the app: a change appears within **15 seconds**; tapping it opens that class.
+- App closed: phones check about every 15 minutes (Android's limit), **unless Firebase is set up**. Then notifications arrive **instantly**, with the default sound, even when the app is closed. To switch that on (about 10 minutes, free):
+  1. <https://console.firebase.google.com> → **Add project** (e.g. "attendly").
+  2. **Add app → Android** twice: package `app.attendly.student`, then `app.attendly.institute`.
+  3. **Project settings → General → your apps → download `google-services.json`** (one file covers both apps).
+  4. GitHub → repo **Settings → Secrets and variables → Actions → New repository secret**: name `GOOGLE_SERVICES_JSON`, value = the whole file's text.
+  5. Firebase **Project settings → Service accounts → Generate new private key** (a JSON file).
+  6. Render → your service → **Environment → Add** `FCM_SERVICE_ACCOUNT` = the whole JSON text → Save (Render redeploys).
+  7. Push any commit (or re-run the latest GitHub Action) and install the new APKs. The server log then says "instant push on".
+  Never paste these files into a chat.
+
+## 6 · Supabase — what you need to do
+
+Nothing more. Your database password lives only in Render's `DATABASE_URL`, and the server applies migrations on every deploy. To look at the data: Supabase → **Table Editor** (tables `users`, `class_sessions`, `attendance_records`, `change_requests`, `notifications`, `audit_log`…). Never share the password or connection string in chats or code. If it ever leaks: Supabase → **Project settings → Database → Reset password**, then update `DATABASE_URL` in Render.
+
+## 7 · Going live (when the beta is done)
+
+- **Email codes**: Render → Environment: `OTP_DELIVERY=smtp`, `SMTP_URL`, `SMTP_FROM`. This also ends demo mode (demo accounts then need codes). Delete `DEV_TOOLS_TOKEN`.
+- **Always on**: Render **Starter** plan (the free one sleeps after 15 minutes).
+- **Firebase** as in §5 for instant notifications.
+
+## 8 · Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| "Connecting…" for a long time | The free server is waking up (≤ 1 min). "Try again" if it stops. |
+| No code on the /dev page | Wait 30 s between requests for the same email; check the email is exactly the one added. |
+| "Set a screen lock first" (Institute) | Add a PIN/fingerprint in phone Settings → Security. |
+| Scan says "Outside geofence" | Rooms → the room → *Update to my location* while standing in it. |
+| Notifications late | Set up Firebase (§5); meanwhile Settings → Apps → Attendly → Battery → Unrestricted. |
+| Lost the authenticator phone | Admin: People → the person → Authenticator → **Reset** (back to emailed codes). |
+| Changed phones | Student: Profile → Request device reset; admin approves in **Phone requests**. |

@@ -7,6 +7,8 @@
 | **Server** (`server/`) | — | The single source of truth, deployed on **Render** with **Supabase** Postgres. |
 
 📥 **Download:** [attendly-institute.apk](https://github.com/atul-kumar-jena/nonegit/releases/latest/download/attendly-institute.apk) · [attendly-student.apk](https://github.com/atul-kumar-jena/nonegit/releases/latest/download/attendly-student.apk)
+📘 **Start here:** [User guide](docs/USER-GUIDE.md) — install, demo test (tap-to-sign-in dummy accounts), beta test with new accounts, every feature, notifications, Supabase.
+
 📖 **Read next:** [How it works](docs/HOW-IT-WORKS.md) (onboarding → marking, uniqueness, offline, big screen) · [Deploy](docs/DEPLOY.md) (Supabase + Render) · [Test on phones](docs/TESTING.md) (54-step checklist) · [Handoff](docs/HANDOFF.md) (everything needed to continue the work)
 
 ---

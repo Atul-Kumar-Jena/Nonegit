@@ -21,3 +21,27 @@ NODE_PATH=$(npm root -g) OUT=/tmp/shots node e2e/both.cjs
 
 Needs PostgreSQL on localhost (user `postgres`) and Chromium at `/opt/pw-browsers/chromium-1194` (edit `executablePath` otherwise).
 Screenshots of every step land in `$OUT`.
+
+## Demo-mode rehearsal (current): `cover.cjs`
+
+10 steps against a **demo-mode** server (one-tap demo accounts):
+1. Built-in server connection and one-tap sign-in.
+2. The admin opens the cover board.
+3. A busy teacher is refused.
+4. A free teacher is dragged onto a class, with notes.
+5. The teacher accepts from Today.
+6. A teacher can't hand classes out.
+7. The admin is told.
+8. The student gets the change with the note and asks their teacher.
+9. The developer console (sandbox) works.
+10. The developer app refuses a student.
+
+```bash
+export EXPO_PUBLIC_ALLOW_HTTP=1 EXPO_PUBLIC_API_URL=http://localhost:10000   # web builds point at the local server
+# build the three web exports to /tmp/web-{institute,student,developer}, then start a production-mode server with
+# OTP_DELIVERY=console (demo mode on) and CORS for :8081–8083, and `node static.cjs`
+NODE_PATH=$(npm root -g) OUT=/tmp/shots-cover node e2e/cover.cjs     # must end with ERRORS: []
+```
+
+`both.cjs` (the older 29-step run) types a server address and codes; with the built-in server and demo mode it needs
+`DEMO_INSTANT_LOGIN=false` on the server and web builds without `EXPO_PUBLIC_API_URL` pointing elsewhere.

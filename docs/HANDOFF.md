@@ -10,6 +10,19 @@ Paste this as the first message of the new chat (with the repository attached):
 
 ## 1. What exists today
 
+Latest additions:
+- demo mode (tap-to-sign-in demo accounts);
+- Google Authenticator sign-in;
+- admin-only cover requests with notes → teacher accepts → students notified;
+- students' "Ask" requests;
+- Firebase instant push, once configured;
+- monochrome redesign with an All-features box and ⓘ help;
+- 12-hour times;
+- register roll-call mode;
+- the Developer app (`apps/developer`), frozen for now at the owner's request.
+
+See `docs/USER-GUIDE.md`.
+
 | Part | Folder | Status |
 |---|---|---|
 | **Attendly Institute** (admins + teachers) | `apps/institute` | Done. Onboarding checklist, rooms, people (paste import), courses, batches, weekly timetable, QR and register classes, big-screen pairing, live feed, corrections, reports + CSV, device-reset approvals, suspicious scans, **drag-and-drop planner** (drafts → review → publish), **adjust a class** (move / substitute / cancel), **who's busy**, notifications, permissions, app lock + screenshot block |
