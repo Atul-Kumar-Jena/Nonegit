@@ -86,6 +86,7 @@ export interface NotificationTarget {
   courseId?: string;
   requestId?: string;
   noticeId?: string;
+  batchId?: string;
 }
 
 const CLOCK_KEY = 'clock.offset.v1';

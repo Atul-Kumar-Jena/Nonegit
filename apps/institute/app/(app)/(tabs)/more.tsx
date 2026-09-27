@@ -34,6 +34,7 @@ export default function More() {
   const admin = u?.role === 'admin';
   const perms = new Set(me.data?.permissions ?? []);
   const may = (p: StaffPermission) => admin || perms.has(p);
+  const mentorOf = me.data?.mentorOf ?? [];
   const warn = unsent.length
     ? `\n\n⚠ ${unsent.length} offline ${unsent.length === 1 ? 'change has' : 'changes have'} not been uploaded yet (registers, class starts) and will be lost. Connect to the internet first.`
     : '';
@@ -108,9 +109,11 @@ export default function More() {
           ...(may('people') ? [{ icon: <Users color={colors.text} size={18} />, label: 'People & roles', href: '/people' as Href }] : []),
           { icon: <UsersRound color={colors.text} size={18} />, label: 'Batches', href: '/batches' },
           { icon: <MapPin color={colors.text} size={18} />, label: 'Rooms', href: '/rooms' },
+          ...(may('devices') || mentorOf.length
+            ? [{ icon: <Smartphone color={colors.text} size={18} />, label: 'Phone requests', href: '/requests' as Href, badge: overview.data?.pendingRequests ? String(overview.data.pendingRequests) : null }]
+            : []),
           ...(may('devices')
             ? [
-                { icon: <Smartphone color={colors.text} size={18} />, label: 'Phone requests', href: '/requests' as Href, badge: overview.data?.pendingRequests ? String(overview.data.pendingRequests) : null },
                 { icon: <ShieldAlert color={colors.text} size={18} />, label: 'Suspicious scans', href: '/flags' as Href, badge: overview.data?.flaggedOpen ? String(overview.data.flaggedOpen) : null },
               ]
             : []),

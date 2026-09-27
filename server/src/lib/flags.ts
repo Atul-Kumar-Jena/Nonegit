@@ -24,6 +24,11 @@ export const TENANT_FLAGS = {
     detail: 'Every Android phone must prove a key inside its security chip (Google key attestation) to be bound.',
     default: false,
   },
+  offline_scans_off: {
+    label: 'Refuse offline scans',
+    detail: 'Scans must reach the server within seconds. For campuses with reliable internet; stops any use of old QR codes.',
+    default: false,
+  },
   manual_registers: { label: 'Paper-style registers', detail: 'Teachers may mark attendance by ticking names.', default: true },
 } as const;
 export type TenantFlagKey = keyof typeof TENANT_FLAGS;

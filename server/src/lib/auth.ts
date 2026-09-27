@@ -63,6 +63,8 @@ export interface AuthContext {
   signature: Buffer;
   /** SHA-256 of the signed request string. */
   requestDigest: Buffer;
+  /** The phone's (server-corrected) clock when it signed this request. */
+  requestTs: number;
   devicePlatform: string;
   /** The phone's attested security-chip key (null: software key only). */
   hardwareKey: Buffer | null;
@@ -130,7 +132,7 @@ async function verifyDeviceSignature(
   deps: Deps,
   req: FastifyRequest,
   device: { id: string; publicKey: Buffer },
-): Promise<{ signature: Buffer; requestDigest: Buffer; signing: string }> {
+): Promise<{ signature: Buffer; requestDigest: Buffer; signing: string; ts: number }> {
   const tsStr = header(req, HDR_TS);
   const nonce = header(req, HDR_NONCE);
   const sigB64 = header(req, HDR_SIG);
@@ -157,7 +159,7 @@ async function verifyDeviceSignature(
     [device.id, nonce, new Date(now + NONCE_TTL_MS)],
   );
   if (inserted.rowCount !== 1) throw new ApiError(401, 'REPLAY');
-  return { signature, requestDigest: Buffer.from(sha256Hex(signing), 'hex'), signing };
+  return { signature, requestDigest: Buffer.from(sha256Hex(signing), 'hex'), signing, ts };
 }
 
 interface SessionRow {
@@ -195,6 +197,9 @@ const SESSION_SELECT = `
  * Authenticates a request: bearer access token + device signature.
  * Optionally restricts to specific roles.
  */
+/** Last minute recorded in device_online per phone (saves a write per request). */
+const onlineMinute = new Map<string, number>();
+
 export async function requireDevice(req: FastifyRequest, deps: Deps, roles?: readonly Role[]): Promise<AuthContext> {
   const authz = header(req, 'authorization');
   const token = authz?.startsWith('Bearer ') ? authz.slice(7) : undefined;
@@ -210,15 +215,24 @@ export async function requireDevice(req: FastifyRequest, deps: Deps, roles?: rea
 
   const now = deps.clock();
   // Verify possession of the device key *before* telling the caller anything about token expiry.
-  const { signature, requestDigest, signing } = await verifyDeviceSignature(deps.db, deps, req, { id: s.device_id, publicKey: s.public_key });
+  const { signature, requestDigest, signing, ts: requestTs } = await verifyDeviceSignature(deps.db, deps, req, { id: s.device_id, publicKey: s.public_key });
   const hwSig = header(req, HDR_HWSIG);
   const hardwareSigned = !!(s.hw_key_spki && hwSig && hwSig.length <= 200 && verifyHardwareSignature(s.hw_key_spki, signing, hwSig));
   if (s.access_expires_at.getTime() <= now || s.rotated_at) throw new ApiError(401, 'TOKEN_EXPIRED');
   if (roles && !roles.includes(s.role)) throw new ApiError(403, 'FORBIDDEN');
 
+  if (!deps.guard.deviceAllowed(s.device_id, now)) throw new ApiError(429, 'RATE_LIMITED', 'This phone is sending too many requests. Wait a minute.', { retryAfterSec: 60 });
+
   if (!s.last_used_at || now - s.last_used_at.getTime() > 60_000) {
     await deps.db.query('update auth_sessions set last_used_at = $2 where id = $1', [s.session_id, new Date(now)]);
     await deps.db.query('update devices set last_seen_at = $2 where id = $1', [s.device_id, new Date(now)]);
+  }
+  // Minutes this phone was online (scans excluded): evidence against "offline" scans forged later.
+  const minute = Math.floor(now / 60_000);
+  if (!req.url.startsWith('/v1/attendance/') && onlineMinute.get(s.device_id) !== minute) {
+    if (onlineMinute.size > 100_000) onlineMinute.clear();
+    onlineMinute.set(s.device_id, minute);
+    await deps.db.query(`insert into device_online(device_id, minute) values ($1, date_trunc('minute', $2::timestamptz)) on conflict do nothing`, [s.device_id, new Date(now)]);
   }
 
   return {
@@ -233,6 +247,7 @@ export async function requireDevice(req: FastifyRequest, deps: Deps, roles?: rea
     deviceFingerprint: s.fingerprint,
     signature,
     requestDigest,
+    requestTs,
     devicePlatform: s.platform,
     hardwareKey: s.hw_key_spki,
     hardwareSigned,

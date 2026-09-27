@@ -24,6 +24,7 @@ import {
 import type { Deps } from '../deps';
 import { tenantFlag } from '../lib/flags';
 import { hardwareRequired } from '../lib/device-trust';
+import { insertNotifications } from '../lib/notify';
 import { isUniqueViolation, withTx } from '../db';
 import { appendAudit } from '../lib/audit';
 import { perDeviceKey, requireDevice, type AuthContext } from '../lib/auth';
@@ -40,8 +41,14 @@ const NOT_STUDENTS_FAULT = ['E-PAUSED', 'E-SESSION-CLOSED', 'E-NOT-STARTED'];
 
 /** Grace around a class's scheduled window for early/late scans. */
 const WINDOW_GRACE_MS = 15 * 60_000;
-/** A scan whose capture time is further than this from "now" is treated as an offline upload. */
-const OFFLINE_THRESHOLD_MS = 90_000;
+/**
+ * A live scan must reach the server within this long of being scanned; anything older is an offline
+ * upload. Freshness of the rotating code is judged within this bound, so a forwarded screenshot of the
+ * screen is stale after ~20 s.
+ */
+const OFFLINE_THRESHOLD_MS = 15_000;
+/** Cushion around the scan / upload when checking whether the phone was online in between. */
+const ONLINE_EVIDENCE_CUSHION_MS = 3 * 60_000;
 /** Offline scans must be uploaded within this long of being captured. */
 const MAX_OFFLINE_AGE_MS = 24 * 60 * 60_000;
 
@@ -190,12 +197,38 @@ export async function attendanceRoutes(app: FastifyInstance, deps: Deps) {
       const existing = await existingReceipt(session, auth);
       if (existing) return existing;
 
-      // 3. When was the code scanned? Offline scans carry their (server-corrected) capture time.
-      const scannedAt = body.scannedAt ?? now;
-      const offline = Math.abs(now - scannedAt) > OFFLINE_THRESHOLD_MS;
-      if (scannedAt > now + OFFLINE_THRESHOLD_MS) throw new ScanRejection('E-GPS-STALE', 'This scan is dated in the future. Enable automatic date & time.', { scannedAt });
+      // 3. When was the code scanned? Never from the phone's wall clock alone (it can be changed in
+      //    Settings): only the *delay* between scanning and sending counts, measured on one clock —
+      //    the since-boot clock when the phone has one, else the same wall clock that signed this
+      //    request (a shifted clock cancels out). The scan time is then server time minus that delay.
+      let waited = 0;
+      if (body.clock?.sendMs !== undefined) waited = body.clock.sendMs - body.clock.scanMs;
+      else if (body.scannedAt !== undefined) waited = auth.requestTs - body.scannedAt;
+      if (waited < -OFFLINE_THRESHOLD_MS) throw new ScanRejection('E-GPS-STALE', 'This scan is dated in the future. Enable automatic date & time.', { waited });
+      waited = Math.max(0, waited);
+      const scannedAt = now - waited;
+      const offline = waited > OFFLINE_THRESHOLD_MS;
+      // The phone's own account of the scan time must agree with the delay (allowing clock drift).
+      if (body.clock?.sendMs !== undefined && body.scannedAt !== undefined && Math.abs(body.scannedAt - (auth.requestTs - waited)) > 10 * 60_000)
+        throw new ScanRejection('E-QR-INVALID', 'The time of this scan doesn’t add up. Turn on automatic date & time and scan the live code again.', { signal: 'clock_mismatch' });
       if (offline && now - scannedAt > MAX_OFFLINE_AGE_MS)
         throw new ScanRejection('E-EXPIRED', 'Offline scans must be uploaded within 24 hours.', { ageMs: now - scannedAt, offline: true });
+      if (offline) {
+        if (await tenantFlag(deps.db, auth.tenantId, 'offline_scans_off'))
+          throw new ScanRejection('E-EXPIRED', 'Your institution accepts only live scans — scan the code on screen while you have internet.', { offline: true, signal: 'offline_off' });
+        // A genuine offline scan is uploaded as soon as the phone is back online. If this phone used the app
+        // online well after the "scan" without uploading it, the code was old or forwarded.
+        const online = await deps.db.query<{ minute: Date }>(
+          'select minute from device_online where device_id = $1 and minute > $2 and minute < $3 order by minute limit 1',
+          [auth.deviceId, new Date(scannedAt + ONLINE_EVIDENCE_CUSHION_MS), new Date(now - ONLINE_EVIDENCE_CUSHION_MS)],
+        );
+        if (online.rows[0])
+          throw new ScanRejection('E-QR-INVALID', 'This phone was online after that scan but didn’t send it then — old or forwarded codes aren’t accepted.', {
+            offline: true,
+            signal: 'online_after_scan',
+            onlineAt: online.rows[0].minute.toISOString(),
+          });
+      }
 
       // 4. Session state at the moment of scanning, and the roster.
       if (session.mode !== 'qr') throw new ScanRejection('E-SESSION-CLOSED', 'This class uses a paper/manual register.', { mode: session.mode });
@@ -220,8 +253,10 @@ export async function attendanceRoutes(app: FastifyInstance, deps: Deps) {
       const loc = body.location;
       const raw: GeoSample[] = loc.samples?.length ? loc.samples : [{ lat: loc.lat, lng: loc.lng, accuracyM: loc.accuracyM, t: loc.capturedAt, mocked: loc.mocked }];
       if (loc.mocked || raw.some((x) => x.mocked)) throw new ScanRejection('E-MOCK', 'The operating system flagged this location as coming from a mock-location provider.', { signal: 'os_mock_flag' });
-      const fresh = raw.filter((x) => Math.abs(scannedAt - x.t) <= MAX_LOCATION_AGE_MS);
-      if (!fresh.length) throw new ScanRejection('E-GPS-STALE', undefined, { ageMs: scannedAt - loc.capturedAt });
+      // Fix times are on the phone's clock: compare them with the phone's own scan time.
+      const phoneScanAt = body.scannedAt ?? auth.requestTs;
+      const fresh = raw.filter((x) => Math.abs(phoneScanAt - x.t) <= MAX_LOCATION_AGE_MS);
+      if (!fresh.length) throw new ScanRejection('E-GPS-STALE', undefined, { ageMs: phoneScanAt - loc.capturedAt });
       if (fresh.some((x) => !(x.accuracyM > 0))) throw new ScanRejection('E-MOCK', 'GPS reported perfect (0 m) accuracy, which real hardware never does.', { signal: 'zero_accuracy' });
       const jump = maxUnexplainedSpeed(fresh);
       if (jump.speedMps > TELEPORT_SPEED_MPS && jump.jumpM > TELEPORT_MIN_M)
@@ -327,6 +362,21 @@ export async function attendanceRoutes(app: FastifyInstance, deps: Deps) {
             subject: `session:${session.id}`,
             data: { record: recordId, seq: parsed.seq, device: auth.deviceFingerprint, distanceM: Math.round(geo.distanceM), ...(offline ? { lagMs: now - scannedAt } : {}) },
           });
+          // A scan saved without internet and confirmed now: tell the student it counted.
+          if (offline) {
+            const clock = new Intl.DateTimeFormat('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: term.timezone });
+            const day = new Intl.DateTimeFormat('en-IN', { weekday: 'short', day: 'numeric', month: 'short', timeZone: term.timezone });
+            const lecture = session.lecture_no ? ` · ${session.course_kind === 'lab' ? 'Lab' : 'Lecture'} ${session.lecture_no}` : '';
+            await insertNotifications(tx, auth.tenantId, [
+              {
+                userId: auth.userId,
+                kind: 'attendance',
+                title: `✅ Attendance marked · ${session.course_code}`,
+                body: `${session.course_title}${lecture}\nScanned ${day.format(markedAt)}, ${clock.format(markedAt)} without internet — now confirmed.${after !== null ? ` Your attendance: ${after}%.` : ''}`,
+                data: { sessionId: session.id, courseId: session.course_id, recordId },
+              },
+            ]);
+          }
           return ins.rows[0]!;
         });
         return toResponse(session, auth.userId, record, false, before, after);

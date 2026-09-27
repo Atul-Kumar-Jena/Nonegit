@@ -54,6 +54,8 @@ export default function Today() {
   const perms = me.data?.permissions ?? [];
   const planner = admin || perms.includes('planner');
   const devices = admin || perms.includes('devices');
+  // Batch mentors approve their students' phone requests.
+  const phoneRequests = devices || (me.data?.mentorOf ?? []).length > 0;
 
   return (
     <Screen
@@ -87,11 +89,11 @@ export default function Today() {
 
       <SyncBanner />
 
-      {d && (d.liveNow || (devices && (d.flaggedOpen || d.pendingRequests))) ? (
+      {d && (d.liveNow || (devices && d.flaggedOpen) || (phoneRequests && d.pendingRequests)) ? (
         <View style={styles.needs}>
           {d.liveNow ? <Pill icon={<Radio color={colors.green} size={13} />} label={`${d.liveNow} live now`} /> : null}
           {devices && d.flaggedOpen ? <Pill icon={<ShieldAlert color={colors.amber} size={13} />} label={`${d.flaggedOpen} suspicious ${d.flaggedOpen === 1 ? 'scan' : 'scans'}`} onPress={() => router.push('/flags')} /> : null}
-          {devices && d.pendingRequests ? <Pill icon={<Smartphone color={colors.text} size={13} />} label={`${d.pendingRequests} phone ${d.pendingRequests === 1 ? 'request' : 'requests'}`} onPress={() => router.push('/requests')} /> : null}
+          {phoneRequests && d.pendingRequests ? <Pill icon={<Smartphone color={colors.text} size={13} />} label={`${d.pendingRequests} phone ${d.pendingRequests === 1 ? 'request' : 'requests'}`} onPress={() => router.push('/requests')} /> : null}
         </View>
       ) : null}
 

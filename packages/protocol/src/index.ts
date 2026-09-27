@@ -14,3 +14,4 @@ export * from './root';
 export * from './reports';
 export * from './richtext';
 export * from './notices';
+export * from './notify-kinds';

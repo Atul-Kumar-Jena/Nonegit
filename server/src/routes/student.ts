@@ -14,6 +14,7 @@ import {
 } from '@attendly/protocol';
 import { z } from 'zod';
 import type { Deps } from '../deps';
+import { notifyDeviceRequest } from '../lib/mentors';
 import { isUniqueViolation, withTx } from '../db';
 import { appendAudit } from '../lib/audit';
 import { perDeviceKey, requireDevice, type AuthContext } from '../lib/auth';
@@ -342,6 +343,8 @@ export async function studentRoutes(app: FastifyInstance, deps: Deps) {
           subject: `request:${ins.rows[0]!.id}`,
           data: { device: auth.deviceFingerprint },
         });
+        const me = (await tx.query<{ full_name: string; roll_no: string | null }>('select full_name, roll_no from users where id = $1', [auth.userId])).rows[0]!;
+        await notifyDeviceRequest(tx, auth.tenantId, { id: auth.userId, name: me.full_name, rollNo: me.roll_no }, 'reset', ins.rows[0]!.id);
         return { requestId: ins.rows[0]!.id, status: 'pending' as const };
       });
     } catch (err) {

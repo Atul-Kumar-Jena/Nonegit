@@ -26,6 +26,8 @@ export const Batch = z.object({
   department: z.string().nullable().default(null),
   semester: z.number().int().nullable().default(null),
   createdBy: uuid.nullable().default(null),
+  /** The professor looking after this batch: its students' phone requests go to them. */
+  mentor: z.object({ id: uuid, name: z.string() }).nullable().default(null),
   /** The caller may remove students/subjects, rename, archive or change the semester. */
   canManage: z.boolean().default(false),
 });
@@ -47,6 +49,8 @@ export const BatchUpdateBody = z.object({
   department: Dept.nullable().optional(),
   /** Changing it moves every student of the batch to that semester. */
   semester: Semester.nullable().optional(),
+  /** Mentor (a professor or admin of this institution); null removes. */
+  mentorId: uuid.nullable().optional(),
   addMembers: z.array(uuid).max(2000).default([]),
   removeMembers: z.array(uuid).max(2000).default([]),
   /** The full set of courses this batch takes (students are enrolled / un-enrolled to match). */

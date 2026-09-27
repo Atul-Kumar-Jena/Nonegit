@@ -11,6 +11,7 @@ interface Native {
   remove(alias: string): boolean;
   generate(alias: string, challengeB64: string): Promise<{ chain: string[]; strongBox: boolean }>;
   sign(alias: string, dataB64: string): Promise<string>;
+  bootClock(): { boot: number; ms: number };
 }
 
 const native = requireOptionalNativeModule<Native>('AttendlyHardwareKey');
@@ -20,6 +21,16 @@ function supported(): boolean {
     return !!native && native.isSupported();
   } catch {
     return false;
+  }
+}
+
+/** Since-boot clock (Android): { boot number, ms since boot } — immune to changing the phone's time. */
+export function bootClock(): { boot: number; ms: number } | null {
+  try {
+    const c = native?.bootClock();
+    return c && c.boot >= 0 && Number.isFinite(c.ms) ? { boot: c.boot, ms: Math.round(c.ms) } : null;
+  } catch {
+    return null;
   }
 }
 

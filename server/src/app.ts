@@ -1,5 +1,6 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
+import { PROBE_CODES, createGuard } from './lib/guard';
 import cors from '@fastify/cors';
 import { ZodError } from 'zod';
 import type { Config } from './config';
@@ -68,6 +69,7 @@ export async function buildApp(opts: BuildOptions): Promise<{ app: FastifyInstan
     sender: opts.sender ?? createOtpSender(config, app.log),
     clock: opts.clock ?? Date.now,
     log: app.log,
+    guard: createGuard(opts.rateLimit !== false),
   };
 
   // Keep the exact body bytes: device signatures cover SHA-256(raw body).
@@ -101,19 +103,33 @@ export async function buildApp(opts: BuildOptions): Promise<{ app: FastifyInstan
     });
   }
 
-  app.addHook('onResponse', async (_req, reply) => {
+  // Shut out IPs that keep probing with bad signatures / replayed or unknown tokens.
+  app.addHook('onRequest', async (req, reply) => {
+    const wait = deps.guard.ipBlockedFor(req.ip, deps.clock());
+    if (wait > 0) return reply.code(429).send(new ApiError(429, 'RATE_LIMITED', 'Too many invalid requests from your network. Try again later.', { retryAfterSec: Math.ceil(wait / 1000) }).toBody());
+  });
+  app.addHook('onResponse', async (req, reply) => {
     recordRequest(reply.elapsedTime, reply.statusCode);
+    const code = (reply as typeof reply & { probeCode?: string }).probeCode;
+    if (code && PROBE_CODES.has(code)) deps.guard.recordProbe(req.ip, deps.clock());
   });
 
   app.addHook('onSend', async (_req, reply, payload) => {
     reply.header('x-server-time', String(deps.clock()));
     reply.header('x-content-type-options', 'nosniff');
+    reply.header('referrer-policy', 'no-referrer');
+    reply.header('x-frame-options', 'DENY');
+    reply.header('cross-origin-resource-policy', 'same-site');
+    if (config.env === 'production') reply.header('strict-transport-security', 'max-age=31536000; includeSubDomains');
     if (!reply.getHeader('cache-control')) reply.header('cache-control', 'no-store');
     return payload;
   });
 
   app.setErrorHandler((err, req, reply) => {
-    if (err instanceof ApiError) return reply.code(err.status).send(err.toBody());
+    if (err instanceof ApiError) {
+      (reply as typeof reply & { probeCode?: string }).probeCode = err.code;
+      return reply.code(err.status).send(err.toBody());
+    }
     if (err instanceof ZodError) {
       const issue = err.issues[0];
       const where = issue?.path.length ? `${issue.path.join('.')}: ` : '';
@@ -156,6 +172,7 @@ export function startJanitor(deps: Deps): () => void {
     try {
       const now = new Date(deps.clock());
       await deps.db.query('delete from request_nonces where expires_at < $1', [now]);
+      await deps.db.query('delete from device_online where minute < $1', [new Date(now.getTime() - 48 * 3_600_000)]);
       await deps.db.query(`delete from otp_challenges where created_at < $1`, [new Date(now.getTime() - 24 * 3_600_000)]);
       await deps.db.query(`delete from auth_tickets where expires_at < $1`, [new Date(now.getTime() - 24 * 3_600_000)]);
       await deps.db.query(`delete from auth_sessions where refresh_expires_at < $1`, [new Date(now.getTime() - 24 * 3_600_000)]);

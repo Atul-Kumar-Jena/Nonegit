@@ -5,6 +5,7 @@
  * (it reads committed rows only), so a rolled-back change never buzzes anyone. Without
  * FCM_SERVICE_ACCOUNT the dispatcher does nothing and the apps' own checks deliver instead.
  */
+import { notificationCategory } from '@attendly/protocol';
 import { createSign } from 'node:crypto';
 import type { Db } from '../db';
 
@@ -45,7 +46,7 @@ export function createPushSender(sa: ServiceAccount, log: (msg: string, extra?: 
     return token.value;
   }
   /** Returns false when the token is dead (app uninstalled) so it can be forgotten. */
-  async function send(to: string, n: { title: string; body: string; data: Record<string, string> }): Promise<boolean> {
+  async function send(to: string, n: { title: string; body: string; data: Record<string, string>; image?: string; tag?: string }): Promise<boolean> {
     const res = await fetch(`https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`, {
       method: 'POST',
       headers: { authorization: `Bearer ${await accessToken()}`, 'content-type': 'application/json' },
@@ -54,7 +55,21 @@ export function createPushSender(sa: ServiceAccount, log: (msg: string, extra?: 
           token: to,
           notification: { title: n.title, body: n.body },
           data: n.data,
-          android: { priority: 'HIGH', notification: { channel_id: 'timetable-alerts', sound: 'default', default_vibrate_timings: true, notification_priority: 'PRIORITY_MAX', visibility: 'PUBLIC' } },
+          android: {
+            priority: 'HIGH',
+            notification: {
+              channel_id: 'timetable-alerts',
+              sound: 'default',
+              default_vibrate_timings: true,
+              notification_priority: 'PRIORITY_MAX',
+              visibility: 'PUBLIC',
+              icon: 'notification_icon',
+              color: '#111111',
+              // A thumbnail for each kind of news; a newer update about the same thing replaces the older one.
+              ...(n.image ? { image: n.image } : {}),
+              ...(n.tag ? { tag: n.tag } : {}),
+            },
+          },
           apns: { payload: { aps: { sound: 'default' } } },
         },
       }),
@@ -67,7 +82,12 @@ export function createPushSender(sa: ServiceAccount, log: (msg: string, extra?: 
 }
 
 /** Sends every committed, not-yet-pushed notification of the last 10 minutes. */
-export function startPushDispatcher(db: Db, sender: ReturnType<typeof createPushSender>, log: (msg: string, extra?: unknown) => void): () => void {
+export function startPushDispatcher(
+  db: Db,
+  sender: ReturnType<typeof createPushSender>,
+  log: (msg: string, extra?: unknown) => void,
+  publicUrl: string | null = null,
+): () => void {
   let running = false;
   const BATCH = 500;
   const PARALLEL = 25;
@@ -92,13 +112,17 @@ export function startPushDispatcher(db: Db, sender: ReturnType<typeof createPush
         notificationId: String(n.id),
         kind: n.kind,
         ...(first?.sessionId ? { sessionId: first.sessionId } : typeof n.data.sessionId === 'string' ? { sessionId: n.data.sessionId } : {}),
-        ...(first?.courseId ? { courseId: first.courseId } : {}),
+        ...(first?.courseId ? { courseId: first.courseId } : typeof n.data.courseId === 'string' ? { courseId: n.data.courseId } : {}),
+        ...(typeof n.data.batchId === 'string' ? { batchId: n.data.batchId } : {}),
         ...(typeof n.data.requestId === 'string' ? { requestId: n.data.requestId } : {}),
         ...(typeof n.data.noticeId === 'string' ? { noticeId: n.data.noticeId } : {}),
       };
+      const image = publicUrl ? `${publicUrl}/v1/thumbs/${notificationCategory(n.kind)}.png` : undefined;
+      const about = data.noticeId ?? data.requestId ?? data.sessionId;
+      const tag = about ? `${n.kind}:${about}` : undefined;
       for (const t of byUser.get(n.user_id) ?? [])
         jobs.push(async () => {
-          const alive = await sender.send(t.token, { title: n.title, body: n.body, data }).catch((err: Error) => (log('FCM error', { err: err.message }), true));
+          const alive = await sender.send(t.token, { title: n.title, body: n.body, data, image, tag }).catch((err: Error) => (log('FCM error', { err: err.message }), true));
           if (!alive) await db.query('delete from push_tokens where device_id = $1', [t.device_id]);
         });
     }

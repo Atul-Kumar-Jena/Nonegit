@@ -2,16 +2,17 @@ import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
-import { BookPlus, ChevronRight, FileBarChart, FileUp, GraduationCap, Search, UserMinus, UserPlus, X } from 'lucide-react-native';
+import { BookPlus, Check, ChevronRight, FileBarChart, FileUp, GraduationCap, Search, UserMinus, UserPlus, X } from 'lucide-react-native';
 import type { BatchDetail as BatchDetailT, BatchUpdateBody } from '@attendly/protocol';
 import { Screen } from '@kit/components/Screen';
-import { Badge, Button, Card, ErrorState, Input, Loading, Notice, SectionLabel, Segmented, Text } from '@kit/components/ui';
+import { Avatar, Badge, Button, Card, ErrorState, Input, Loading, Notice, SectionLabel, Segmented, Text } from '@kit/components/ui';
 import { useApi } from '@kit/state/session';
 import { colors, radius } from '@kit/theme';
 import { staffApi } from '@/api';
 import { SEMESTERS, batchLine } from '@/batches';
 import { Checkbox, Chips, Field, Header, Select, Sheet, ToggleRow, confirmAction } from '@/components/forms';
-import { qk, useAllCourses, useBatch, useCan, usePeople, useStudentSearch } from '@/queries';
+import { qk, useAllCourses, useBatch, useCan, useColleagues, usePeople, useStudentSearch } from '@/queries';
+import { initials } from '@kit/lib/format';
 
 type Tab = 'students' | 'subjects' | 'settings';
 
@@ -240,14 +241,18 @@ function Settings({ b, busy, update }: { b: BatchDetailT; busy: boolean; update:
   }, [b.name, b.department]);
   if (!b.canManage)
     return (
-      <Card style={{ marginTop: 14, gap: 6 }}>
-        <Text variant="bodyStrong">{batchLine(b) || 'No semester set'}</Text>
-        <Text variant="small">You can add students and subjects. Renaming, changing the semester, removing or archiving is for an admin or the professor who created this batch.</Text>
-      </Card>
+      <View style={{ marginTop: 6 }}>
+        <MentorCard b={b} busy={busy} update={update} />
+        <Card style={{ marginTop: 14, gap: 6 }}>
+          <Text variant="bodyStrong">{batchLine(b) || 'No semester set'}</Text>
+          <Text variant="small">You can add students and subjects. Renaming, changing the semester or mentor, removing or archiving is for an admin or the professor who created this batch.</Text>
+        </Card>
+      </View>
     );
   const next = b.semester ? b.semester + 1 : null;
   return (
     <View style={{ marginTop: 6 }}>
+      <MentorCard b={b} busy={busy} update={update} />
       <SectionLabel>Semester</SectionLabel>
       <Chips
         value={b.semester ?? 0}
@@ -295,6 +300,74 @@ function Settings({ b, busy, update }: { b: BatchDetailT; busy: boolean; update:
         />
       </View>
     </View>
+  );
+}
+
+/** The batch's mentor: phone switch / unbind requests of its students go to them. */
+function MentorCard({ b, busy, update }: { b: BatchDetailT; busy: boolean; update: (body: Partial<BatchUpdateBody>, done: string) => Promise<boolean> }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const people = useColleagues(open);
+  const list = (people.data ?? []).filter((p) => !q.trim() || p.name.toLowerCase().includes(q.trim().toLowerCase()) || (p.department ?? '').toLowerCase().includes(q.trim().toLowerCase()));
+  return (
+    <>
+      <SectionLabel>Mentor</SectionLabel>
+      <Card style={{ gap: 10 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <Avatar text={b.mentor ? initials(b.mentor.name) : '?'} size={40} />
+          <View style={{ flex: 1 }}>
+            <Text variant="bodyStrong">{b.mentor ? b.mentor.name : 'No mentor yet'}</Text>
+            <Text variant="small">Phone switch and unbind requests from this batch’s students go to the mentor.</Text>
+          </View>
+        </View>
+        {b.canManage ? <Button title={b.mentor ? 'Change mentor' : 'Choose a mentor'} kind="secondary" compact onPress={() => setOpen(true)} loading={busy} /> : null}
+      </Card>
+      {open ? (
+        <Sheet open onClose={() => setOpen(false)} title={`Mentor of ${b.name}`} scroll>
+          <Input value={q} onChangeText={setQ} placeholder="Search professors" icon={<Search color={colors.textDim} size={16} />} autoCorrect={false} />
+          <View style={{ gap: 6, marginTop: 10 }}>
+            {people.isPending ? (
+              <Loading />
+            ) : (
+              list.map((p) => {
+                const on = b.mentor?.id === p.id;
+                return (
+                  <Pressable
+                    key={p.id}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: on }}
+                    onPress={() => {
+                      setOpen(false);
+                      if (!on) void update({ mentorId: p.id }, `${p.name} now mentors ${b.name}.`);
+                    }}
+                    style={[styles.row, on && { borderColor: colors.text }]}
+                  >
+                    <Avatar text={initials(p.name)} size={34} />
+                    <View style={{ flex: 1 }}>
+                      <Text variant="bodyStrong">{p.name}</Text>
+                      <Text variant="small">{[p.role === 'admin' ? 'Admin' : 'Professor', p.department].filter(Boolean).join(' · ')}</Text>
+                    </View>
+                    {on ? <Check color={colors.text} size={18} /> : null}
+                  </Pressable>
+                );
+              })
+            )}
+            {b.mentor ? (
+              <Button
+                title="Remove mentor"
+                kind="danger"
+                compact
+                onPress={() => {
+                  setOpen(false);
+                  void update({ mentorId: null }, 'Mentor removed. Requests go to the admins.');
+                }}
+                style={{ marginTop: 8 }}
+              />
+            ) : null}
+          </View>
+        </Sheet>
+      ) : null}
+    </>
   );
 }
 

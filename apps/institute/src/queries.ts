@@ -54,6 +54,16 @@ export function useCan(p: StaffPermission): boolean {
   return me?.user.role === 'admin' || !!me?.permissions.includes(p);
 }
 
+export function useColleagues(enabled = true) {
+  const api = useApi();
+  return useQuery({ queryKey: ['staff', 'colleagues'], queryFn: () => staffApi.colleagues(api), enabled, staleTime: 60_000 });
+}
+
+/** Batches this person mentors: their students' phone requests come to them. */
+export function useMentorOf(): { id: string; name: string }[] {
+  return useMe().data?.mentorOf ?? [];
+}
+
 export function useOverview() {
   const api = useApi();
   const q = useQuery({ queryKey: qk.overview, queryFn: () => staffApi.overview(api), refetchInterval: 30_000 });

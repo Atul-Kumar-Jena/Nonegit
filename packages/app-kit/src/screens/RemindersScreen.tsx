@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Switch, View } from 'react-native';
 import { router } from 'expo-router';
-import { ArrowLeft, BellRing, Check } from 'lucide-react-native';
+import { ArrowLeft, BellRing, Check, Timer } from 'lucide-react-native';
 import { Screen } from '../components/Screen';
 import { Button, Card, IconButton, Notice, Text } from '../components/ui';
 import { enablePhoneNotifications, phoneNotificationStatus } from '../lib/notifications';
-import { REMINDER_CHOICES, reminderLabel, saveReminderSettings, useReminderSettings } from '../lib/reminders';
+import { REMINDER_CHOICES, countdownAlertsAvailable, previewCountdownAlert, reminderLabel, saveReminderSettings, useReminderSettings } from '../lib/reminders';
 import { useSession } from '../state/session';
 import { colors, fonts, radius } from '../theme';
 
@@ -18,6 +18,7 @@ export default function RemindersScreen() {
     void phoneNotificationStatus().then(setPhone);
   }, []);
   const staff = !audience.allowedRoles.includes('student');
+  const pinLead = s.minutes.filter((m) => m <= 60)[0];
   const toggle = (m: number) => void saveReminderSettings({ ...s, minutes: s.minutes.includes(m) ? s.minutes.filter((x) => x !== m) : [...s.minutes, m] });
 
   return (
@@ -86,6 +87,31 @@ export default function RemindersScreen() {
               You’ll be reminded {s.minutes.map(reminderLabel).join(', ')} each class.
             </Text>
           )}
+          {countdownAlertsAvailable ? (
+            <Card style={{ marginTop: 18, gap: 12 }}>
+              <View style={styles.row}>
+                <Timer color={s.pinned ? colors.text : colors.textDim} size={20} />
+                <View style={{ flex: 1 }}>
+                  <Text variant="bodyStrong">Pinned countdown</Text>
+                  <Text variant="small">
+                    {s.pinned
+                      ? pinLead !== undefined
+                        ? `${reminderLabel(pinLead)}, a notification stays on top with a live timer to the class until you tap “Got it”.`
+                        : 'Pick a reminder of an hour or less to get the pinned countdown.'
+                      : 'Off: reminders are ordinary notifications you can swipe away.'}
+                  </Text>
+                </View>
+                <Switch
+                  value={s.pinned}
+                  onValueChange={(v) => void saveReminderSettings({ ...s, pinned: v })}
+                  trackColor={{ true: colors.text, false: colors.borderHi }}
+                  thumbColor={s.pinned ? colors.bg : colors.textMuted}
+                  accessibilityLabel="Pinned countdown before class"
+                />
+              </View>
+              {s.pinned ? <Button title="Show me an example" kind="secondary" compact onPress={() => void previewCountdownAlert()} icon={<Timer color={colors.text} size={15} />} /> : null}
+            </Card>
+          ) : null}
         </>
       ) : null}
     </Screen>

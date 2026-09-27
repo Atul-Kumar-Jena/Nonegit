@@ -3,7 +3,7 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import {
+import { type Colleague,
   BulkImportBody,
   PersonBody,
   PersonUpdateBody,
@@ -21,6 +21,7 @@ import {
 } from '@attendly/protocol';
 import type { PoolClient } from 'pg';
 import type { Deps } from '../deps';
+import { decidableStudents, mentoredBatches } from '../lib/mentors';
 import { isUniqueViolation, withTx, type Queryable } from '../db';
 import { STAFF, can, instructorFilter, isAdmin, requireAdmin, requirePerm } from '../lib/access';
 import { reconcileBatchEnrollments } from '../lib/batches';
@@ -152,6 +153,15 @@ const STAFF_PERMISSION_KEYS = StaffPermission.options;
 export async function staffAdminRoutes(app: FastifyInstance, deps: Deps) {
   const now = () => new Date(deps.clock());
 
+  app.get('/v1/staff/colleagues', async (req): Promise<Colleague[]> => {
+    const auth = await requireDevice(req, deps, STAFF);
+    const { rows } = await deps.db.query<{ id: string; full_name: string; role: 'teacher' | 'admin'; department: string | null }>(
+      `select id, full_name, role, department from users where tenant_id = $1 and role in ('teacher', 'admin') and status = 'active' order by full_name`,
+      [auth.tenantId],
+    );
+    return rows.map((r) => ({ id: r.id, name: r.full_name, role: r.role, department: r.department }));
+  });
+
   app.get('/v1/staff/me', async (req): Promise<StaffMe> => {
     const auth = await requireDevice(req, deps, STAFF);
     const [user, device] = await Promise.all([loadUser(deps.db, auth.userId), loadDevice(deps.db, auth.deviceId)]);
@@ -160,6 +170,7 @@ export async function staffAdminRoutes(app: FastifyInstance, deps: Deps) {
       device: toDeviceSummary(device!),
       institution: await institution(deps.db, auth.tenantId),
       permissions: STAFF_PERMISSION_KEYS.filter((p) => can(auth, p)),
+      mentorOf: await mentoredBatches(deps.db, auth),
     };
   });
 
@@ -176,8 +187,9 @@ export async function staffAdminRoutes(app: FastifyInstance, deps: Deps) {
            where s.tenant_id = $1 and ($2::uuid is null or c.instructor_id = $2) and a.revoked_at is null and a.marked_at >= $3 and a.marked_at < $4) as marked,
          (select count(*) from scan_rejections x join class_sessions s on s.id = x.session_id join courses c on c.id = s.course_id
            where x.tenant_id = $1 and ($2::uuid is null or c.instructor_id = $2) and x.suspicious and x.review_status = 'open') as flagged,
-         (select count(*) from device_requests r join users u on u.id = r.user_id where u.tenant_id = $1 and r.status = 'pending') as requests`,
-      [auth.tenantId, scope, day.from, day.to],
+         (select count(*) from device_requests r join users u on u.id = r.user_id
+           where u.tenant_id = $1 and r.status = 'pending' and ($5::uuid[] is null or u.id = any($5::uuid[]))) as requests`,
+      [auth.tenantId, scope, day.from, day.to, await decidableStudents(deps.db, auth)],
     );
     const c = counts.rows[0]!;
     return {

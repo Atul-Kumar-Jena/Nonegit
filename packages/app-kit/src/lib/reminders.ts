@@ -6,7 +6,11 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
+import { classAlerts, type ClassAlert } from '@attendly/class-alerts';
 import { vault } from './vault';
+
+/** Pinned countdown alerts (Android): the phone supports them. */
+export const countdownAlertsAvailable = Platform.OS === 'android' && classAlerts.available;
 
 export const REMINDER_CHOICES = [5, 10, 15, 30, 60, 1440] as const;
 export const reminderLabel = (m: number) => (m >= 1440 ? 'a day before' : m >= 60 ? `${m / 60} hour before` : `${m} min before`);
@@ -14,8 +18,10 @@ export const reminderLabel = (m: number) => (m >= 1440 ? 'a day before' : m >= 6
 export interface ReminderSettings {
   enabled: boolean;
   minutes: number[];
+  /** The nearest reminder is a pinned notification with a live countdown and a "Got it" button. */
+  pinned: boolean;
 }
-const DEFAULTS: ReminderSettings = { enabled: true, minutes: [15] };
+const DEFAULTS: ReminderSettings = { enabled: true, minutes: [15], pinned: true };
 const KEY = 'reminders.settings.v1';
 const SIG_KEY = 'reminders.signature.v1';
 const MAX_SCHEDULED = 60;
@@ -31,7 +37,11 @@ async function load(): Promise<void> {
   try {
     const s = await vault.get<ReminderSettings>(KEY, (v) => {
       const o = v as ReminderSettings;
-      return { enabled: o?.enabled !== false, minutes: Array.isArray(o?.minutes) ? o.minutes.filter((m) => REMINDER_CHOICES.includes(m as never)) : DEFAULTS.minutes };
+      return {
+        enabled: o?.enabled !== false,
+        minutes: Array.isArray(o?.minutes) ? o.minutes.filter((m) => REMINDER_CHOICES.includes(m as never)) : DEFAULTS.minutes,
+        pinned: o?.pinned !== false,
+      };
     });
     if (s) settings = s;
   } catch {
@@ -52,7 +62,7 @@ export function useReminderSettings(): ReminderSettings {
 }
 
 export async function saveReminderSettings(next: ReminderSettings): Promise<void> {
-  settings = { enabled: next.enabled, minutes: [...new Set(next.minutes)].sort((a, b) => a - b) };
+  settings = { enabled: next.enabled, minutes: [...new Set(next.minutes)].sort((a, b) => a - b), pinned: next.pinned };
   emit();
   await vault.set(KEY, settings).catch(() => undefined);
   await vault.remove(SIG_KEY).catch(() => undefined); // force a re-plan
@@ -75,13 +85,32 @@ export async function planReminders(classes: ReminderClass[], s: ReminderSetting
   const sig = JSON.stringify([s, upcoming.map((c) => [c.sessionId, c.start, c.where])]);
   try {
     if ((await vault.get<string>(SIG_KEY, (v) => String(v))) === sig) return -1;
-    if ((await Notifications.getPermissionsAsync()).status !== 'granted') return 0;
+    if ((await Notifications.getPermissionsAsync()).status !== 'granted') {
+      if (countdownAlertsAvailable) classAlerts.replaceAll([]);
+      return 0;
+    }
     for (const n of await Notifications.getAllScheduledNotificationsAsync())
       if ((n.content.data as { kind?: string } | undefined)?.kind === 'reminder') await Notifications.cancelScheduledNotificationAsync(n.identifier);
     let count = 0;
+    // The nearest reminder (up to an hour before) becomes a pinned countdown when the phone supports it.
+    const pinLead = s.enabled && s.pinned && countdownAlertsAvailable ? s.minutes.filter((m) => m <= 60)[0] : undefined;
+    const alerts: ClassAlert[] = [];
+    if (pinLead !== undefined)
+      for (const c of upcoming) {
+        const startsAt = Date.parse(c.start);
+        alerts.push({
+          id: `class:${c.sessionId}`,
+          fireAt: Math.max(nowMs + 5_000, startsAt - pinLead * 60_000),
+          startsAt,
+          title: `${c.title}`,
+          body: `Starts ${c.timeLabel}${c.where ? ` · ${c.where}` : ''}. Tap “Got it” once you’re on your way.`,
+        });
+      }
+    if (countdownAlertsAvailable) classAlerts.replaceAll(alerts.slice(0, MAX_SCHEDULED));
     if (s.enabled)
       outer: for (const c of upcoming.sort((a, b) => a.start.localeCompare(b.start)))
         for (const m of s.minutes) {
+          if (m === pinLead) continue;
           const at = Date.parse(c.start) - m * 60_000;
           if (at <= nowMs + 5_000) continue;
           if (count >= MAX_SCHEDULED) break outer;
@@ -112,4 +141,9 @@ export function useClassReminders(classes: ReminderClass[] | null, nowMs: number
     void planReminders(classes, s, nowMs);
     // nowMs changes every render; re-plan only when the classes or settings change.
   }, [key, s]); // eslint-disable-line react-hooks/exhaustive-deps
+}
+
+/** Shows a sample countdown now (Settings → "Try it"). */
+export function previewCountdownAlert(): boolean {
+  return countdownAlertsAvailable && classAlerts.preview('CS-301 · Operating Systems', 'Starts 10:00 AM · LH-2. Tap “Got it” once you’re on your way.', Date.now() + 10 * 60_000);
 }

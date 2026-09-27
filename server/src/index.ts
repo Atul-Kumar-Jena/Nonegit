@@ -27,7 +27,7 @@ async function main() {
 
   const stopJanitor = startJanitor(deps);
   const fcm = parseServiceAccount(process.env.FCM_SERVICE_ACCOUNT);
-  const stopPush = fcm ? startPushDispatcher(db, createPushSender(fcm, (m, x) => app.log.warn(x, m)), (m, x) => app.log.warn(x, m)) : () => {};
+  const stopPush = fcm ? startPushDispatcher(db, createPushSender(fcm, (m, x) => app.log.warn(x, m)), (m, x) => app.log.warn(x, m), config.publicUrl) : () => {};
   app.log.info(fcm ? `instant push on (Firebase project ${fcm.project_id})` : 'instant push off (FCM_SERVICE_ACCOUNT not set): apps check for news themselves');
   // Google's list of revoked phone attestation keys (leaked or compromised), refreshed in the background.
   const stopRevocations = startRevocationRefresh((m) => app.log.info(m));

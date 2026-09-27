@@ -127,8 +127,8 @@ describe('developer console', () => {
 
   it('feature flags are per institution and enforced', async () => {
     const f = ok(await root.call('GET', '/v1/root/flags'));
-    expect(f.definitions.map((d: { key: string }) => d.key)).toEqual(['strict_geo', 'student_requests', 'hardware_binding', 'manual_registers']);
-    expect(f.tenants.find((t: { id: string }) => t.id === seed.tenantId).flags).toEqual({ strict_geo: false, student_requests: true, hardware_binding: false, manual_registers: true });
+    expect(f.definitions.map((d: { key: string }) => d.key)).toEqual(['strict_geo', 'student_requests', 'hardware_binding', 'offline_scans_off', 'manual_registers']);
+    expect(f.tenants.find((t: { id: string }) => t.id === seed.tenantId).flags).toEqual({ strict_geo: false, student_requests: true, hardware_binding: false, offline_scans_off: false, manual_registers: true });
     ok(await root.call('POST', '/v1/root/flags', { tenantId: seed.tenantId, key: 'student_requests', enabled: false }));
     const s = await startLiveSession(ctx, { tenantId: seed.tenantId, courseId: seed.courseId, status: 'scheduled', startedAt: ctx.clock.now + 2 * 86_400_000 });
     const r = await aarav.call('POST', '/v1/me/requests', { sessionId: s.id, topic: 'extra', note: 'Extra class please' });

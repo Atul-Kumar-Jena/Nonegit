@@ -92,7 +92,8 @@
       [
         "expo-notifications",
         {
-          "color": "#ffffff"
+          "icon": "./assets/notification-icon.png",
+          "color": "#111111"
         }
       ],
       "expo-background-task"

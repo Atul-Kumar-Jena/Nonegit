@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@attendly/app-kit": "*",
+    "@attendly/class-alerts": "*",
     "@attendly/hardware-key": "*",
     "@attendly/protocol": "*",
     "@expo-google-fonts/inter": "0.4.2",

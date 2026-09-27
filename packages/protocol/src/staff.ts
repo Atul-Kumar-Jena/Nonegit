@@ -72,8 +72,14 @@ export const StaffMe = z.object({
   institution: InstitutionSettings,
   /** What this person may do beyond teaching (admins: all of them). */
   permissions: z.array(StaffPermission).default([]),
+  /** Batches this person mentors (their students' phone requests come to them). */
+  mentorOf: z.array(z.object({ id: uuid, name: z.string() })).default([]),
 });
 export type StaffMe = z.infer<typeof StaffMe>;
+
+/** Professors and admins of the institution (to pick a mentor, a substitute…). */
+export const Colleague = z.object({ id: uuid, name: z.string(), role: z.enum(['teacher', 'admin']), department: z.string().nullable() });
+export type Colleague = z.infer<typeof Colleague>;
 
 // ───────────────────────────── rooms ─────────────────────────────
 

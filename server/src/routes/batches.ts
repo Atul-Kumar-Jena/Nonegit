@@ -18,6 +18,7 @@ import { requireDevice, type AuthContext } from '../lib/auth';
 import { reconcileBatchEnrollments } from '../lib/batches';
 import { ApiError } from '../lib/errors';
 import { staffAudit } from './staff-admin';
+import { insertNotifications } from '../lib/notify';
 
 const IdParam = z.object({ id: z.uuid() });
 
@@ -28,6 +29,8 @@ interface BatchRow {
   department: string | null;
   semester: number | null;
   created_by: string | null;
+  mentor_id: string | null;
+  mentor_name: string | null;
   size: number;
   course_ids: string[];
 }
@@ -37,10 +40,10 @@ const canManage = (auth: AuthContext, createdBy: string | null) => isAdmin(auth)
 export async function loadBatch(db: Queryable, auth: AuthContext, id: string, forUpdate = false): Promise<Batch> {
   if (forUpdate) await db.query('select 1 from batches where id = $1 and tenant_id = $2 for update', [id, auth.tenantId]);
   const { rows } = await db.query<BatchRow>(
-    `select b.id, b.name, b.active, b.department, b.semester, b.created_by,
+    `select b.id, b.name, b.active, b.department, b.semester, b.created_by, b.mentor_id, mu.full_name as mentor_name,
             (select count(*)::int from batch_members m where m.batch_id = b.id) as size,
             coalesce((select array_agg(cb.course_id order by cb.course_id) from course_batches cb where cb.batch_id = b.id), '{}') as course_ids
-       from batches b where b.id = $1 and b.tenant_id = $2`,
+       from batches b left join users mu on mu.id = b.mentor_id where b.id = $1 and b.tenant_id = $2`,
     [id, auth.tenantId],
   );
   const b = rows[0];
@@ -54,6 +57,7 @@ export async function loadBatch(db: Queryable, auth: AuthContext, id: string, fo
     department: b.department,
     semester: b.semester,
     createdBy: b.created_by,
+    mentor: b.mentor_id && b.mentor_name ? { id: b.mentor_id, name: b.mentor_name } : null,
     canManage: canManage(auth, b.created_by),
   };
 }
@@ -136,8 +140,9 @@ export async function batchRoutes(app: FastifyInstance, deps: Deps) {
     try {
       const id = await withTx(deps.db, async (tx) => {
         const { rows } = await tx.query<{ id: string }>(
-          'insert into batches(tenant_id, name, active, department, semester, created_by) values ($1, $2, $3, $4, $5, $6) returning id',
-          [auth.tenantId, b.name, b.active, b.department ?? null, b.semester ?? null, auth.userId],
+          // A professor who creates a batch looks after it (its mentor) until someone else is chosen.
+          'insert into batches(tenant_id, name, active, department, semester, created_by, mentor_id) values ($1, $2, $3, $4, $5, $6, $7) returning id',
+          [auth.tenantId, b.name, b.active, b.department ?? null, b.semester ?? null, auth.userId, auth.role === 'teacher' ? auth.userId : null],
         );
         await staffAudit(tx, auth, 'batch.create', `batch:${rows[0]!.id}`, { name: b.name, semester: b.semester ?? null });
         return rows[0]!.id;
@@ -164,6 +169,7 @@ export async function batchRoutes(app: FastifyInstance, deps: Deps) {
             (b.active !== undefined && b.active !== cur.active) ||
             (b.department !== undefined && b.department !== cur.department) ||
             (b.semester !== undefined && b.semester !== cur.semester) ||
+            (b.mentorId !== undefined && b.mentorId !== (cur.mentor?.id ?? null)) ||
             b.removeMembers.length > 0 ||
             removesCourse;
           if (changes)
@@ -177,6 +183,17 @@ export async function batchRoutes(app: FastifyInstance, deps: Deps) {
               where id = $1`,
             [id, b.name ?? null, b.active ?? null, b.department !== undefined, b.department ?? null, b.semester !== undefined, b.semester ?? null],
           );
+        if (b.mentorId !== undefined) {
+          if (b.mentorId) {
+            const ok = await tx.query(`select 1 from users where id = $1 and tenant_id = $2 and role in ('teacher', 'admin') and status = 'active'`, [b.mentorId, auth.tenantId]);
+            if (ok.rowCount !== 1) throw new ApiError(400, 'BAD_REQUEST', 'A mentor must be a professor or admin of this institution.');
+          }
+          await tx.query('update batches set mentor_id = $2 where id = $1', [id, b.mentorId]);
+          if (b.mentorId && b.mentorId !== auth.userId)
+            await insertNotifications(tx, auth.tenantId, [
+              { userId: b.mentorId, kind: 'mentor', title: `You’re now mentor of ${cur.name}`, body: 'Phone switch and reset requests from its students will come to you.', data: { batchId: id } },
+            ]);
+        }
         const add = [...new Set(b.addMembers)];
         if (add.length) {
           const ok = await tx.query(`select 1 from users where tenant_id = $1 and role = 'student' and id = any($2::uuid[])`, [auth.tenantId, add]);
@@ -202,6 +219,7 @@ export async function batchRoutes(app: FastifyInstance, deps: Deps) {
           courses: courses?.length ?? null,
           name: b.name ?? null,
           semester: b.semester ?? null,
+          mentor: b.mentorId === undefined ? undefined : b.mentorId,
         });
       });
     } catch (err) {

@@ -15,6 +15,8 @@ import { loadPrefs } from '@kit/lib/prefs';
 import { outbox } from '@kit/lib/outbox';
 import { pinnedKey } from '@kit/lib/server-config';
 import { QrScanner } from '@/components/QrScanner';
+import { bootClock } from '@attendly/hardware-key';
+import { withSendClock } from '@/outbox-handlers';
 import { studentQueryKeys } from '@/state/queries';
 import { setScanOutcome } from '@/state/scan-result';
 import { useApi, useSession } from '@kit/state/session';
@@ -63,6 +65,28 @@ export default function Scan() {
       .catch((err) => {
         if (err instanceof LocationError && (err.problem === 'permission-denied' || err.problem === 'services-off')) setLocProblem(err);
       });
+  }, []);
+
+  // "Confirm each scan": prove it's the owner when the scanner opens (the code must reach the
+  // server within seconds of scanning, so there's no time for a prompt afterwards).
+  const [confirmed, setConfirmed] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      if (!(await loadPrefs()).biometricForScans) return alive && setConfirmed(true);
+      setStage('confirming');
+      const ok = await confirmWithBiometrics('Confirm it’s you to mark attendance');
+      if (!alive) return;
+      if (!ok) {
+        router.back();
+        return;
+      }
+      setStage('scanning');
+      setConfirmed(true);
+    })();
+    return () => {
+      alive = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -114,21 +138,14 @@ export default function Scan() {
       setStage('locating');
       // The moment of scanning on the server's clock — what an offline upload is judged against.
       const scannedAt = Math.round(api.serverNow());
+      // Since-boot clock: proves how long the scan waited before being sent (can't be changed in Settings).
+      const bc = bootClock();
       let body: MarkBody | null = null;
       try {
-        if ((await loadPrefs()).biometricForScans) {
-          setStage('confirming');
-          if (!(await confirmWithBiometrics('Confirm it’s you to mark attendance'))) {
-            busy.current = false;
-            setStage('scanning');
-            flash('Biometric check cancelled.');
-            return;
-          }
-        }
         const location = await locate(scannedAt);
         setStage('submitting');
-        body = { qr: data, location };
-        const res = await api.mark(body);
+        body = { qr: data, scannedAt, location, ...(bc ? { clock: { boot: bc.boot, scanMs: bc.ms } } : {}) };
+        const res = await api.mark(withSendClock(body));
         const receiptVerified = server ? verifyReceipt(res, pinnedKey(server)) : false;
         setScanOutcome({ kind: 'success', res, receiptVerified });
         void Haptics.notificationAsync(receiptVerified ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Warning).catch(() => undefined);
@@ -166,7 +183,7 @@ export default function Scan() {
 
   return (
     <View style={styles.root}>
-      {granted ? <QrScanner active={stage === 'scanning'} onCode={(d) => void onScanned(d)} onForeign={() => flash('That’s not an Attendly session code.')} /> : null}
+      {granted ? <QrScanner active={stage === 'scanning' && confirmed} onCode={(d) => void onScanned(d)} onForeign={() => flash('That’s not an Attendly session code.')} /> : null}
       <View style={[StyleSheet.absoluteFill, styles.dim]} pointerEvents="none" />
 
       <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom']} pointerEvents="box-none">

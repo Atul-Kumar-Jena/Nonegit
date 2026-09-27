@@ -1,6 +1,19 @@
 import { MarkBody } from '@attendly/protocol';
 import { ApiRequestError } from '@kit/lib/api-core';
 import type { OutboxHandler } from '@kit/lib/outbox';
+import { bootClock } from '@attendly/hardware-key';
+
+/** Stamps the since-boot clock at sending (same boot only), so the server knows how long the scan waited. */
+export function withSendClock(body: MarkBody): MarkBody {
+  if (!body.clock) return body;
+  const now = bootClock();
+  if (!now || now.boot !== body.clock.boot || now.ms < body.clock.scanMs) {
+    // Rebooted since the scan: the since-boot clock can't tell; the signed request time is used instead.
+    const { clock: _dropped, ...rest } = body;
+    return rest;
+  }
+  return { ...body, clock: { ...body.clock, sendMs: now.ms } };
+}
 
 /** Refusals that can clear up on their own, so an offline scan keeps waiting instead of failing. */
 const WAIT_AND_RETRY = new Set(['E-NOT-STARTED', 'E-PAUSED']);
@@ -11,12 +24,12 @@ const mark: OutboxHandler = async (api, item) => {
   try {
     let res;
     try {
-      res = await api.mark(body);
+      res = await api.mark(withSendClock(body));
     } catch (err) {
       // Back online before this phone's one-time move to its security chip ran: do it now, then retry.
       if (!(err instanceof ApiRequestError && err.rejection?.code === 'E-DEVICE' && /isn’t secured yet/.test(err.rejection.detail ?? ''))) throw err;
       await api.secureWithChip();
-      res = await api.mark(body);
+      res = await api.mark(withSendClock(body));
     }
     return { ok: true, message: `marked present${res.alreadyMarked ? ' (already recorded)' : ''}${res.record.offline ? ' · offline scan accepted' : ''}` };
   } catch (err) {

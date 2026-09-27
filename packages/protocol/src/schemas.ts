@@ -292,6 +292,13 @@ export const MarkBody = z.object({
    * scans captured offline and uploaded later.
    */
   scannedAt: z.number().int().positive().optional(),
+  /**
+   * The phone's since-boot clock at scanning and at sending (Android). Their difference is how long
+   * the scan waited, measured on a clock that can't be changed in Settings.
+   */
+  clock: z
+    .object({ boot: z.number().int().min(0), scanMs: z.number().int().min(0), sendMs: z.number().int().min(0).optional() })
+    .optional(),
   location: z.object({
     lat: z.number().gte(-90).lte(90),
     lng: z.number().gte(-180).lte(180),

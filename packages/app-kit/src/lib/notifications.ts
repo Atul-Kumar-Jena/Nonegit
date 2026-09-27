@@ -38,7 +38,7 @@ const PUSH_KEY = 'notify.push-active.v1';
 export function targetOf(n: Pick<AppNotification, 'kind' | 'data'>): NotificationTarget {
   const first = (n.data.changes as { sessionId?: string | null; courseId?: string }[] | undefined)?.[0];
   const str = (v: unknown) => (typeof v === 'string' ? v : undefined);
-  return { kind: n.kind, sessionId: first?.sessionId ?? str(n.data.sessionId), courseId: first?.courseId, requestId: str(n.data.requestId), noticeId: str(n.data.noticeId) };
+  return { kind: n.kind, sessionId: first?.sessionId ?? str(n.data.sessionId), courseId: first?.courseId ?? str(n.data.courseId), requestId: str(n.data.requestId), noticeId: str(n.data.noticeId), batchId: str(n.data.batchId) };
 }
 export const NOTIFICATION_TASK = 'attendly-notification-check';
 export const notificationsKey = ['notifications'] as const;
@@ -167,9 +167,13 @@ export async function announceNew(items: AppNotification[], unread: number): Pro
     if (!fresh.length) return;
     if (await vault.get<boolean>(PUSH_KEY, (v) => v === true)) return; // Firebase already buzzed the phone
     if ((await Notifications.getPermissionsAsync()).status !== 'granted') return;
-    const shown = fresh.length > 3 ? [{ id: fresh.at(-1)!.id, title: `${fresh.length} timetable updates`, body: fresh.map((f) => f.title).join(' · ') }] : fresh;
-    for (const n of shown)
+    // Several at once become one summary; a newer update about the same thing replaces the older one.
+    const shown = fresh.length > 3 ? [{ id: fresh.at(-1)!.id, title: `${fresh.length} new updates`, body: fresh.map((f) => f.title).join(' · ') }] : fresh;
+    for (const n of shown) {
+      const t = 'kind' in n ? targetOf(n as AppNotification) : null;
+      const about = t?.noticeId ?? t?.requestId ?? t?.sessionId;
       await Notifications.scheduleNotificationAsync({
+        identifier: t ? (about ? `${t.kind}:${about}` : `n:${n.id}`) : 'attendly-summary',
         content: {
           title: n.title,
           body: n.body,
@@ -180,6 +184,7 @@ export async function announceNew(items: AppNotification[], unread: number): Pro
         },
         trigger: Platform.OS === 'android' ? { channelId: CHANNEL } : null,
       });
+    }
   } catch {
     // never fatal
   }

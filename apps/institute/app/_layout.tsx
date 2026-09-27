@@ -15,7 +15,20 @@ const AUDIENCE = {
   wrongRoleMessage: 'This app is for teachers and administrators. Students use the Attendly app.',
   requestsRoute: '/inbox',
   institutionGate: true,
-  routeFor: (d: NotificationTarget) => (d.kind === 'notice' && d.noticeId ? `/notice/${d.noticeId}` : d.kind === 'access' ? '/more' : d.kind === 'request' ? '/inbox' : d.sessionId ? `/session/${d.sessionId}` : '/timetable'),
+  routeFor: (d: NotificationTarget) =>
+    d.kind === 'notice' && d.noticeId
+      ? `/notice/${d.noticeId}`
+      : d.kind === 'device_request'
+        ? '/requests'
+        : d.kind === 'mentor' && d.batchId
+          ? `/batch/${d.batchId}`
+          : d.kind === 'access' || d.kind === 'security'
+            ? '/more'
+            : d.kind === 'request'
+              ? '/inbox'
+              : d.sessionId
+                ? `/session/${d.sessionId}`
+                : '/timetable',
 };
 
 /** Offline class state belongs to the signed-in account: forget it on sign-out. */

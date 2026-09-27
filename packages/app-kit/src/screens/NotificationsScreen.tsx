@@ -1,15 +1,50 @@
-import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
-import { ArrowLeft, BellRing, CalendarClock, CheckCheck } from 'lucide-react-native';
+import { ArrowLeft, BellRing, CalendarClock, CheckCheck, CircleCheckBig, Megaphone, MessageSquareText, ShieldAlert, Smartphone } from 'lucide-react-native';
+import { NOTIFICATION_CATEGORIES, notificationCategory, type NotificationCategory } from '@attendly/protocol';
 import { Screen } from '../components/Screen';
 import { Button, Card, ErrorState, IconButton, Loading, Notice, Text } from '../components/ui';
-import { timeAgo } from '../lib/format';
+import { clock } from '../lib/format';
 import { enablePhoneNotifications, phoneNotificationStatus, targetOf, useMarkRead, useNotifications } from '../lib/notifications';
 import { useSession } from '../state/session';
-import { colors } from '../theme';
+import { colors, fonts } from '../theme';
 
-/** Every timetable change sent to this person, newest first. */
+const CATEGORY_ICON: Record<NotificationCategory, typeof CalendarClock> = {
+  class: CalendarClock,
+  notice: Megaphone,
+  attendance: CircleCheckBig,
+  request: MessageSquareText,
+  phone: Smartphone,
+  security: ShieldAlert,
+};
+
+const DAY = 86_400_000;
+const startOfDay = (t: number) => {
+  const d = new Date(t);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+};
+const SHORT_DAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const SHORT_MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+/** "2:05 PM" today, "Mon" this week, else "12 Sep". */
+function when(iso: string): string {
+  const t = Date.parse(iso);
+  const today = startOfDay(Date.now());
+  if (t >= today) return clock(iso);
+  if (t >= today - 6 * DAY) return SHORT_DAY[new Date(t).getDay()]!;
+  const d = new Date(t);
+  return `${d.getDate()} ${SHORT_MONTH[d.getMonth()]}`;
+}
+function groupLabel(t: number): string {
+  const today = startOfDay(Date.now());
+  if (t >= today) return 'Today';
+  if (t >= today - DAY) return 'Yesterday';
+  if (t >= today - 6 * DAY) return 'This week';
+  return 'Earlier';
+}
+
+/** Everything sent to this person, newest first: grouped by day, filterable, one look per kind. */
 export default function NotificationsScreen() {
   const { audience } = useSession();
   const q = useNotifications();
@@ -29,6 +64,25 @@ export default function NotificationsScreen() {
     </IconButton>
   );
   const unread = q.data?.unread ?? 0;
+  const [filter, setFilter] = useState<'all' | 'unread' | NotificationCategory>('all');
+  const items = q.data?.items ?? [];
+  const present = useMemo(() => new Set(items.map((n) => notificationCategory(n.kind))), [items]);
+  const filters = [
+    { value: 'all' as const, label: 'All' },
+    ...(unread ? [{ value: 'unread' as const, label: `Unread · ${unread}` }] : []),
+    ...(Object.keys(NOTIFICATION_CATEGORIES) as NotificationCategory[]).filter((c) => present.has(c)).map((c) => ({ value: c, label: NOTIFICATION_CATEGORIES[c].label })),
+  ];
+  const groups = useMemo(() => {
+    const shown = items.filter((n) => (filter === 'all' ? true : filter === 'unread' ? !n.read : notificationCategory(n.kind) === filter));
+    const out: { label: string; items: typeof shown }[] = [];
+    for (const n of shown) {
+      const label = groupLabel(Date.parse(n.createdAt));
+      const g = out.find((x) => x.label === label);
+      if (g) g.items.push(n);
+      else out.push({ label, items: [n] });
+    }
+    return out;
+  }, [items, filter]);
 
   return (
     <Screen onRefresh={() => void q.refetch()} refreshing={q.isRefetching}>
@@ -61,38 +115,74 @@ export default function NotificationsScreen() {
           <CalendarClock color={colors.textDim} size={28} />
           <Text variant="bodyStrong">Nothing yet</Text>
           <Text variant="small" style={{ textAlign: 'center' }}>
-            When a class is moved, cancelled, taken by another teacher, an extra class is added, or someone sends you a request, you’ll see it here.
+            Moved, cancelled or extra classes, notices, confirmations and requests show up here.
           </Text>
         </View>
       ) : (
-        <View style={{ gap: 10, marginTop: 10 }}>
+        <>
           {q.isError ? <Notice tone="amber" message="Offline — showing the last notifications saved on this phone." /> : null}
-          {q.data!.items.map((n) => (
-            <Pressable
-              key={n.id}
-              onPress={() => {
-                if (!n.read) void markRead([n.id]);
-                const t = targetOf(n);
-                router.push((audience.routeFor?.(t) ?? (n.kind === 'request' ? audience.requestsRoute : null) ?? '/timetable') as never);
-              }}
-              accessibilityRole="button"
-              accessibilityLabel={`${n.read ? '' : 'Unread. '}${n.title}. ${n.body}`}
-            >
-              <Card tone={n.read ? undefined : 'cyan'} style={{ gap: 6 }}>
-                <View style={styles.row}>
-                  {!n.read ? <View style={styles.dot} /> : null}
-                  <Text variant="bodyStrong" style={{ flex: 1 }}>
-                    {n.title}
-                  </Text>
-                  <Text variant="monoSmall">{timeAgo(n.createdAt)}</Text>
-                </View>
-                <Text variant="small" color={colors.text}>
-                  {n.body}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters} style={{ marginTop: 6, marginHorizontal: -4 }}>
+            {filters.map((f) => {
+              const on = f.value === filter;
+              return (
+                <Pressable key={f.value} onPress={() => setFilter(f.value)} accessibilityRole="tab" accessibilityState={{ selected: on }} style={[styles.filter, on && styles.filterOn]}>
+                  <Text style={[styles.filterText, on && { color: colors.bg }]}>{f.label}</Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+          {groups.length === 0 ? (
+            <Text variant="small" style={{ marginTop: 20, textAlign: 'center' }}>
+              Nothing here.
+            </Text>
+          ) : (
+            groups.map((g) => (
+              <View key={g.label} style={{ marginTop: 14 }}>
+                <Text variant="label" style={{ marginBottom: 6 }}>
+                  {g.label}
                 </Text>
-              </Card>
-            </Pressable>
-          ))}
-        </View>
+                <Card padded={false} style={{ overflow: 'hidden' }}>
+                  {g.items.map((n, i) => {
+                    const cat = notificationCategory(n.kind);
+                    const look = NOTIFICATION_CATEGORIES[cat];
+                    const Icon = CATEGORY_ICON[cat];
+                    return (
+                      <Pressable
+                        key={n.id}
+                        onPress={() => {
+                          if (!n.read) void markRead([n.id]);
+                          const t = targetOf(n);
+                          router.push((audience.routeFor?.(t) ?? (n.kind === 'request' ? audience.requestsRoute : null) ?? '/timetable') as never);
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${n.read ? '' : 'Unread. '}${n.title}. ${n.body}`}
+                        style={({ pressed }) => [styles.item, i > 0 && styles.itemDivider, pressed && { backgroundColor: colors.cardHi }]}
+                      >
+                        <View style={[styles.thumb, { backgroundColor: `${look.color}22`, borderColor: `${look.color}55` }]}>
+                          <Icon color={look.color} size={19} />
+                        </View>
+                        <View style={{ flex: 1, gap: 2 }}>
+                          <View style={styles.row}>
+                            <Text variant={n.read ? 'body' : 'bodyStrong'} numberOfLines={1} style={{ flex: 1, color: colors.text }}>
+                              {n.title}
+                            </Text>
+                            <Text variant="small" style={{ fontSize: 12 }}>
+                              {when(n.createdAt)}
+                            </Text>
+                          </View>
+                          <Text variant="small" numberOfLines={2}>
+                            {n.body}
+                          </Text>
+                        </View>
+                        {!n.read ? <View style={styles.dot} /> : null}
+                      </Pressable>
+                    );
+                  })}
+                </Card>
+              </View>
+            ))
+          )}
+        </>
       )}
     </Screen>
   );
@@ -101,5 +191,12 @@ export default function NotificationsScreen() {
 const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4, marginBottom: 6 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.cyan },
+  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.text },
+  filters: { gap: 8, paddingHorizontal: 4 },
+  filter: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: colors.borderHi },
+  filterOn: { backgroundColor: colors.text, borderColor: colors.text },
+  filterText: { fontSize: 13, color: colors.text, fontFamily: fonts.medium },
+  item: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14 },
+  itemDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  thumb: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
 });

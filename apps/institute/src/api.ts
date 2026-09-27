@@ -5,6 +5,7 @@
 import { z } from 'zod';
 import {
   AuthenticatorSetup,
+  Colleague,
   AuthenticatorStatus,
   ChangeRequest,
   CoverResponse,
@@ -68,6 +69,7 @@ const qs = (o: Record<string, string | number | undefined | null>) => {
 };
 
 export const staffApi = {
+  colleagues: (api: ApiClient) => api.authed('GET', '/v1/staff/colleagues', z.array(Colleague)),
   me: (api: ApiClient) => api.authed('GET', '/v1/staff/me', StaffMe),
   overview: (api: ApiClient) => api.authed('GET', '/v1/staff/overview', Overview),
 

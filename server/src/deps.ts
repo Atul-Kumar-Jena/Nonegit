@@ -4,6 +4,7 @@ import type { Db } from './db';
 import type { OtpSender } from './lib/delivery';
 import type { ServerSigner } from './lib/keys';
 import type { Hasher } from './lib/secrets';
+import type { RequestGuard } from './lib/guard';
 
 /** Everything a route needs, injected so tests can swap the clock and OTP sender. */
 export interface Deps {
@@ -14,4 +15,5 @@ export interface Deps {
   sender: OtpSender;
   clock: () => number;
   log: FastifyBaseLogger;
+  guard: RequestGuard;
 }

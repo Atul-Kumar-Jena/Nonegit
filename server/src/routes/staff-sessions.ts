@@ -26,6 +26,8 @@ import {
 } from '@attendly/protocol';
 import type { PoolClient } from 'pg';
 import type { Deps } from '../deps';
+import { decidableStudents } from '../lib/mentors';
+import { insertNotifications } from '../lib/notify';
 import { assertPhoneFree, hardwareHash } from '../lib/users';
 import { tenantFlag } from '../lib/flags';
 import { withTx, type Queryable } from '../db';
@@ -505,7 +507,9 @@ export async function staffSessionRoutes(app: FastifyInstance, deps: Deps) {
   // ── device requests (admin) ──
   app.get('/v1/staff/device-requests', async (req): Promise<DeviceRequestItem[]> => {
     const auth = await requireDevice(req, deps, STAFF);
-    requirePerm(auth, 'devices');
+    // Admins / "devices" holders see every request; batch mentors see their students'.
+    const only = await decidableStudents(deps.db, auth);
+    if (only && !only.length) requirePerm(auth, 'devices');
     const { rows } = await deps.db.query<{
       id: string;
       kind: 'rebind' | 'reset';
@@ -523,8 +527,8 @@ export async function staffSessionRoutes(app: FastifyInstance, deps: Deps) {
       `select r.id, r.kind, u.id as user_id, u.full_name, u.roll_no, u.role, d.model as from_model, d.fingerprint as from_fp,
               r.to_public_key, r.to_device_info, r.reason, r.created_at
          from device_requests r join users u on u.id = r.user_id left join devices d on d.id = r.from_device_id
-        where u.tenant_id = $1 and r.status = 'pending' order by r.created_at`,
-      [auth.tenantId],
+        where u.tenant_id = $1 and r.status = 'pending' and ($2::uuid[] is null or u.id = any($2::uuid[])) order by r.created_at`,
+      [auth.tenantId, only],
     );
     return rows.map((r) => ({
       id: r.id,
@@ -542,7 +546,8 @@ export async function staffSessionRoutes(app: FastifyInstance, deps: Deps) {
 
   app.post('/v1/staff/device-requests/:id', async (req) => {
     const auth = await requireDevice(req, deps, STAFF);
-    requirePerm(auth, 'devices');
+    const only = await decidableStudents(deps.db, auth);
+    if (only && !only.length) requirePerm(auth, 'devices');
     const { id } = IdParam.parse(req.params);
     const b = DecisionBody.parse(req.body);
     const t = new Date(now());
@@ -564,6 +569,7 @@ export async function staffSessionRoutes(app: FastifyInstance, deps: Deps) {
       );
       const r = rows[0];
       if (!r) throw new ApiError(404, 'NOT_FOUND', 'Request not found.');
+      if (only && !only.includes(r.user_id)) throw new ApiError(403, 'FORBIDDEN', 'Only this student’s batch mentor or an admin can decide this request.');
       if (r.status !== 'pending') throw new ApiError(409, 'CONFLICT', 'This request was already decided.');
       if (r.user_id === auth.userId && b.decision === 'approve') {
         const others = await tx.query(`select 1 from users where tenant_id = $1 and role = 'admin' and status = 'active' and id <> $2 limit 1`, [auth.tenantId, auth.userId]);
@@ -604,6 +610,31 @@ export async function staffSessionRoutes(app: FastifyInstance, deps: Deps) {
         }
       }
       await tx.query('update device_requests set status = $2, decided_by = $3, decided_at = $4 where id = $1', [id, b.decision === 'approve' ? 'approved' : 'denied', auth.userId, t]);
+      // Tell the student how it went (they see it when they next open the app, on any phone).
+      const approved = b.decision === 'approve';
+      await insertNotifications(tx, auth.tenantId, [
+        {
+          userId: r.user_id,
+          kind: 'device',
+          title:
+            r.kind === 'rebind'
+              ? approved
+                ? '✅ Phone switch approved'
+                : '❌ Phone switch declined'
+              : approved
+                ? '✅ Phone unbound'
+                : '❌ Unbind request declined',
+          body:
+            r.kind === 'rebind'
+              ? approved
+                ? 'Your new phone is now your Attendly phone. Sign in on it to continue.'
+                : 'Your account stays on your current phone. Speak to your mentor if this is wrong.'
+              : approved
+                ? 'Your old phone was unbound. Sign in on your new phone to bind it.'
+                : 'Your phone stays bound. Speak to your mentor if this is wrong.',
+          data: { requestId: id },
+        },
+      ]);
       await staffAudit(tx, auth, `device_request.${b.decision}`, `request:${id}`, { kind: r.kind, user: r.user_id });
     });
     return { ok: true as const };

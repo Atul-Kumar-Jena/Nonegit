@@ -28,6 +28,7 @@ import type { Deps } from '../deps';
 import { isUniqueViolation, withTx } from '../db';
 import { appendAudit } from '../lib/audit';
 import { insertNotifications } from '../lib/notify';
+import { notifyDeviceRequest } from '../lib/mentors';
 import type { Queryable } from '../db';
 import { issueTokens, requireDevice, rotateRefreshToken } from '../lib/auth';
 import { isDemoEmail } from '../lib/demo';
@@ -431,6 +432,7 @@ export async function authRoutes(app: FastifyInstance, deps: Deps) {
         subject: `request:${rows[0]!.id}`,
         data: { to: keyFingerprint(t.public_key), from: bound?.fingerprint ?? null },
       });
+      await notifyDeviceRequest(tx, user.tenant_id, { id: user.id, name: user.full_name, rollNo: user.roll_no }, 'rebind', rows[0]!.id);
       return { requestId: rows[0]!.id, status: 'pending' as const };
     });
   });
