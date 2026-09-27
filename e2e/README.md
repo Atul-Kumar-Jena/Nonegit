@@ -22,6 +22,13 @@ NODE_PATH=$(npm root -g) OUT=/tmp/shots node e2e/both.cjs
 Needs PostgreSQL on localhost (user `postgres`) and Chromium at `/opt/pw-browsers/chromium-1194` (edit `executablePath` otherwise).
 Screenshots of every step land in `$OUT`.
 
+## Developer app in testing mode: `developer.cjs`
+
+6 steps against the demo-mode server below: the Developer app opens straight into the console (no
+email or code), adds a test institution with a test admin address, verifies it, the new admin signs in
+to Attendly Institute with its code, the list never shows a real institution, and email sign-in still
+refuses a student.
+
 ## Demo-mode rehearsal (current): `cover.cjs`
 
 10 steps against a **demo-mode** server (one-tap demo accounts):
