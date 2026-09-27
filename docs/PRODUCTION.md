@@ -29,6 +29,25 @@ Nobody needs email to get in. Each person links **Google Authenticator** once wi
 3. **The main admin:** Attendly Institute → institution code → **First time? Sign in with a setup code** → ID + code → Google Authenticator → bind. The main admin is the only one who adds, promotes or removes **admins**.
 4. **Everyone else:** an admin adds professors (and gives them extra powers — "sudo" professors — under Role & permissions); a new professor/admin gets a setup code on the spot (**Share instructions**). Students: People → the student → **Create setup code** (or batches, as before).
 
+### Classes: two logs
+At a class's start time the server logs **class time started** and reminds its professor; students see
+"Waiting for the professor". The professor taps **I'm in class — start**: the class is live for the whole
+batch and the minutes late are logged. The QR (or the register) is opened afterwards, when they choose.
+A class never started in its time is logged as missed ("Not held").
+
+### Developer console: switches, support, security
+- **Kill switches** (Console): pause all scans · pause sign-ins · reject new phones (approved phone changes
+  too) · relax phone hardware checks (emergency) · turn off demo sign-in · pause phone notifications.
+  **Sign everyone out** ends every login except developers' (phones stay bound). Each needs the typed
+  key and a reason, and is recorded.
+- **Institutions → Manage people**: open any institution's students, professors and admins; suspend /
+  reactivate, unlink a phone, new setup code, make admin / professor, hand over the main-admin role.
+  A reason is required. "They see this as done by: My name / Attendly support" only changes the
+  person's notification — every action is in the audit log under your developer account.
+- **Phones**: one phone, one account for everyone (developers excepted). The security-chip check (Google
+  key attestation) is **on by default** for every institution (`HARDWARE_BINDING_DEFAULT=off` to change the
+  default; each institution's flag and the emergency switch still apply).
+
 ## 1 · Always-on server (Render)
 Render → your service (**attendly-api-bt9r**) → **Settings → Instance type → Starter** → Save.
 

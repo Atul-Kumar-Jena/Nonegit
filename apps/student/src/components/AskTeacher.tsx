@@ -1,3 +1,4 @@
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
@@ -18,6 +19,7 @@ export function AskTeacherSheet({
   session: { sessionId: string; courseCode: string; courseTitle: string; when: string; teacher?: string | null };
   onClose: () => void;
 }) {
+  const sheetInsets = useSafeAreaInsets();
   const api = useApi();
   const qc = useQueryClient();
   const [topic, setTopic] = useState<StudentRequestTopic>('reschedule');
@@ -43,9 +45,9 @@ export function AskTeacherSheet({
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <Pressable style={styles.scrim} onPress={onClose} accessibilityLabel="Close" />
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, { paddingBottom: 24 + sheetInsets.bottom }]}>
           <View style={styles.grabber} />
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
             <Text variant="heading" style={{ flex: 1 }}>

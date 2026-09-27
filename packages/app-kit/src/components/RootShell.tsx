@@ -1,7 +1,7 @@
 import { useEffect, type ReactNode } from 'react';
 import { installNavigationGuard } from '../lib/nav-guard';
 import { StyleSheet, View } from 'react-native';
-import type { ErrorBoundaryProps } from 'expo-router';
+import { router, type ErrorBoundaryProps } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import * as SystemUI from 'expo-system-ui';
@@ -22,6 +22,9 @@ import { Button, Text } from './ui';
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 void SystemUI.setBackgroundColorAsync(colors.bg).catch(() => undefined);
 installNavigationGuard();
+// Browser test builds only (EXPO_PUBLIC_E2E=1 at build time; never set for phone builds): lets the
+// screenshot script move between screens without a page reload, which would sign the web build out.
+if (process.env.EXPO_PUBLIC_E2E === '1' && typeof window !== 'undefined') (window as unknown as { __router: typeof router }).__router = router;
 
 /** Fonts, splash handling and providers — the same boot sequence for every Attendly app. */
 export function RootShell({ audience, children }: { audience: AppAudience; children: ReactNode }) {

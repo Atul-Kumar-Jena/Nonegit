@@ -1,3 +1,4 @@
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useState, type ReactNode } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
@@ -26,11 +27,12 @@ export function Header({ title, subtitle, right, back }: { title: string; subtit
 }
 
 export function Sheet({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: ReactNode }) {
+  const sheetInsets = useSafeAreaInsets();
   return (
     <Modal visible={open} transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <Pressable style={styles.scrim} onPress={onClose} accessibilityLabel="Close" />
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, { paddingBottom: 24 + sheetInsets.bottom }]}>
           <View style={styles.grabber} />
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
             <Text variant="heading" style={{ flex: 1 }}>

@@ -143,11 +143,20 @@ async function hadHardwareKey(tx: PoolClient, userId: string): Promise<boolean> 
 async function attestForTicket(
   tx: PoolClient,
   deps: Deps,
-  user: { id: string; tenant_id: string },
+  user: { id: string; tenant_id: string; role?: string },
   platform: string,
   ticket: string,
   chain: readonly string[] | undefined,
 ): Promise<VerifiedHardware | null> {
+  // The developer's phone is checked and the result recorded, but never refused: the platform owner
+  // must always be able to get in to flip the emergency switch if phones are wrongly refused.
+  if (user.role === 'developer') {
+    return checkAttestation(deps, chain, bindChallenge(ticket), false, true, (code, detail) => {
+      void withTx(deps.db, (audit) =>
+        appendAudit(audit, { tenantId: user.tenant_id, actorType: 'user', actorId: user.id, action: 'device.attest_failed', subject: `user:${user.id}`, data: { code, detail, developer: true } }),
+      ).catch((err: Error) => deps.log.error({ err: err.message }, 'failed to audit an attestation failure'));
+    });
+  }
   const required = (await hardwareRequired(tx, deps, user.tenant_id, platform)) || (platform === 'android' && (await hadHardwareKey(tx, user.id)));
   const relaxed = await switchOn(tx, 'hardware_checks_relaxed');
   return checkAttestation(deps, chain, bindChallenge(ticket), required && !relaxed, relaxed, (code, detail) => {

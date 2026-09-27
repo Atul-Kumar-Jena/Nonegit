@@ -5,13 +5,13 @@ import { useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, CheckCheck, Eraser, QrCode, Search } from 'lucide-react-native';
 import { ManualBody, randomToken } from '@attendly/protocol';
 import { Screen } from '@kit/components/Screen';
-import { Badge, Button, Card, Input, Loading, Notice, Segmented, Text } from '@kit/components/ui';
+import { Badge, Button, Input, Loading, Notice, Segmented, Text } from '@kit/components/ui';
 import { ApiRequestError } from '@kit/lib/api-core';
 import { outbox, useOutbox } from '@kit/lib/outbox';
 import { useApi } from '@kit/state/session';
 import { colors, fonts, radius, toneColor } from '@kit/theme';
 import { staffApi } from '@/api';
-import { Checkbox, Header, confirmAction } from '@/components/forms';
+import { Checkbox, Header, Sheet, confirmAction } from '@/components/forms';
 import { localSessions } from '@/local-sessions';
 import { useFeed } from '@/queries';
 import { useSessionView } from '@/session-view';
@@ -48,6 +48,7 @@ export default function Register() {
   const [checked, setChecked] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [review, setReview] = useState(false);
   const clientRef = useRef(randomToken(12));
   const saved = useRef(false);
 
@@ -165,15 +166,12 @@ export default function Register() {
   const total = rows!.length;
 
   return (
-    <Screen scroll={false} keyboard>
+    <Screen scroll={false}>
       <Header info="register" title="Register" subtitle={`${s.courseCode} · ${s.courseTitle}`} />
       <View style={styles.warning}>
-        <AlertTriangle color={colors.amber} size={16} />
-        <Text variant="small" color={colors.text} style={{ flex: 1 }}>
-          <Text variant="small" color={colors.amber} style={{ fontFamily: fonts.semibold }}>
-            Manual attendance
-          </Text>{' '}
-          — saved under your name and audited. Mark only who you can see.
+        <AlertTriangle color={colors.amber} size={14} />
+        <Text variant="small" style={{ flex: 1 }}>
+          Saved under your name and audited — mark only who you can see.
         </Text>
       </View>
       <Segmented
@@ -190,19 +188,20 @@ export default function Register() {
         ]}
       />
       {offlineMode ? (
-        <Notice tone="violet" message="Offline — this register is saved on the phone and uploads automatically. It adds the students you tick; students who scanned stay marked." />
+        <View style={{ marginTop: 8 }}>
+          <Notice tone="violet" message="Offline — saved on the phone and uploaded automatically. Students who scanned stay marked." />
+        </View>
       ) : null}
-      {pendingDraft ? <Notice tone="violet" message="A register for this class is waiting to upload. Saving again replaces it with this one." /> : null}
+      {pendingDraft ? (
+        <View style={{ marginTop: 8 }}>
+          <Notice tone="violet" message="A register for this class is waiting to upload. Saving again replaces it." />
+        </View>
+      ) : null}
 
       <View style={styles.tools}>
         <View style={{ flex: 1 }}>
           <Input value={q} onChangeText={setQ} placeholder="Search name or roll no." icon={<Search color={colors.textDim} size={16} />} autoCorrect={false} />
         </View>
-      </View>
-      <View style={styles.bulk}>
-        <Text variant="bodyStrong" style={{ flex: 1 }}>
-          <Text style={{ color: colors.green, fontFamily: fonts.bold }}>{presentCount}</Text> present · <Text style={{ color: colors.textMuted }}>{total - presentCount} absent</Text>
-        </Text>
         <Pressable
           onPress={() =>
             confirmAction('Mark everyone present?', `All ${total} students will be ticked. Untick anyone who isn’t in class.`, 'Tick all', () => {
@@ -210,33 +209,35 @@ export default function Register() {
               setChecked(false);
             })
           }
-          style={styles.bulkBtn}
+          style={styles.iconBtn}
           accessibilityRole="button"
+          accessibilityLabel="Mark everyone present"
         >
-          <CheckCheck color={colors.cyan} size={15} />
-          <Text variant="small" color={colors.cyan}>
-            All
-          </Text>
+          <CheckCheck color={colors.text} size={18} />
         </Pressable>
         <Pressable
           onPress={() => {
             setTicks(new Set());
             setChecked(false);
           }}
-          style={styles.bulkBtn}
+          style={styles.iconBtn}
           accessibilityRole="button"
+          accessibilityLabel="Clear all ticks"
         >
-          <Eraser color={colors.textMuted} size={15} />
-          <Text variant="small">Clear</Text>
+          <Eraser color={colors.textMuted} size={18} />
         </Pressable>
       </View>
 
       <FlatList
-        style={{ flex: 1, marginHorizontal: -4 }}
+        style={{ flex: 1, marginTop: 10 }}
+        contentContainerStyle={{ paddingBottom: 16 }}
         data={visible}
         keyExtractor={(r) => r.userId}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         initialNumToRender={30}
+        showsVerticalScrollIndicator
+        persistentScrollbar
         renderItem={({ item }) => {
           const on = ticks.has(item.userId);
           const changed = on !== item.wasPresent;
@@ -254,7 +255,7 @@ export default function Register() {
               ]}
             >
               <Checkbox checked={on} tone="green" />
-              <View style={{ flex: 1 }}>
+              <View style={{ flex: 1, gap: 2 }}>
                 <Text variant="bodyStrong" numberOfLines={1}>
                   {item.fullName}
                 </Text>
@@ -268,31 +269,45 @@ export default function Register() {
         ListEmptyComponent={<Text variant="small" style={{ padding: 16 }}>{total === 0 ? 'No students are enrolled in this course yet.' : 'No one matches.'}</Text>}
       />
 
-      <Card style={{ gap: 10, marginTop: 8 }}>
-        {removedScans.length ? (
-          <Text variant="small" color={colors.amber}>
-            You’re removing {removedScans.length} {removedScans.length === 1 ? 'mark' : 'marks'} made by QR scan. Say why (required):
+      {/* A slim bar: the list keeps the screen; the note and the final check open in a sheet. */}
+      <View style={styles.bar}>
+        <View style={{ flex: 1 }}>
+          <Text variant="bodyStrong">
+            <Text style={{ color: colors.green, fontFamily: fonts.bold }}>{presentCount}</Text> present
           </Text>
-        ) : null}
-        <Input value={note} onChangeText={setNote} placeholder={removedScans.length ? 'e.g. left after 10 minutes' : 'Note (optional)'} maxLength={300} invalid={needsNote} />
-        <Pressable onPress={() => setChecked((c) => !c)} accessibilityRole="checkbox" accessibilityState={{ checked }} style={styles.confirm}>
-          <Checkbox checked={checked} tone="amber" />
-          <Text variant="small" color={colors.text} style={{ flex: 1 }}>
-            I have checked every name. {presentCount} present, {total - presentCount} absent is correct.
-          </Text>
-        </Pressable>
-        {error ? <Notice tone="red" message={error} /> : null}
-        <Button title={offlineMode ? 'Save on phone' : 'Save register'} onPress={() => void save()} loading={busy} disabled={!checked || needsNote || total === 0} />
-      </Card>
+          <Text variant="small">{`${total - presentCount} absent · ${total} in class`}</Text>
+        </View>
+        <Button title="Review & save" onPress={() => setReview(true)} disabled={total === 0} compact />
+      </View>
+
+      <Sheet open={review} onClose={() => setReview(false)} title="Save the register" scroll>
+        <View style={{ gap: 12, paddingBottom: 8 }}>
+          <Text variant="body">{`${presentCount} present, ${total - presentCount} absent${removedScans.length ? ` · ${removedScans.length} QR ${removedScans.length === 1 ? 'mark' : 'marks'} removed` : ''}.`}</Text>
+          {removedScans.length ? (
+            <Text variant="small" color={colors.amber}>
+              You’re removing {removedScans.length} {removedScans.length === 1 ? 'mark' : 'marks'} made by QR scan. Say why (required):
+            </Text>
+          ) : null}
+          <Input value={note} onChangeText={setNote} placeholder={removedScans.length ? 'e.g. left after 10 minutes' : 'Note (optional)'} maxLength={300} invalid={needsNote} />
+          <Pressable onPress={() => setChecked((c) => !c)} accessibilityRole="checkbox" accessibilityState={{ checked }} style={styles.confirm}>
+            <Checkbox checked={checked} tone="amber" />
+            <Text variant="small" color={colors.text} style={{ flex: 1 }}>
+              I have checked every name. {presentCount} present, {total - presentCount} absent is correct.
+            </Text>
+          </Pressable>
+          {error ? <Notice tone="red" message={error} /> : null}
+          <Button title={offlineMode ? 'Save on phone' : 'Save register'} onPress={() => void save()} loading={busy} disabled={!checked || needsNote || total === 0} />
+        </View>
+      </Sheet>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  warning: { flexDirection: 'row', gap: 10, padding: 12, borderRadius: radius.md, borderWidth: 1, borderColor: toneColor.amber.line, backgroundColor: toneColor.amber.bg, marginBottom: 8 },
-  tools: { flexDirection: 'row', gap: 8, marginTop: 8 },
-  bulk: { flexDirection: 'row', alignItems: 'center', gap: 8, marginVertical: 10 },
-  bulkBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: colors.border },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 14, marginHorizontal: 4, marginBottom: 6, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
+  warning: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  tools: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 },
+  iconBtn: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 16, paddingVertical: 16, marginBottom: 8, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
+  bar: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
   confirm: { flexDirection: 'row', alignItems: 'center', gap: 10 },
 });

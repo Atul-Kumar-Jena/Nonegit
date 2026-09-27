@@ -88,6 +88,17 @@ describe('binding with the phone’s security chip', () => {
     expect((await audits('device.attest_failed')).some((a) => a.data.code === 'boot')).toBe(true);
   });
 
+  it('the developer is never locked out by the chip check (so they can reach the emergency switch), but it is on record', async () => {
+    await ctx.db.query(`insert into tenant_flags(tenant_id, key, enabled) values ($1, 'hardware_binding', true) on conflict (tenant_id, key) do update set enabled = true`, [tenantId]);
+    const email = `dev${++n}@iit.ac.in`;
+    await ctx.db.query(`insert into users(tenant_id, role, full_name, email) values ($1, 'developer', 'Dev', $2)`, [tenantId, email]);
+    const phone = new TestDevice(ctx, { hardwareId: `dev-${n}` }).withChip(ca, { locked: false, boot: 2 });
+    const { res } = await bindResult(phone, email);
+    expect(res!.statusCode).toBe(200);
+    await new Promise((r) => setTimeout(r, 50));
+    expect((await audits('device.attest_failed')).some((a) => a.data.developer === true)).toBe(true);
+  });
+
   it('a clone of the app is refused', async () => {
     const s = await student();
     const { res } = await bindResult(s.phone.withChip(ca, { pkg: 'com.evil.attendly' }), s.email);

@@ -1,3 +1,4 @@
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useEffect, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Switch, View } from 'react-native';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -280,12 +281,13 @@ export default function Profile() {
 }
 
 function ResetSheet({ open, busy, error, onClose, onSubmit }: { open: boolean; busy: boolean; error: string | null; onClose: () => void; onSubmit: (reason: string) => void }) {
+  const sheetInsets = useSafeAreaInsets();
   const [reason, setReason] = useState('');
   return (
     <Modal visible={open} transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
       <Pressable style={styles.scrim} onPress={onClose} accessibilityLabel="Close" />
-      <View style={styles.sheet}>
+      <View style={[styles.sheet, { paddingBottom: 24 + sheetInsets.bottom }]}>
         <View style={styles.grabber} />
         <Text variant="heading">Request device reset</Text>
         <Text variant="small" style={{ marginTop: 6 }}>
