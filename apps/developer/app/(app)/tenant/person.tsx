@@ -17,7 +17,7 @@ import { Header, confirmIdentity } from '@/ui';
 const LABEL: Record<SupportAction, string> = {
   suspend: 'Suspend account',
   reactivate: 'Reactivate account',
-  reset_phone: 'Unlink their phone',
+  reset_phone: 'Unbind phone & sign out',
   setup_code: 'New setup code',
   make_admin: 'Make admin',
   make_professor: 'Make professor',
@@ -56,14 +56,16 @@ export default function SupportPersonScreen() {
   async function run(action: SupportAction) {
     setError(null);
     setDone(null);
-    if (reason.trim().length < 3) {
+    // Unbinding needs no typed reason (quick for testing); everything else does. All of it is audited.
+    const why = reason.trim().length >= 3 ? reason.trim() : action === 'reset_phone' ? 'unbound by the developer' : null;
+    if (!why) {
       setError('Write a short reason first — it goes on the record.');
       return;
     }
     if (!(await confirmIdentity(LABEL[action]))) return;
     setBusy(action);
     try {
-      const r = await rootApi.act(api, String(tid), String(pid), { action, as, reason: reason.trim() });
+      const r = await rootApi.act(api, String(tid), String(pid), { action, as, reason: why });
       setDone(r.message);
       if (r.setup) setSetup(r.setup);
       qc.setQueryData(['root', 'person', tid, pid], { ...q.data!, person: r.person });
@@ -77,7 +79,6 @@ export default function SupportPersonScreen() {
 
   const staff = p.role === 'teacher' || p.role === 'admin';
   const actions: { key: SupportAction; icon: React.ReactNode; danger?: boolean; show: boolean }[] = [
-    { key: 'reset_phone', icon: <Smartphone color={colors.text} size={16} />, show: !!p.device },
     { key: 'setup_code', icon: <KeyRound color={colors.text} size={16} />, show: p.status === 'active' },
     { key: 'make_admin', icon: <ShieldCheck color={colors.text} size={16} />, show: p.role === 'teacher' },
     { key: 'make_professor', icon: <GraduationCap color={colors.text} size={16} />, show: p.role === 'admin' && !p.owner },
@@ -106,6 +107,12 @@ export default function SupportPersonScreen() {
         {p.department ? <InfoRow label="DEPARTMENT" value={p.department} /> : null}
         <InfoRow label="LINKED PHONE" value={p.device ? `${p.device.model}${p.device.hardware !== 'none' ? ' · security chip' : ''}` : 'none'} />
         {p.device?.boundAt ? <InfoRow label="LINKED ON" value={dateLong(p.device.boundAt)} /> : null}
+        {p.device ? (
+          <View style={{ marginTop: 12, gap: 6 }}>
+            <Button title={LABEL.reset_phone} kind="secondary" loading={busy === 'reset_phone'} onPress={() => void run('reset_phone')} icon={<Smartphone color={colors.text} size={16} />} />
+            <Text variant="small">Frees the phone straight away — no admin approval. They’re signed out and bind a phone at their next sign-in.</Text>
+          </View>
+        ) : null}
         {attendance ? <InfoRow label="ATTENDANCE" value={attendance.percent === null ? 'no classes yet' : `${attendance.percent}% · ${attendance.attended} of ${attendance.held}`} /> : null}
         {staff && p.permissions.length ? <InfoRow label="EXTRA POWERS" value={p.permissions.join(', ')} /> : null}
       </Card>
