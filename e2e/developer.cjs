@@ -78,7 +78,7 @@ const nextWindow = () => new Promise((r) => setTimeout(r, 30_500 - (Date.now() %
     devSecret = await secretOnPage(d);
     await shot(d, 'dev-authenticator');
     await typeCode(d, totp(devSecret));
-    await d.getByRole('button', { name: 'Bind this device' }).click({ timeout: 30_000 });
+    // Developers sign straight in (no phone binding).
     await d.getByText('Kill switches').waitFor({ timeout: 30_000 });
     await d.getByText('ROOT').first().waitFor();
     await shot(d, 'dev-console');

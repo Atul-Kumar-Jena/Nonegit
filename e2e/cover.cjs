@@ -166,7 +166,6 @@ async function demoSignIn(browser, url, name) {
     lastPage = p;
     await p.goto(DEVELOPER);
     await p.getByText('Try the demo console').click({ timeout: 60_000 });
-    await p.getByRole('button', { name: 'Bind this device' }).click({ timeout: 30_000 });
     dev = { ctx: dctx, page: p };
     await p.getByText('Kill switches').waitFor({ timeout: 30_000 });
     await p.getByText('SANDBOX').first().waitFor();

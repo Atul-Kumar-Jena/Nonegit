@@ -33,7 +33,8 @@ beforeAll(async () => {
   sandbox = new TestDevice(ctx);
   const r = await sandbox.requestOtp('root@demo.attendly.app');
   const v = await sandbox.verifyOtp(r.json().challengeId, r.json().instantCode);
-  await sandbox.bind(v.json().ticket);
+  expect(v.json().status).toBe('ok'); // developers sign straight in (no phone binding)
+  sandbox.adopt(v.json().auth);
 });
 afterAll(async () => ctx?.close());
 

@@ -30,7 +30,8 @@ beforeAll(async () => {
   await root.signIn('root@iit.ac.in');
   const r = await sandbox.requestOtp('root@demo.attendly.app');
   const v = await sandbox.verifyOtp(r.json().challengeId, r.json().instantCode);
-  await sandbox.bind(v.json().ticket);
+  expect(v.json().status).toBe('ok'); // developers sign straight in (no phone binding)
+  sandbox.adopt(v.json().auth);
   await admin.signIn('hod@iit.ac.in');
   await aarav.signIn('aarav@iit.ac.in');
 });

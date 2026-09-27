@@ -96,15 +96,21 @@ describe('binding with the phone’s security chip', () => {
     expect(res!.json().error.message).toMatch(/rooted.*security check: boot/);
   });
 
-  it('the developer is never locked out by the chip check (so they can reach the emergency switch), but it is on record', async () => {
-    await ctx.db.query(`insert into tenant_flags(tenant_id, key, enabled) values ($1, 'hardware_binding', true) on conflict (tenant_id, key) do update set enabled = true`, [tenantId]);
+  it('developers sign straight in without binding a phone (a new phone simply replaces the old one)', async () => {
+    await requireChips();
     const email = `dev${++n}@iit.ac.in`;
     await ctx.db.query(`insert into users(tenant_id, role, full_name, email) values ($1, 'developer', 'Dev', $2)`, [tenantId, email]);
-    const phone = new TestDevice(ctx, { hardwareId: `dev-${n}` }).withChip(ca, { locked: false, boot: 2 });
-    const { res } = await bindResult(phone, email);
-    expect(res!.statusCode).toBe(200);
-    await new Promise((r) => setTimeout(r, 50));
-    expect((await audits('device.attest_failed')).some((a) => a.data.developer === true)).toBe(true);
+    for (const hw of ['dev-a', 'dev-b']) {
+      const phone = new TestDevice(ctx, { hardwareId: `${hw}-${n}` });
+      ctx.clock.now += 31_000;
+      const r = await phone.requestOtp(email);
+      const v = (await phone.verifyOtp(r.json().challengeId, phone.lastCode(email))).json();
+      expect(v.status).toBe('ok');
+      phone.adopt(v.auth);
+      expect((await phone.call('GET', '/v1/root/me')).statusCode).toBe(200);
+    }
+    const active = await ctx.db.query(`select 1 from devices d join users u on u.id = d.user_id where u.email = $1 and d.status = 'active'`, [email]);
+    expect(active.rowCount).toBe(1);
   });
 
   it('a clone of the app is refused where chips are required', async () => {

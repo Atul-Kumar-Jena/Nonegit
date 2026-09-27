@@ -315,6 +315,21 @@ export async function authRoutes(app: FastifyInstance, deps: Deps) {
         await appendAudit(tx, { tenantId: user.tenant_id, actorType: 'user', actorId: user.id, action: 'device.demo_handover', subject: `device:${bound.id}` });
         bound = undefined;
       }
+      // Developers skip phone binding for now: the Google Authenticator code signs them straight in on
+      // whichever phone they use (a new phone replaces the old one). Recorded in the audit log.
+      if (user.role === 'developer' && (!bound || !bound.public_key.equals(pk))) {
+        const now = new Date(deps.clock());
+        if (bound) await revokeActiveDevice(tx, user.id, 'developer signed in on another phone', now);
+        const { rows } = await tx.query<DeviceRow>(
+          `insert into devices(user_id, public_key, fingerprint, platform, model, os_version, app_version, status, bound_at, last_seen_at, hw_hash)
+           values ($1, $2, $3, $4, $5, $6, $7, 'active', $8, $8, $9) returning *`,
+          [user.id, pk, keyFingerprint(pk), body.device.platform, body.device.model, body.device.osVersion, body.device.appVersion, now, hw],
+        );
+        const device = rows[0]!;
+        const auth = await issueTokens(tx, deps, { userId: user.id, deviceId: device.id });
+        await appendAudit(tx, { tenantId: user.tenant_id, actorType: 'user', actorId: user.id, action: 'device.developer_signin', subject: `device:${device.id}`, data: { model: device.model, replaced: bound?.id ?? null } });
+        return { status: 'ok', auth, user: toUserSummary(user), device: toDeviceSummary(device) };
+      }
       if (!bound) {
         const ticket = await createTicket(tx, deps, 'bind', user.id, body.device);
         return { status: 'bind_required', ticket, user: toUserSummary(user) };

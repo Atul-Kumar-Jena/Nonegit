@@ -20,8 +20,12 @@ async function activate(d: TestDevice, identifier: string, setupCode: string, in
   const fin = ok(await post('/v1/auth/setup/finish', { identifier, setupCode, institutionCode, code: codeFor(start.secret) }));
   expect(fin.instantCode).toMatch(/^[0-9]{6}$/);
   const v = await d.verifyOtp(fin.challengeId, fin.instantCode);
-  expect(v.json().status).toBe('bind_required');
-  expect((await d.bind(v.json().ticket)).statusCode).toBe(200);
+  if (v.json().status === 'ok') {
+    d.adopt(v.json().auth); // developers: no phone binding
+  } else {
+    expect(v.json().status).toBe('bind_required');
+    expect((await d.bind(v.json().ticket)).statusCode).toBe(200);
+  }
   return start.secret as string;
 }
 
