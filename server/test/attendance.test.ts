@@ -125,7 +125,7 @@ describe('marking attendance', () => {
     expect(rejection(await mark(aarav, q(), loc(10, { accuracyM: 150 }))).code).toBe('E-GPS-WEAK');
     expect(rejection(await mark(aarav, q(), loc(10, { capturedAt: ctx.clock.now - 120_000 }))).code).toBe('E-GPS-STALE');
     // A large claimed accuracy does not widen the fence beyond +10m.
-    expect(rejection(await mark(aarav, q(), loc(65, { accuracyM: 90 }))).code).toBe('E-GEO');
+    expect(rejection(await mark(aarav, q(), loc(65, { accuracyM: 70 }))).code).toBe('E-GEO');
 
     const { rows } = await ctx.db.query(`select code, suspicious from scan_rejections where session_id = $1 order by id`, [s.id]);
     expect(rows.map((r: { code: string }) => r.code)).toEqual(['E-GEO', 'E-MOCK', 'E-MOCK', 'E-GPS-WEAK', 'E-GPS-STALE', 'E-GEO']);

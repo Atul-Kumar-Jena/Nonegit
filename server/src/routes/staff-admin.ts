@@ -219,12 +219,13 @@ export async function staffAdminRoutes(app: FastifyInstance, deps: Deps) {
   });
 
   // ── rooms ──
-  const toRoom = (r: { id: string; name: string; lat: number | null; lng: number | null; radius_m: number; active: boolean }): Room => ({
+  const toRoom = (r: { id: string; name: string; lat: number | null; lng: number | null; radius_m: number; center_accuracy_m: number | null; active: boolean }): Room => ({
     id: r.id,
     name: r.name,
     lat: r.lat,
     lng: r.lng,
     radiusM: r.radius_m,
+    centerAccuracyM: r.center_accuracy_m === null ? null : Math.round(r.center_accuracy_m * 10) / 10,
     active: r.active,
   });
 
@@ -241,16 +242,19 @@ export async function staffAdminRoutes(app: FastifyInstance, deps: Deps) {
       return await withTx(deps.db, async (tx) => {
         const { rows } = id
           ? await tx.query(
-              `update rooms set name = $3, lat = $4, lng = $5, radius_m = $6, active = $7 where id = $1 and tenant_id = $2 returning *`,
-              [id, auth.tenantId, b.name, b.lat ?? null, b.lng ?? null, b.radiusM, b.active],
+              `update rooms set name = $3, lat = $4, lng = $5, radius_m = $6, active = $7,
+                      center_accuracy_m = case when $4::float8 is not distinct from lat and $5::float8 is not distinct from lng then coalesce($8, center_accuracy_m) else $8 end
+                where id = $1 and tenant_id = $2 returning *`,
+              [id, auth.tenantId, b.name, b.lat ?? null, b.lng ?? null, b.radiusM, b.active, b.lat == null ? null : (b.centerAccuracyM ?? null)],
             )
-          : await tx.query(`insert into rooms(tenant_id, name, lat, lng, radius_m, active) values ($1, $2, $3, $4, $5, $6) returning *`, [
+          : await tx.query(`insert into rooms(tenant_id, name, lat, lng, radius_m, active, center_accuracy_m) values ($1, $2, $3, $4, $5, $6, $7) returning *`, [
               auth.tenantId,
               b.name,
               b.lat ?? null,
               b.lng ?? null,
               b.radiusM,
               b.active,
+              b.lat == null ? null : (b.centerAccuracyM ?? null),
             ]);
         if (!rows[0]) throw new ApiError(404, 'NOT_FOUND', 'Room not found.');
         // Upcoming classes in this room pick up the new geofence (live ones keep theirs).

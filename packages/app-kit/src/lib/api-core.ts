@@ -14,8 +14,12 @@ import { z } from 'zod';
 import { parseServerAddress } from './server-address';
 import {
   API_ERROR_CODES,
+  AttestStatusResponse,
   AuthTokens,
   BindResponse,
+  attestBindChallengeString,
+  fromB64url,
+  sha256Bytes,
   DashboardResponse,
   DeviceRequestResponse,
   MarkResponse,
@@ -54,6 +58,17 @@ export interface DeviceKeyProvider {
   /** Returns the device's Ed25519 secret key (created on first use). */
   secretKey(): Promise<Uint8Array>;
   publicKey(): Promise<Uint8Array>;
+}
+
+/**
+ * The phone's security chip (Android TEE / StrongBox). Its key can't be copied off the phone; the server
+ * verifies Google's attestation of it at binding, and every scan must then carry its signature.
+ */
+export interface HardwareSigner {
+  /** Makes a fresh chip key bound to this challenge and returns its attestation chain; null when unsupported. */
+  attest(challenge: Uint8Array): Promise<string[] | null>;
+  /** Signs with the chip key; null when this phone has none. */
+  sign(data: string): Promise<string | null>;
 }
 
 export interface TokenStore {
@@ -99,7 +114,12 @@ export interface ApiClientOptions {
   /** Called whenever the server clock offset is re-measured (persist it for offline use). */
   onClockSync?: (offsetMs: number) => void;
   now?: () => number;
+  /** The security chip, when this phone has one (Android). */
+  hardware?: HardwareSigner;
 }
+
+/** Requests the security chip signs as well (scans: proof they came from the bound phone itself). */
+const CHIP_SIGNED_PATHS: readonly string[] = ['/v1/attendance/mark'];
 
 const SESSION_FATAL: readonly string[] = ['UNAUTHENTICATED', 'DEVICE_REVOKED', 'ACCOUNT_SUSPENDED'];
 
@@ -119,6 +139,7 @@ export class ApiClient {
   private readonly onSessionLost?: (reason: ApiRequestError) => void;
   private readonly onClockSync?: (offsetMs: number) => void;
   private readonly now: () => number;
+  private readonly hardware?: HardwareSigner;
   private refreshing: Promise<AuthTokens> | null = null;
   /** serverTime − localTime, measured from the x-server-time header. */
   private offsetMs = 0;
@@ -136,6 +157,7 @@ export class ApiClient {
     this.onSessionLost = o.onSessionLost;
     this.onClockSync = o.onClockSync;
     this.now = o.now ?? Date.now;
+    this.hardware = o.hardware;
   }
 
   /** Current time on the server's clock (best estimate), in whole milliseconds. */
@@ -228,7 +250,24 @@ export class ApiClient {
     const nonce = randomToken(16);
     const signing = requestSigningString({ method, pathWithQuery: path, timestampMs: ts, nonce, bodySha256Hex: sha256Hex(body) });
     const sig = signB64(signing, await this.keys.secretKey());
-    return { 'x-attendly-ts': String(ts), 'x-attendly-nonce': nonce, 'x-attendly-sig': sig };
+    const headers: Record<string, string> = { 'x-attendly-ts': String(ts), 'x-attendly-nonce': nonce, 'x-attendly-sig': sig };
+    if (this.hardware && CHIP_SIGNED_PATHS.includes(path)) {
+      // No chip key yet (older binding) → the server decides whether that's still allowed.
+      const hw = await this.hardware.sign(signing).catch(() => null);
+      if (hw) headers['x-attendly-hwsig'] = hw;
+    }
+    return headers;
+  }
+
+  /** The chip's attestation for a bind ticket (null: no chip, or it failed — the server decides). */
+  private async attestTicket(ticket: string): Promise<{ chain: string[] } | undefined> {
+    if (!this.hardware) return undefined;
+    try {
+      const chain = await this.hardware.attest(sha256Bytes(attestBindChallengeString(ticket)));
+      return chain ? { chain } : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   private async refreshTokens(): Promise<AuthTokens> {
@@ -325,7 +364,8 @@ export class ApiClient {
   async bind(ticket: string) {
     const publicKeyB64 = toB64url(await this.keys.publicKey());
     const proof = signB64(bindProofString({ ticket, publicKeyB64, purpose: 'bind' }), await this.keys.secretKey());
-    const res = await this.publicCall('POST', '/v1/devices/bind', BindResponse, { ticket, proof });
+    const attestation = await this.attestTicket(ticket);
+    const res = await this.publicCall('POST', '/v1/devices/bind', BindResponse, { ticket, proof, ...(attestation ? { attestation } : {}) });
     await this.tokens.set(res.auth);
     return res;
   }
@@ -333,7 +373,21 @@ export class ApiClient {
   async requestRebind(ticket: string, reason: string) {
     const publicKeyB64 = toB64url(await this.keys.publicKey());
     const proof = signB64(bindProofString({ ticket, publicKeyB64, purpose: 'rebind' }), await this.keys.secretKey());
-    return this.publicCall('POST', '/v1/devices/rebind-request', DeviceRequestResponse, { ticket, proof, reason });
+    const attestation = await this.attestTicket(ticket);
+    return this.publicCall('POST', '/v1/devices/rebind-request', DeviceRequestResponse, { ticket, proof, reason, ...(attestation ? { attestation } : {}) });
+  }
+
+  /**
+   * Phones bound before chip keys: moves the key into the security chip (once; silent).
+   * Returns where the key lives now.
+   */
+  async secureWithChip(): Promise<'none' | 'tee' | 'strongbox'> {
+    const st = await this.authed('GET', '/v1/devices/attest', AttestStatusResponse);
+    if (st.hardware !== 'none' || !st.challenge || !this.hardware) return st.hardware;
+    const chain = await this.hardware.attest(fromB64url(st.challenge));
+    if (!chain) return 'none';
+    const r = await this.authed('POST', '/v1/devices/attest', z.object({ hardware: z.enum(['tee', 'strongbox']) }), { chain });
+    return r.hardware;
   }
 
   dashboard() {

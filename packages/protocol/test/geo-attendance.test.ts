@@ -30,7 +30,7 @@ describe('geo', () => {
     const at = (m: number) => 28.5449 + m / 111_195;
     expect(evaluateGeofence({ ...c, lat: at(40), lng: 77.1926, accuracyM: 5 }).ok).toBe(true);
     expect(evaluateGeofence({ ...c, lat: at(58), lng: 77.1926, accuracyM: 20 }).ok).toBe(true); // 50 + 10 cap
-    expect(evaluateGeofence({ ...c, lat: at(62), lng: 77.1926, accuracyM: 90 })).toMatchObject({ ok: false, reason: 'outside' });
+    expect(evaluateGeofence({ ...c, lat: at(62), lng: 77.1926, accuracyM: 70 })).toMatchObject({ ok: false, reason: 'outside' });
     expect(evaluateGeofence({ ...c, lat: at(10), lng: 77.1926, accuracyM: 0 })).toMatchObject({ ok: false, reason: 'suspicious' });
     expect(evaluateGeofence({ ...c, lat: at(10), lng: 77.1926, accuracyM: 150 })).toMatchObject({ ok: false, reason: 'imprecise' });
   });

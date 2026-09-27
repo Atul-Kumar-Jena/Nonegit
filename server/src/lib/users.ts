@@ -56,6 +56,8 @@ export interface DeviceRow {
   bound_at: Date | null;
   last_seen_at: Date | null;
   hw_hash: Buffer | null;
+  hw_key_spki?: Buffer | null;
+  attest_level?: 'tee' | 'strongbox' | null;
 }
 
 /** Keyed hash of a phone's hardware ID (the raw ID is never stored). */
@@ -98,5 +100,6 @@ export function toDeviceSummary(d: DeviceRow): DeviceSummary {
     status: d.status,
     boundAt: d.bound_at ? d.bound_at.toISOString() : null,
     lastSeenAt: d.last_seen_at ? d.last_seen_at.toISOString() : null,
+    hardware: d.hw_key_spki && d.attest_level ? d.attest_level : 'none',
   };
 }

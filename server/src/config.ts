@@ -82,6 +82,10 @@ const EnvSchema = z
      */
     DEMO_INSTANT_LOGIN: z.enum(['1', '0', 'true', 'false', 'yes', 'no']).optional(),
     MIN_APP_VERSION: z.string().default('1.0.0'),
+    /** Every Android phone must prove a hardware-backed key (Google key attestation) to bind. */
+    REQUIRE_HARDWARE_KEYS: bool,
+    /** SHA-256 of the release signing certificate(s), comma-separated: only our signed APK can bind. */
+    ANDROID_APP_CERT_SHA256: z.string().optional(),
     LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   })
   .superRefine((e, ctx) => {
@@ -134,6 +138,13 @@ export interface Config {
   demoInstantLogin: boolean;
   minAppVersion: string;
   logLevel: string;
+  attestation: {
+    /** All Android phones must have an attested hardware key (institutions can also opt in on their own). */
+    requireHardware: boolean;
+    appCertDigests: string[];
+    /** Tests only: trust these roots instead of Google's. */
+    testRoots?: string[];
+  };
 }
 
 export class ConfigError extends Error {}
@@ -201,5 +212,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     demoInstantLogin,
     minAppVersion: e.MIN_APP_VERSION,
     logLevel: e.LOG_LEVEL,
+    attestation: {
+      requireHardware: e.REQUIRE_HARDWARE_KEYS,
+      appCertDigests: (e.ANDROID_APP_CERT_SHA256 ?? '')
+        .split(',')
+        .map((d) => d.toLowerCase().replace(/[^0-9a-f]/g, ''))
+        .filter((d) => d.length === 64),
+    },
   };
 }

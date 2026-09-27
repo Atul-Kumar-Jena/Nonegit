@@ -2,8 +2,11 @@ import type { FastifyInstance } from 'fastify';
 import {
   InstitutionLookupQuery,
   type InstitutionLookup,
+  AttestBody,
   BindBody,
   DeviceInfo,
+  toB64url,
+  type AttestStatusResponse,
   OtpRequestBody,
   OtpVerifyBody,
   RebindRequestBody,
@@ -31,6 +34,9 @@ import { makeSecretBox, verifyTotp } from '../lib/totp';
 import { ApiError } from '../lib/errors';
 import { generateOtpCode, maskEmail, maskPhone, randomToken } from '../lib/secrets';
 import { revokeActiveDevice } from './staff-admin';
+import { bindChallenge } from '../lib/attestation';
+import { checkAttestation, hardwareRequired, isTamperEvidence, type VerifiedHardware } from '../lib/device-trust';
+import { randomBytes } from 'node:crypto';
 import { assertPhoneFree, hardwareHash, loadActiveDevice, loadUser, toDeviceSummary, toUserSummary, type DeviceRow } from '../lib/users';
 
 export const OTP_TTL_MS = 5 * 60_000;
@@ -80,6 +86,37 @@ async function consumeTicket(tx: PoolClient, deps: Deps, ticket: string, kind: '
   if (!verifyB64(proof, bindProofString({ ticket, publicKeyB64, purpose: kind }), t.public_key)) throw new ApiError(401, 'BAD_SIGNATURE');
   await tx.query('update auth_tickets set consumed_at = $2 where id = $1', [t.id, new Date(deps.clock())]);
   return t;
+}
+
+/** Did this user's last phone prove a hardware key? Then the next one must too (no downgrade to a software key). */
+async function hadHardwareKey(tx: PoolClient, userId: string): Promise<boolean> {
+  const { rows } = await tx.query<{ hw: boolean }>(
+    `select hw_key_spki is not null as hw from devices where user_id = $1 and platform = 'android' order by bound_at desc limit 1`,
+    [userId],
+  );
+  return rows[0]?.hw ?? false;
+}
+
+/**
+ * Verifies the attestation a phone sent with its bind ticket. Failures are logged to the audit trail
+ * (outside the transaction, so a refused phone is still on record).
+ */
+async function attestForTicket(
+  tx: PoolClient,
+  deps: Deps,
+  user: { id: string; tenant_id: string },
+  platform: string,
+  ticket: string,
+  chain: readonly string[] | undefined,
+): Promise<VerifiedHardware | null> {
+  const required = (await hardwareRequired(tx, deps, user.tenant_id, platform)) || (platform === 'android' && (await hadHardwareKey(tx, user.id)));
+  const relaxed = await switchOn(tx, 'hardware_checks_relaxed');
+  return checkAttestation(deps, chain, bindChallenge(ticket), required && !relaxed, relaxed, (code, detail) => {
+    // Its own transaction: the refusal is on record even though the binding is rolled back.
+    void withTx(deps.db, (audit) =>
+      appendAudit(audit, { tenantId: user.tenant_id, actorType: 'user', actorId: user.id, action: 'device.attest_failed', subject: `user:${user.id}`, data: { code, detail } }),
+    ).catch((err: Error) => deps.log.error({ err: err.message }, 'failed to audit an attestation failure'));
+  });
 }
 
 export async function authRoutes(app: FastifyInstance, deps: Deps) {
@@ -280,10 +317,26 @@ export async function authRoutes(app: FastifyInstance, deps: Deps) {
         const info = t.device_info;
         const hw = hardwareHash(deps.hash, info);
         await assertPhoneFree(tx, hw, user.id, user.role);
+        const chip = await attestForTicket(tx, deps, user, info.platform, body.ticket, body.attestation?.chain);
         const { rows } = await tx.query<DeviceRow>(
-          `insert into devices(user_id, public_key, fingerprint, platform, model, os_version, app_version, status, bound_at, last_seen_at, hw_hash)
-           values ($1, $2, $3, $4, $5, $6, $7, 'active', $8, $8, $9) returning *`,
-          [user.id, t.public_key, keyFingerprint(t.public_key), info.platform, info.model, info.osVersion, info.appVersion, new Date(deps.clock()), hw],
+          `insert into devices(user_id, public_key, fingerprint, platform, model, os_version, app_version, status, bound_at, last_seen_at, hw_hash,
+                               hw_key_spki, attest_level, attest_patch, attested_at)
+           values ($1, $2, $3, $4, $5, $6, $7, 'active', $8, $8, $9, $10, $11, $12, $13) returning *`,
+          [
+            user.id,
+            t.public_key,
+            keyFingerprint(t.public_key),
+            info.platform,
+            info.model,
+            info.osVersion,
+            info.appVersion,
+            new Date(deps.clock()),
+            hw,
+            chip?.spki ?? null,
+            chip?.level ?? null,
+            chip?.patch ?? null,
+            chip ? new Date(deps.clock()) : null,
+          ],
         );
         const device = rows[0]!;
         const auth = await issueTokens(tx, deps, { userId: user.id, deviceId: device.id });
@@ -293,7 +346,7 @@ export async function authRoutes(app: FastifyInstance, deps: Deps) {
           actorId: user.id,
           action: 'device.bind',
           subject: `device:${device.id}`,
-          data: { fingerprint: device.fingerprint, platform: device.platform, model: device.model },
+          data: { fingerprint: device.fingerprint, platform: device.platform, model: device.model, hardware: chip?.level ?? 'none' },
         });
         return { auth, user: toUserSummary(user), device: toDeviceSummary(device) };
       });
@@ -311,6 +364,8 @@ export async function authRoutes(app: FastifyInstance, deps: Deps) {
       const t = await consumeTicket(tx, deps, body.ticket, 'rebind', body.proof);
       const user = (await loadUser(tx, t.user_id))!;
       const bound = await loadActiveDevice(tx, user.id);
+      // The new phone proves its security chip now; the admin approves an already-verified phone.
+      const chip = await attestForTicket(tx, deps, user, t.device_info.platform, body.ticket, body.attestation?.chain);
       const existing = await tx.query<{ id: string; kind: string; to_public_key: Buffer | null }>(
         `select id, kind, to_public_key from device_requests where user_id = $1 and status = 'pending' for update`,
         [user.id],
@@ -319,9 +374,9 @@ export async function authRoutes(app: FastifyInstance, deps: Deps) {
       if (prev && prev.kind === 'rebind' && prev.to_public_key?.equals(t.public_key)) return { requestId: prev.id, status: 'pending' as const };
       if (prev) await tx.query(`update device_requests set status = 'cancelled', decided_at = $2 where id = $1`, [prev.id, new Date(deps.clock())]);
       const { rows } = await tx.query<{ id: string }>(
-        `insert into device_requests(user_id, kind, from_device_id, to_public_key, to_device_info, reason)
-         values ($1, 'rebind', $2, $3, $4, $5) returning id`,
-        [user.id, bound?.id ?? null, t.public_key, JSON.stringify(t.device_info), body.reason],
+        `insert into device_requests(user_id, kind, from_device_id, to_public_key, to_device_info, reason, to_hw_key_spki, to_attest_level, to_attest_patch)
+         values ($1, 'rebind', $2, $3, $4, $5, $6, $7, $8) returning id`,
+        [user.id, bound?.id ?? null, t.public_key, JSON.stringify(t.device_info), body.reason, chip?.spki ?? null, chip?.level ?? null, chip?.patch ?? null],
       );
       await appendAudit(tx, {
         tenantId: user.tenant_id,
@@ -340,6 +395,63 @@ export async function authRoutes(app: FastifyInstance, deps: Deps) {
   app.post('/v1/auth/refresh', { config: { rateLimit: { max: 600, timeWindow: '1 minute' } } }, async (req) => {
     const body = RefreshBody.parse(req.body);
     return rotateRefreshToken(req, deps, body.refreshToken);
+  });
+
+  // ── Phones bound before hardware keys: move the key into the security chip ──
+  /** Once per app start: is this phone's key in its security chip? If not (Android), a fresh challenge. */
+  app.get('/v1/devices/attest', async (req): Promise<AttestStatusResponse> => {
+    const auth = await requireDevice(req, deps);
+    const d = (await deps.db.query<{ attest_level: 'tee' | 'strongbox' | null; hw: boolean }>('select attest_level, hw_key_spki is not null as hw from devices where id = $1', [auth.deviceId]))
+      .rows[0]!;
+    const required = await hardwareRequired(deps.db, deps, auth.tenantId, auth.devicePlatform);
+    if (d.hw && d.attest_level) return { hardware: d.attest_level, required, challenge: null };
+    if (auth.devicePlatform !== 'android' || auth.attestFailure) return { hardware: 'none', required, challenge: null };
+    const challenge = randomBytes(32);
+    await deps.db.query(
+      `insert into attest_challenges(device_id, challenge, expires_at) values ($1, $2, $3)
+       on conflict (device_id) do update set challenge = excluded.challenge, expires_at = excluded.expires_at`,
+      [auth.deviceId, challenge, new Date(deps.clock() + 10 * 60_000)],
+    );
+    return { hardware: 'none', required, challenge: toB64url(challenge) };
+  });
+
+  /**
+   * Stores the attested security-chip key for this phone. Only ever once: a phone that already has one
+   * can't swap it (that needs a new binding), so a copied software key can't move the binding elsewhere.
+   */
+  app.post('/v1/devices/attest', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req) => {
+    const auth = await requireDevice(req, deps);
+    const body = AttestBody.parse(req.body);
+    const failures: { code: string; detail: string }[] = [];
+    try {
+      return await withTx(deps.db, async (tx) => {
+        const c = (await tx.query<{ challenge: Buffer; expires_at: Date }>('delete from attest_challenges where device_id = $1 returning challenge, expires_at', [auth.deviceId])).rows[0];
+        if (!c || c.expires_at.getTime() <= deps.clock()) throw new ApiError(400, 'BAD_REQUEST', 'The security check expired. It will run again next time the app opens.');
+        const d = (await tx.query<{ hw: boolean }>('select hw_key_spki is not null as hw from devices where id = $1 for update', [auth.deviceId])).rows[0]!;
+        if (d.hw) throw new ApiError(409, 'CONFLICT', 'This phone’s key is already in its security chip.');
+        const chip = checkAttestation(deps, body.chain, c.challenge, true, false, (code, detail) => failures.push({ code, detail }))!;
+        await tx.query('update devices set hw_key_spki = $2, attest_level = $3, attest_patch = $4, attested_at = $5 where id = $1', [
+          auth.deviceId,
+          chip.spki,
+          chip.level,
+          chip.patch,
+          new Date(deps.clock()),
+        ]);
+        await appendAudit(tx, { tenantId: auth.tenantId, actorType: 'user', actorId: auth.userId, action: 'device.attested', subject: `device:${auth.deviceId}`, data: { level: chip.level } });
+        return { hardware: chip.level };
+      });
+    } catch (err) {
+      const f = failures[0];
+      if (f) {
+        // Google proved this phone tampered with: remember it (its scans are refused) unless checks are relaxed.
+        if (isTamperEvidence(f.code) && !(await switchOn(deps.db, 'hardware_checks_relaxed')))
+          await deps.db.query('update devices set attest_failure = $2 where id = $1', [auth.deviceId, f.code]);
+        await withTx(deps.db, (tx) =>
+          appendAudit(tx, { tenantId: auth.tenantId, actorType: 'user', actorId: auth.userId, action: 'device.attest_failed', subject: `device:${auth.deviceId}`, data: f }),
+        );
+      }
+      throw err;
+    }
   });
 
   app.post('/v1/auth/logout', async (req) => {

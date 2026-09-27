@@ -18,6 +18,8 @@ import {
 } from '@attendly/protocol';
 import { buildApp } from '../src/app';
 import { loadConfig } from '../src/config';
+import { bindChallenge } from '../src/lib/attestation';
+import type { AttestCA, IssuedKey, LeafOptions } from './attest-helper';
 import { createPool, withTx, type Db } from '../src/db';
 import { migrate } from '../src/migrate';
 import type { OtpMessage, OtpSender } from '../src/lib/delivery';
@@ -154,6 +156,14 @@ export class TestDevice {
   readonly keys: KeyPair;
   accessToken?: string;
   refreshToken?: string;
+  /** A simulated security chip: attests at bind and signs every request (like the app does for marks). */
+  chip: { ca: AttestCA; opts?: LeafOptions } | null = null;
+  hwKey?: IssuedKey;
+
+  withChip(ca: AttestCA, opts?: LeafOptions): this {
+    this.chip = { ca, opts };
+    return this;
+  }
 
   constructor(
     private ctx: TestCtx,
@@ -195,7 +205,12 @@ export class TestDevice {
 
   async bind(ticket: string) {
     const proof = signB64(bindProofString({ ticket, publicKeyB64: this.publicKeyB64, purpose: 'bind' }), this.keys.secretKey);
-    const res = await this.ctx.app.inject({ method: 'POST', url: '/v1/devices/bind', payload: { ticket, proof } });
+    let attestation: { chain: string[] } | undefined;
+    if (this.chip) {
+      this.hwKey = this.chip.ca.issue(bindChallenge(ticket), this.chip.opts);
+      attestation = { chain: this.hwKey.chain };
+    }
+    const res = await this.ctx.app.inject({ method: 'POST', url: '/v1/devices/bind', payload: { ticket, proof, ...(attestation ? { attestation } : {}) } });
     if (res.statusCode === 200) this.adopt(res.json().auth);
     return res;
   }
@@ -223,17 +238,21 @@ export class TestDevice {
     throw new Error(`unexpected sign-in result: ${v.body}`);
   }
 
-  signedHeaders(method: string, url: string, body: string, opts: { ts?: number; nonce?: string; key?: Uint8Array } = {}) {
+  signedHeaders(method: string, url: string, body: string, opts: { ts?: number; nonce?: string; key?: Uint8Array; hw?: boolean } = {}): Record<string, string> {
     const ts = opts.ts ?? this.ctx.clock.now;
     const nonce = opts.nonce ?? randomToken(16);
-    const sig = signB64(
-      requestSigningString({ method, pathWithQuery: url, timestampMs: ts, nonce, bodySha256Hex: sha256Hex(body) }),
-      opts.key ?? this.keys.secretKey,
-    );
-    return { 'x-attendly-ts': String(ts), 'x-attendly-nonce': nonce, 'x-attendly-sig': sig };
+    const signing = requestSigningString({ method, pathWithQuery: url, timestampMs: ts, nonce, bodySha256Hex: sha256Hex(body) });
+    const sig = signB64(signing, opts.key ?? this.keys.secretKey);
+    const hw: Record<string, string> = this.hwKey && opts.hw !== false ? { 'x-attendly-hwsig': this.hwKey.sign(signing) } : {};
+    return { 'x-attendly-ts': String(ts), 'x-attendly-nonce': nonce, 'x-attendly-sig': sig, ...hw };
   }
 
-  async call(method: 'GET' | 'POST', url: string, payload?: unknown, opts: { ts?: number; nonce?: string; key?: Uint8Array; token?: string; tamper?: string } = {}) {
+  async call(
+    method: 'GET' | 'POST',
+    url: string,
+    payload?: unknown,
+    opts: { ts?: number; nonce?: string; key?: Uint8Array; token?: string; tamper?: string; hw?: boolean } = {},
+  ) {
     const body = payload === undefined ? '' : JSON.stringify(payload);
     const headers: Record<string, string> = {
       ...this.signedHeaders(method, url, body, opts),

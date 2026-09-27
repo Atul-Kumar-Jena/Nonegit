@@ -6,6 +6,7 @@ import { seedDemo } from './seed';
 import { bootstrapInstitution } from './bootstrap';
 import { materializeTimetable } from './lib/timetable';
 import { createPushSender, parseServiceAccount, startPushDispatcher } from './lib/push';
+import { startRevocationRefresh } from './lib/device-trust';
 
 async function main() {
   const config = loadConfig();
@@ -28,6 +29,8 @@ async function main() {
   const fcm = parseServiceAccount(process.env.FCM_SERVICE_ACCOUNT);
   const stopPush = fcm ? startPushDispatcher(db, createPushSender(fcm, (m, x) => app.log.warn(x, m)), (m, x) => app.log.warn(x, m)) : () => {};
   app.log.info(fcm ? `instant push on (Firebase project ${fcm.project_id})` : 'instant push off (FCM_SERVICE_ACCOUNT not set): apps check for news themselves');
+  // Google's list of revoked phone attestation keys (leaked or compromised), refreshed in the background.
+  const stopRevocations = startRevocationRefresh((m) => app.log.info(m));
   let closing = false;
   const shutdown = async (signal: string) => {
     if (closing) return;
@@ -35,6 +38,7 @@ async function main() {
     app.log.info(`${signal} received, shutting down gracefully`);
     stopJanitor();
     stopPush();
+    stopRevocations();
     const force = setTimeout(() => process.exit(1), 10_000);
     force.unref();
     try {

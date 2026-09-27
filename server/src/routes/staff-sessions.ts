@@ -163,9 +163,21 @@ export async function staffSessionRoutes(app: FastifyInstance, deps: Deps) {
         if (b.mode === 'qr' && (lat == null || lng == null))
           throw new ApiError(400, 'BAD_REQUEST', 'A QR class needs a location: allow location on this phone or save the room’s location first.');
         await tx.query(
-          `update class_sessions set status = 'live', mode = $2, lat = $3, lng = $4, radius_m = $5, rotation_s = $6, started_at = $7, started_by = $8
+          `update class_sessions set status = 'live', mode = $2, lat = $3, lng = $4, radius_m = $5, rotation_s = $6, started_at = $7, started_by = $8,
+                  center_accuracy_m = case when $9 then $10 else center_accuracy_m end
             where id = $1`,
-          [id, b.mode, lat, lng, b.radiusM ?? s.radius_m, b.rotationS ?? s.rotation_s, new Date(startedAt), auth.userId],
+          [
+            id,
+            b.mode,
+            lat,
+            lng,
+            b.radiusM ?? s.radius_m,
+            b.rotationS ?? s.rotation_s,
+            new Date(startedAt),
+            auth.userId,
+            b.lat != null,
+            b.lat != null ? (b.centerAccuracyM ?? null) : null,
+          ],
         );
         await assignLectureNo(tx, id);
         await staffAudit(tx, auth, 'session.start', `session:${id}`, { mode: b.mode, synced: b.startedAt !== undefined, device: auth.deviceFingerprint });
@@ -535,8 +547,18 @@ export async function staffSessionRoutes(app: FastifyInstance, deps: Deps) {
     const b = DecisionBody.parse(req.body);
     const t = new Date(now());
     await withTx(deps.db, async (tx) => {
-      const { rows } = await tx.query<{ id: string; user_id: string; kind: 'rebind' | 'reset'; status: string; to_public_key: Buffer | null; to_device_info: DeviceInfo | null }>(
-        `select r.id, r.user_id, r.kind, r.status, r.to_public_key, r.to_device_info
+      const { rows } = await tx.query<{
+        id: string;
+        user_id: string;
+        kind: 'rebind' | 'reset';
+        status: string;
+        to_public_key: Buffer | null;
+        to_device_info: DeviceInfo | null;
+        to_hw_key_spki: Buffer | null;
+        to_attest_level: string | null;
+        to_attest_patch: number | null;
+      }>(
+        `select r.id, r.user_id, r.kind, r.status, r.to_public_key, r.to_device_info, r.to_hw_key_spki, r.to_attest_level, r.to_attest_patch
            from device_requests r join users u on u.id = r.user_id where r.id = $1 and u.tenant_id = $2 for update of r`,
         [id, auth.tenantId],
       );
@@ -558,9 +580,24 @@ export async function staffSessionRoutes(app: FastifyInstance, deps: Deps) {
           await assertPhoneFree(tx, hw, r.user_id, role);
           await revokeActiveDevice(tx, r.user_id, 'replaced by approved device switch', t);
           await tx.query(
-            `insert into devices(user_id, public_key, fingerprint, platform, model, os_version, app_version, status, bound_at, hw_hash)
-             values ($1, $2, $3, $4, $5, $6, $7, 'active', $8, $9)`,
-            [r.user_id, r.to_public_key, keyFingerprint(r.to_public_key), info.platform, info.model, info.osVersion, info.appVersion, t, hw],
+            `insert into devices(user_id, public_key, fingerprint, platform, model, os_version, app_version, status, bound_at, hw_hash,
+                                 hw_key_spki, attest_level, attest_patch, attested_at)
+             values ($1, $2, $3, $4, $5, $6, $7, 'active', $8, $9, $10, $11, $12, $13)`,
+            [
+              r.user_id,
+              r.to_public_key,
+              keyFingerprint(r.to_public_key),
+              info.platform,
+              info.model,
+              info.osVersion,
+              info.appVersion,
+              t,
+              hw,
+              r.to_hw_key_spki,
+              r.to_attest_level,
+              r.to_attest_patch,
+              r.to_hw_key_spki ? t : null,
+            ],
           );
         } else {
           await revokeActiveDevice(tx, r.user_id, 'reset approved', t);

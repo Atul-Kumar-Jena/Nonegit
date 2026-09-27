@@ -4,6 +4,7 @@ import { InstitutionLookup, normalizeInstitutionCode, type Channel, type OtpVeri
 import { ApiClient, ApiRequestError, normalizeBaseUrl } from '../lib/api-core';
 import { collectDeviceInfo } from '../lib/device-info';
 import { destroyDeviceKey, deviceKeys } from '../lib/device-key';
+import { hardwareSigner, removeHardwareKey } from '../lib/hardware';
 import { ALLOW_HTTP, DEFAULT_SERVER_URL } from '../lib/env';
 import {
   ServerIdentityError,
@@ -89,6 +90,7 @@ export interface NotificationTarget {
 
 const CLOCK_KEY = 'clock.offset.v1';
 const INSTITUTION_KEY = 'institution.v1';
+const CHIP_TRY_KEY = 'chip.try.v1';
 let lastClockSave = 0;
 function persistClockOffset(offsetMs: number) {
   const t = Date.now();
@@ -146,6 +148,7 @@ export function SessionProvider({ children, audience }: { children: ReactNode; a
         baseUrl: url,
         keys: deviceKeys,
         tokens: tokenStore,
+        hardware: hardwareSigner,
         onClockSync: persistClockOffset,
         onSessionLost: (err) => {
           queryClient.clear();
@@ -196,6 +199,25 @@ export function SessionProvider({ children, audience }: { children: ReactNode; a
     },
     [buildClient, installClient, queryClient],
   );
+
+  // ── phones bound before chip keys: move the key into the security chip, silently, once ──
+  const chipChecked = useRef(false);
+  useEffect(() => {
+    if (phase !== 'signed-in' || !api || !hardwareSigner || chipChecked.current) return;
+    chipChecked.current = true;
+    void (async () => {
+      // A phone whose chip can't do it (or a refusal) is retried at most once a day.
+      const last = await vault.get<number>(CHIP_TRY_KEY, (v) => (typeof v === 'number' ? v : NaN)).catch(() => null);
+      if (last && Date.now() - last < 24 * 3_600_000) return;
+      try {
+        const where = await api.secureWithChip();
+        if (where === 'none') await vault.set(CHIP_TRY_KEY, Date.now()).catch(() => undefined);
+      } catch (err) {
+        // Offline: try again next launch. Anything else: tomorrow.
+        if (!(err instanceof ApiRequestError && err.transient)) await vault.set(CHIP_TRY_KEY, Date.now()).catch(() => undefined);
+      }
+    })();
+  }, [phase, api]);
 
   // ── boot ──
   useEffect(() => {
@@ -377,6 +399,7 @@ export function SessionProvider({ children, audience }: { children: ReactNode; a
     }
     await tokenStore.clear();
     await destroyDeviceKey();
+    removeHardwareKey();
     await outbox.wipe().catch(() => undefined);
     await vault.destroy().catch(() => undefined);
     await clearServerConfig();

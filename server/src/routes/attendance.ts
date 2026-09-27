@@ -1,7 +1,15 @@
 import type { FastifyInstance } from 'fastify';
 import {
+  IMPOSSIBLE_TRAVEL_MIN_M,
+  IMPOSSIBLE_TRAVEL_MPS,
   MAX_LOCATION_AGE_MS,
   MarkBody,
+  TELEPORT_MIN_M,
+  TELEPORT_SPEED_MPS,
+  distanceMeters,
+  fuseSamples,
+  maxUnexplainedSpeed,
+  type GeoSample,
   REJECTION_CODES,
   attendancePercent,
   currentQrSeq,
@@ -15,6 +23,7 @@ import {
 } from '@attendly/protocol';
 import type { Deps } from '../deps';
 import { tenantFlag } from '../lib/flags';
+import { hardwareRequired } from '../lib/device-trust';
 import { isUniqueViolation, withTx } from '../db';
 import { appendAudit } from '../lib/audit';
 import { perDeviceKey, requireDevice, type AuthContext } from '../lib/auth';
@@ -46,6 +55,7 @@ interface SessionRow {
   lat: number | null;
   lng: number | null;
   radius_m: number;
+  center_accuracy_m: number | null;
   rotation_s: number;
   qr_secret: Buffer;
   status: 'scheduled' | 'live' | 'closed' | 'cancelled';
@@ -153,11 +163,21 @@ export async function attendanceRoutes(app: FastifyInstance, deps: Deps) {
       const paused = await deps.db.query<{ enabled: boolean }>(`select enabled from system_flags where key = 'scans_paused'`);
       if (paused.rows[0]?.enabled) throw new ScanRejection('E-PAUSED');
 
+      // 0. The phone itself. Once its key is in the security chip, the chip must sign every scan
+      //    (a copied software key alone can't mark), and Google-proven tampering is refused.
+      if (auth.attestFailure)
+        throw new ScanRejection('E-INTEGRITY', 'Google’s hardware check found this phone rooted, unlocked or running a modified app.', { signal: 'attestation', code: auth.attestFailure });
+      if (auth.hardwareKey && !auth.hardwareSigned) throw new ScanRejection('E-DEVICE', 'This scan wasn’t signed by your phone’s security chip.', { signal: 'hw_sig' });
+      if (!auth.hardwareKey && (await hardwareRequired(deps.db, deps, auth.tenantId, auth.devicePlatform)))
+        throw new ScanRejection('E-DEVICE', 'Your phone isn’t secured yet. Open Attendly while online, then scan again.', { signal: 'hw_missing' });
+
       // 1. Token must be a well-formed, authentic QR for a session of *this* institution.
       const parsed = parseQrToken(body.qr);
       if (!parsed) throw new ScanRejection('E-QR-INVALID', 'The scanned code is not an Attendly session code.', { reason: 'malformed' });
       const { rows } = await deps.db.query<SessionRow>(
-        `select s.*, coalesce(r.name, s.room) as room, c.code as course_code, c.title as course_title, c.kind as course_kind
+        `select s.*, coalesce(r.name, s.room) as room,
+                coalesce(s.center_accuracy_m, case when s.lat = r.lat and s.lng = r.lng then r.center_accuracy_m end) as center_accuracy_m,
+                c.code as course_code, c.title as course_title, c.kind as course_kind
            from class_sessions s join courses c on c.id = s.course_id left join rooms r on r.id = s.room_id where s.id = $1`,
         [parsed.sessionId],
       );
@@ -196,18 +216,55 @@ export async function attendanceRoutes(app: FastifyInstance, deps: Deps) {
         throw new ScanRejection('E-EXPIRED', `Token ${seqLabel(parsed.seq)} expired — the live code was ${seqLabel(cur)}.`, { seq: parsed.seq, current: cur, offline });
 
       // 6. Location: genuine, fresh relative to the scan, precise and inside the geofence.
+      //    The phone sends its raw fixes; the server fuses them itself rather than trusting a summary.
       const loc = body.location;
-      if (loc.mocked) throw new ScanRejection('E-MOCK', 'The operating system flagged this location as coming from a mock-location provider.', { signal: 'os_mock_flag' });
-      if (Math.abs(scannedAt - loc.capturedAt) > MAX_LOCATION_AGE_MS) throw new ScanRejection('E-GPS-STALE', undefined, { ageMs: scannedAt - loc.capturedAt });
+      const raw: GeoSample[] = loc.samples?.length ? loc.samples : [{ lat: loc.lat, lng: loc.lng, accuracyM: loc.accuracyM, t: loc.capturedAt, mocked: loc.mocked }];
+      if (loc.mocked || raw.some((x) => x.mocked)) throw new ScanRejection('E-MOCK', 'The operating system flagged this location as coming from a mock-location provider.', { signal: 'os_mock_flag' });
+      const fresh = raw.filter((x) => Math.abs(scannedAt - x.t) <= MAX_LOCATION_AGE_MS);
+      if (!fresh.length) throw new ScanRejection('E-GPS-STALE', undefined, { ageMs: scannedAt - loc.capturedAt });
+      if (fresh.some((x) => !(x.accuracyM > 0))) throw new ScanRejection('E-MOCK', 'GPS reported perfect (0 m) accuracy, which real hardware never does.', { signal: 'zero_accuracy' });
+      const jump = maxUnexplainedSpeed(fresh);
+      if (jump.speedMps > TELEPORT_SPEED_MPS && jump.jumpM > TELEPORT_MIN_M)
+        throw new ScanRejection('E-MOCK', `Your location jumped ${Math.round(jump.jumpM)} m in an instant while scanning.`, { signal: 'teleport', jumpM: Math.round(jump.jumpM) });
+      const fused = fuseSamples(fresh)!;
       const strict = await tenantFlag(deps.db, auth.tenantId, 'strict_geo');
-      const geo = evaluateGeofence({ centerLat: session.lat, centerLng: session.lng, radiusM: session.radius_m, lat: loc.lat, lng: loc.lng, accuracyM: loc.accuracyM, strict });
+      const geo = evaluateGeofence({
+        centerLat: session.lat,
+        centerLng: session.lng,
+        radiusM: session.radius_m,
+        lat: fused.lat,
+        lng: fused.lng,
+        accuracyM: fused.accuracyM,
+        centerAccuracyM: session.center_accuracy_m,
+        strict,
+      });
       const where = session.room ?? 'the classroom';
       if (!geo.ok) {
         const distance = Math.round(geo.distanceM);
-        const data = { distanceM: distance, accuracyM: loc.accuracyM, radiusM: session.radius_m, offline };
-        if (geo.reason === 'suspicious') throw new ScanRejection('E-MOCK', `GPS reported ${loc.accuracyM}m accuracy, which real hardware never does.`, { ...data, signal: 'zero_accuracy' });
-        if (geo.reason === 'imprecise') throw new ScanRejection('E-GPS-WEAK', `Your location is only accurate to ±${Math.round(loc.accuracyM)}m.`, data);
+        const data = { distanceM: distance, accuracyM: Math.round(fused.accuracyM), radiusM: session.radius_m, samples: fresh.length, offline };
+        if (geo.reason === 'imprecise') throw new ScanRejection('E-GPS-WEAK', `Your location is only accurate to ±${Math.round(fused.accuracyM)}m.`, data);
         throw new ScanRejection('E-GEO', `You're ${distance}m from ${where}. Sessions accept marks only inside the ${session.radius_m}m perimeter.`, data);
+      }
+      // Impossible travel: compared with the student's scans closest in time (either side, other classes).
+      const near = await deps.db.query<{ lat: number; lng: number; accuracy_m: number | null; marked_at: Date }>(
+        `(select lat, lng, accuracy_m, marked_at from attendance_records
+           where user_id = $1 and session_id <> $2 and lat is not null and revoked_at is null and marked_at <= $3 and marked_at > $3 - interval '6 hours'
+           order by marked_at desc limit 1)
+         union all
+         (select lat, lng, accuracy_m, marked_at from attendance_records
+           where user_id = $1 and session_id <> $2 and lat is not null and revoked_at is null and marked_at > $3 and marked_at < $3 + interval '6 hours'
+           order by marked_at asc limit 1)`,
+        [auth.userId, session.id, new Date(scannedAt)],
+      );
+      for (const r of near.rows) {
+        const gap = distanceMeters(r.lat, r.lng, fused.lat, fused.lng) - (r.accuracy_m ?? 0) - fused.accuracyM;
+        const secs = Math.max(1, Math.abs(scannedAt - r.marked_at.getTime()) / 1000);
+        if (gap > IMPOSSIBLE_TRAVEL_MIN_M && gap / secs > IMPOSSIBLE_TRAVEL_MPS)
+          throw new ScanRejection('E-MOCK', `This scan is ${Math.round(gap / 1000)} km from your other scan ${Math.round(secs / 60)} min apart — no one travels that fast.`, {
+            signal: 'impossible_travel',
+            km: Math.round(gap / 100) / 10,
+            minutes: Math.round(secs / 60),
+          });
       }
 
       // 7. Record + sign the receipt atomically. A scheduled class goes live on its first valid scan
@@ -238,8 +295,8 @@ export async function attendanceRoutes(app: FastifyInstance, deps: Deps) {
           });
           const ins = await tx.query<RecordRow>(
             `insert into attendance_records(id, session_id, user_id, device_id, marked_at, qr_seq, lat, lng, accuracy_m, distance_m,
-                                            device_signature, request_digest, receipt_signature, server_key_id, device_fingerprint, offline)
-             values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+                                            device_signature, request_digest, receipt_signature, server_key_id, device_fingerprint, offline, hw_signed, gps_samples)
+             values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
              returning ${RECORD_COLUMNS}`,
             [
               recordId,
@@ -248,9 +305,9 @@ export async function attendanceRoutes(app: FastifyInstance, deps: Deps) {
               auth.deviceId,
               markedAt,
               parsed.seq,
-              loc.lat,
-              loc.lng,
-              loc.accuracyM,
+              fused.lat,
+              fused.lng,
+              fused.accuracyM,
               geo.distanceM,
               auth.signature,
               auth.requestDigest,
@@ -258,6 +315,8 @@ export async function attendanceRoutes(app: FastifyInstance, deps: Deps) {
               deps.signer.kid,
               auth.deviceFingerprint,
               offline,
+              auth.hardwareSigned,
+              fresh.length,
             ],
           );
           await appendAudit(tx, {

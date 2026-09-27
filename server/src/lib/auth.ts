@@ -10,6 +10,7 @@ import {
 } from '@attendly/protocol';
 import type { Queryable } from '../db';
 import type { Deps } from '../deps';
+import { verifyHardwareSignature } from './attestation';
 import { ApiError, unauthenticated } from './errors';
 import { randomToken } from './secrets';
 
@@ -44,6 +45,8 @@ export function perDeviceKey(req: FastifyRequest): string {
 export const HDR_TS = 'x-attendly-ts';
 export const HDR_NONCE = 'x-attendly-nonce';
 export const HDR_SIG = 'x-attendly-sig';
+/** ECDSA P-256 signature over the same request string, made inside the phone's security chip. */
+export const HDR_HWSIG = 'x-attendly-hwsig';
 
 export interface AuthContext {
   sessionId: string;
@@ -60,6 +63,13 @@ export interface AuthContext {
   signature: Buffer;
   /** SHA-256 of the signed request string. */
   requestDigest: Buffer;
+  devicePlatform: string;
+  /** The phone's attested security-chip key (null: software key only). */
+  hardwareKey: Buffer | null;
+  /** This request also carries a valid signature from that security-chip key. */
+  hardwareSigned: boolean;
+  /** Google's attestation proved this phone tampered with (rooted / unlocked / clone app). */
+  attestFailure: string | null;
 }
 
 export async function issueTokens(
@@ -120,7 +130,7 @@ async function verifyDeviceSignature(
   deps: Deps,
   req: FastifyRequest,
   device: { id: string; publicKey: Buffer },
-): Promise<{ signature: Buffer; requestDigest: Buffer }> {
+): Promise<{ signature: Buffer; requestDigest: Buffer; signing: string }> {
   const tsStr = header(req, HDR_TS);
   const nonce = header(req, HDR_NONCE);
   const sigB64 = header(req, HDR_SIG);
@@ -147,7 +157,7 @@ async function verifyDeviceSignature(
     [device.id, nonce, new Date(now + NONCE_TTL_MS)],
   );
   if (inserted.rowCount !== 1) throw new ApiError(401, 'REPLAY');
-  return { signature, requestDigest: Buffer.from(sha256Hex(signing), 'hex') };
+  return { signature, requestDigest: Buffer.from(sha256Hex(signing), 'hex'), signing };
 }
 
 interface SessionRow {
@@ -160,6 +170,9 @@ interface SessionRow {
   device_id: string;
   public_key: Buffer;
   fingerprint: string;
+  platform: string;
+  hw_key_spki: Buffer | null;
+  attest_failure: string | null;
   device_status: 'active' | 'revoked';
   user_status: 'active' | 'suspended';
   tenant_status: 'active' | 'suspended';
@@ -171,7 +184,7 @@ interface SessionRow {
 
 const SESSION_SELECT = `
   select s.id as session_id, s.family_id, s.user_id, u.role, u.permissions, u.tenant_id, s.device_id,
-         d.public_key, d.fingerprint, d.status as device_status, u.status as user_status,
+         d.public_key, d.fingerprint, d.platform, d.hw_key_spki, d.attest_failure, d.status as device_status, u.status as user_status,
          t.status as tenant_status, s.access_expires_at, s.revoked_at, s.rotated_at, s.last_used_at
     from auth_sessions s
     join devices d on d.id = s.device_id
@@ -197,7 +210,9 @@ export async function requireDevice(req: FastifyRequest, deps: Deps, roles?: rea
 
   const now = deps.clock();
   // Verify possession of the device key *before* telling the caller anything about token expiry.
-  const { signature, requestDigest } = await verifyDeviceSignature(deps.db, deps, req, { id: s.device_id, publicKey: s.public_key });
+  const { signature, requestDigest, signing } = await verifyDeviceSignature(deps.db, deps, req, { id: s.device_id, publicKey: s.public_key });
+  const hwSig = header(req, HDR_HWSIG);
+  const hardwareSigned = !!(s.hw_key_spki && hwSig && hwSig.length <= 200 && verifyHardwareSignature(s.hw_key_spki, signing, hwSig));
   if (s.access_expires_at.getTime() <= now || s.rotated_at) throw new ApiError(401, 'TOKEN_EXPIRED');
   if (roles && !roles.includes(s.role)) throw new ApiError(403, 'FORBIDDEN');
 
@@ -218,6 +233,10 @@ export async function requireDevice(req: FastifyRequest, deps: Deps, roles?: rea
     deviceFingerprint: s.fingerprint,
     signature,
     requestDigest,
+    devicePlatform: s.platform,
+    hardwareKey: s.hw_key_spki,
+    hardwareSigned,
+    attestFailure: s.attest_failure,
   };
 }
 

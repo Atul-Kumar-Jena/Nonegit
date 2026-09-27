@@ -6,6 +6,7 @@
 import { z } from 'zod';
 import { isB64urlOfLength } from './encoding';
 import { QR_MAX_LENGTH } from './qr';
+import { MAX_GEO_SAMPLES } from './geo';
 
 export const API_VERSION = 1;
 
@@ -148,6 +149,8 @@ export const DeviceSummary = z.object({
   status: z.enum(['active', 'revoked']),
   boundAt: IsoDate.nullable(),
   lastSeenAt: IsoDate.nullable(),
+  /** Where the phone's signing key lives: its security chip (TEE / StrongBox, proven by Google) or software. */
+  hardware: z.enum(['none', 'tee', 'strongbox']).default('none'),
 });
 export type DeviceSummary = z.infer<typeof DeviceSummary>;
 
@@ -164,13 +167,31 @@ export const OtpVerifyResponse = z.discriminatedUnion('status', [
 ]);
 export type OtpVerifyResponse = z.infer<typeof OtpVerifyResponse>;
 
-export const BindBody = z.object({ ticket: OpaqueToken, proof: SignatureB64 });
+/** Android key attestation: the certificate chain (base64 DER, leaf first) of a key made inside the phone's security chip. */
+export const Attestation = z.object({ chain: z.array(z.string().min(100).max(12_000)).min(2).max(10) });
+export type Attestation = z.infer<typeof Attestation>;
+
+/** The attestation challenge a phone uses when binding: SHA-256 of this string (see attestBindChallengeString). */
+export const attestBindChallengeString = (ticket: string) => `attendly-attest:${ticket}`;
+
+export const BindBody = z.object({ ticket: OpaqueToken, proof: SignatureB64, attestation: Attestation.optional() });
 export type BindBody = z.infer<typeof BindBody>;
 
 export const BindResponse = z.object({ auth: AuthTokens, user: UserSummary, device: DeviceSummary });
 export type BindResponse = z.infer<typeof BindResponse>;
 
-export const RebindRequestBody = z.object({ ticket: OpaqueToken, proof: SignatureB64, reason: z.string().trim().min(3).max(200) });
+export const RebindRequestBody = z.object({ ticket: OpaqueToken, proof: SignatureB64, reason: z.string().trim().min(3).max(200), attestation: Attestation.optional() });
+
+/** A phone bound before hardware keys: whether it should (and how to) move its key into the security chip. */
+export const AttestStatusResponse = z.object({
+  hardware: z.enum(['none', 'tee', 'strongbox']),
+  required: z.boolean(),
+  /** base64url, 32 bytes: pass to the security chip as the attestation challenge (single use, 10 minutes). */
+  challenge: z.string().nullable(),
+});
+export type AttestStatusResponse = z.infer<typeof AttestStatusResponse>;
+export const AttestBody = Attestation;
+export type AttestBody = z.infer<typeof AttestBody>;
 export type RebindRequestBody = z.infer<typeof RebindRequestBody>;
 
 export const DeviceRequestResponse = z.object({ requestId: z.uuid(), status: z.enum(['pending', 'approved', 'denied', 'cancelled']) });
@@ -277,6 +298,19 @@ export const MarkBody = z.object({
     accuracyM: z.number().nonnegative().max(100_000),
     mocked: z.boolean(),
     capturedAt: z.number().int().positive(),
+    /** The raw fixes behind this position (the server fuses them itself). */
+    samples: z
+      .array(
+        z.object({
+          lat: z.number().gte(-90).lte(90),
+          lng: z.number().gte(-180).lte(180),
+          accuracyM: z.number().nonnegative().max(100_000),
+          t: z.number().int().positive(),
+          mocked: z.boolean().optional(),
+        }),
+      )
+      .max(MAX_GEO_SAMPLES)
+      .optional(),
   }),
 });
 export type MarkBody = z.infer<typeof MarkBody>;

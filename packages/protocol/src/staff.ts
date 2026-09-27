@@ -83,6 +83,8 @@ export const Room = z.object({
   lat: z.number().nullable(),
   lng: z.number().nullable(),
   radiusM: z.number().int(),
+  /** How precisely the centre was measured (averaged fixes), metres. */
+  centerAccuracyM: z.number().nullable().default(null),
   active: z.boolean(),
 });
 export type Room = z.infer<typeof Room>;
@@ -92,6 +94,7 @@ export const RoomBody = z
     name: text(60),
     lat: lat.nullable().optional(),
     lng: lng.nullable().optional(),
+    centerAccuracyM: z.number().min(0).max(1000).nullable().optional(),
     radiusM: z.number().int().min(10).max(1000).default(50),
     active: z.boolean().default(true),
   })
@@ -277,6 +280,8 @@ export const StartSessionBody = z.object({
   mode: SessionMode,
   lat: lat.nullable().optional(),
   lng: lng.nullable().optional(),
+  /** How precisely the teacher's phone measured the classroom centre (averaged fixes), metres. */
+  centerAccuracyM: z.number().min(0).max(1000).nullable().optional(),
   radiusM: z.number().int().min(10).max(1000).optional(),
   rotationS: z.number().int().min(3).max(60).optional(),
   /** Set when a session was started offline and is being synced later (server-corrected ms). */

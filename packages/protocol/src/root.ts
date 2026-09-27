@@ -114,7 +114,7 @@ export const TenantSummary = z.object({
 });
 export type TenantSummary = z.infer<typeof TenantSummary>;
 
-export const TenantFlagKey = z.enum(['strict_geo', 'student_requests', 'manual_registers']);
+export const TenantFlagKey = z.enum(['strict_geo', 'student_requests', 'manual_registers', 'hardware_binding']);
 export type TenantFlagKey = z.infer<typeof TenantFlagKey>;
 
 export const FlagDefinition = z.object({ key: z.string(), label: z.string(), detail: z.string(), default: z.boolean(), enforced: z.boolean() });
