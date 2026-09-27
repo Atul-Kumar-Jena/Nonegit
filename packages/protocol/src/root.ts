@@ -53,6 +53,8 @@ export const RootConsole = z.object({
   /** A demo "sandbox" developer: sees only the demo institute and can't flip platform switches. */
   sandbox: z.boolean(),
   environment: z.object({ env: z.string(), demoMode: z.boolean(), otpDelivery: z.string(), apiVersion: z.number().int(), serverKeyId: z.string() }),
+  /** Is this server set up for real use? One line per setting, with how to fix it. */
+  checklist: z.array(z.object({ key: z.string(), label: z.string(), ok: z.boolean(), fix: z.string() })).default([]),
   health: z.object({
     db: z.boolean(),
     dbLatencyMs: z.number().nullable(),

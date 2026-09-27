@@ -22,7 +22,10 @@
 #
 # Sign-in codes: until you add an email provider, OTP_DELIVERY=console shows codes on
 # https://<service>.onrender.com/dev?token=<DEV_TOOLS_TOKEN> (copy the token from the
-# Environment tab). For real use set OTP_DELIVERY=smtp + SMTP_URL and delete DEV_TOOLS_TOKEN.
+# Environment tab). For real use (docs/PRODUCTION.md): OTP_DELIVERY=brevo (or resend) +
+# EMAIL_API_KEY + SMTP_FROM="Attendly <your verified sender>", and delete DEV_TOOLS_TOKEN.
+# Email over HTTPS works even where mail ports are blocked; smtp + SMTP_URL is also supported.
+# The Developer app's console shows a "Production checklist" with what is still missing.
 services:
   - type: web
     name: attendly-api
@@ -70,6 +73,8 @@ services:
       - key: DEV_TOOLS_TOKEN
         generateValue: true
       - key: SMTP_URL
+        sync: false
+      - key: EMAIL_API_KEY
         sync: false
       - key: SMTP_FROM
         sync: false

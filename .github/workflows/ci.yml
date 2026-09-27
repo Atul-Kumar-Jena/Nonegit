@@ -113,15 +113,45 @@ jobs:
       - name: Generate native Android project
         working-directory: apps/${{ matrix.app }}
         run: npx expo prebuild --platform android --no-install
-      - name: Build release APK
+      # Production signing: your own private key from the repository secrets (see docs/PRODUCTION.md).
+      # Without them the APKs are signed with the public debug key — fine for testing only.
+      - name: Release signing key, when the secrets are set
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            {
+              echo "SIGNING=release"
+              echo "SIGN_ARGS=-Pandroid.injected.signing.store.file=$RUNNER_TEMP/release.jks -Pandroid.injected.signing.store.password=$ANDROID_KEYSTORE_PASSWORD -Pandroid.injected.signing.key.alias=${ANDROID_KEY_ALIAS:-attendly} -Pandroid.injected.signing.key.password=${ANDROID_KEY_PASSWORD:-$ANDROID_KEYSTORE_PASSWORD}"
+            } >> "$GITHUB_ENV"
+            echo "Signing with your release key"
+          else
+            echo "SIGNING=test" >> "$GITHUB_ENV"
+            echo "::warning::No ANDROID_KEYSTORE_BASE64 secret: this build is signed with the public debug key (testing only)."
+          fi
+      - name: Build release APK (and a Play Store bundle when release-signed)
         working-directory: apps/${{ matrix.app }}/android
-        run: ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a,armeabi-v7a
-      - name: Name the APK
-        run: cp apps/${{ matrix.app }}/android/app/build/outputs/apk/release/app-release.apk attendly-${{ matrix.app }}.apk
+        run: |
+          TASKS="assembleRelease"
+          if [ "$SIGNING" = release ]; then TASKS="assembleRelease bundleRelease"; fi
+          ./gradlew $TASKS --no-daemon -PreactNativeArchitectures=arm64-v8a,armeabi-v7a $SIGN_ARGS
+      - name: Name the files and show the signing certificate
+        run: |
+          cp apps/${{ matrix.app }}/android/app/build/outputs/apk/release/app-release.apk attendly-${{ matrix.app }}.apk
+          if [ -f apps/${{ matrix.app }}/android/app/build/outputs/bundle/release/app-release.aab ]; then
+            cp apps/${{ matrix.app }}/android/app/build/outputs/bundle/release/app-release.aab attendly-${{ matrix.app }}.aab
+          fi
+          "$ANDROID_HOME"/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner verify --print-certs attendly-${{ matrix.app }}.apk | grep -i "SHA-256" | head -1 || true
       - uses: actions/upload-artifact@v4
         with:
           name: attendly-${{ matrix.app }}-apk
-          path: attendly-${{ matrix.app }}.apk
+          path: |
+            attendly-${{ matrix.app }}.apk
+            attendly-${{ matrix.app }}.aab
           if-no-files-found: error
           retention-days: 30
 
@@ -153,6 +183,7 @@ jobs:
             attendly-student.apk
             attendly-institute.apk
             attendly-developer.apk
+            attendly-*.aab
           body: |
             Test build of the Attendly Android apps, commit ${{ github.sha }}.
             • attendly-apps.zip — all three apps in one zip

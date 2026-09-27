@@ -19,6 +19,25 @@ export interface OtpSender {
 
 const RECENT_LIMIT = 10;
 
+const subjectOf = (m: OtpMessage) => `${m.code} is your Attendly sign-in code`;
+const textOf = (m: OtpMessage) =>
+  `Your Attendly sign-in code for ${m.institution} is ${m.code}.\n\n` +
+  `It expires in 5 minutes. If you did not try to sign in, ignore this email — nobody can use the code without your phone.\n\nAttendly · Created by Atul Kumar Jena`;
+const esc = (t: string) => t.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+const htmlOf = (m: OtpMessage) =>
+  `<div style="font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:420px;margin:0 auto;padding:24px;color:#111">` +
+  `<div style="font-weight:700;font-size:16px">Attendly</div>` +
+  `<p style="color:#444">Your sign-in code for <b>${esc(m.institution)}</b>:</p>` +
+  `<div style="font:700 34px/1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:8px;padding:18px 0">${esc(m.code)}</div>` +
+  `<p style="color:#666;font-size:13px">It expires in 5 minutes. If you did not try to sign in, ignore this email — nobody can use the code without your phone.</p>` +
+  `<p style="color:#999;font-size:12px;border-top:1px solid #eee;padding-top:12px">Attendly · Created by Atul Kumar Jena</p></div>`;
+
+/** "Attendly <you@gmail.com>" → { name, email } (Brevo wants them apart). */
+export function parseSender(from: string): { name?: string; email: string } {
+  const m = /^\s*(.*?)\s*<([^<>\s]+)>\s*$/.exec(from);
+  return m ? { ...(m[1] ? { name: m[1].replace(/^"|"$/g, '') } : {}), email: m[2]! } : { email: from.trim() };
+}
+
 export function createOtpSender(config: Config, log: FastifyBaseLogger): OtpSender {
   const recent: { to: string; code: string; at: string }[] = [];
   const remember = (to: string, code: string) => {
@@ -29,19 +48,43 @@ export function createOtpSender(config: Config, log: FastifyBaseLogger): OtpSend
     config.otpDelivery === 'smtp' && config.smtpUrl ? nodemailer.createTransport(config.smtpUrl) : null;
 
   async function sendEmail(msg: OtpMessage) {
+    if (config.otpDelivery === 'brevo' || config.otpDelivery === 'resend') return sendViaApi(msg);
     if (config.otpDelivery === 'console' || !transport) {
       log.warn({ to: msg.to, code: msg.code }, `[otp:console] Attendly sign-in code for ${msg.to}: ${msg.code}`);
       remember(msg.to, msg.code);
       return;
     }
-    await transport.sendMail({
-      from: config.smtpFrom,
-      to: msg.to,
-      subject: `${msg.code} is your Attendly sign-in code`,
-      text:
-        `Your Attendly sign-in code for ${msg.institution} is ${msg.code}.\n\n` +
-        `It expires in 5 minutes. If you did not try to sign in, ignore this email — nobody can use the code without your phone.`,
-    });
+    await transport.sendMail({ from: config.smtpFrom, to: msg.to, subject: subjectOf(msg), text: textOf(msg), html: htmlOf(msg) });
+  }
+
+  /** Email over HTTPS (Brevo / Resend): no mail ports needed. */
+  async function sendViaApi(msg: OtpMessage) {
+    const from = parseSender(config.smtpFrom);
+    const req: { url: string; headers: Record<string, string>; body: unknown } =
+      config.otpDelivery === 'brevo'
+        ? {
+            url: 'https://api.brevo.com/v3/smtp/email',
+            headers: { 'api-key': config.emailApiKey ?? '', 'content-type': 'application/json', accept: 'application/json' },
+            body: { sender: from, to: [{ email: msg.to }], subject: subjectOf(msg), textContent: textOf(msg), htmlContent: htmlOf(msg) },
+          }
+        : {
+            url: 'https://api.resend.com/emails',
+            headers: { authorization: `Bearer ${config.emailApiKey ?? ''}`, 'content-type': 'application/json' },
+            body: { from: config.smtpFrom, to: [msg.to], subject: subjectOf(msg), text: textOf(msg), html: htmlOf(msg) },
+          };
+    let lastError = '';
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const res = await fetch(req.url, { method: 'POST', headers: req.headers, body: JSON.stringify(req.body), signal: AbortSignal.timeout(10_000) });
+        if (res.ok) return;
+        lastError = `${config.otpDelivery} HTTP ${res.status}: ${(await res.text().catch(() => '')).slice(0, 300)}`;
+        if (res.status < 500 && res.status !== 429) break; // a bad key or sender won't fix itself
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : String(err);
+      }
+      await new Promise((r) => setTimeout(r, 500 * 2 ** attempt));
+    }
+    throw new Error(lastError || 'email delivery failed');
   }
 
   async function sendSms(msg: OtpMessage) {

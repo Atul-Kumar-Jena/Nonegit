@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { StyleSheet, Switch, View } from 'react-native';
 import { router } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
-import { Activity, FlaskConical, Power } from 'lucide-react-native';
+import { Activity, CheckCircle2, CircleAlert, FlaskConical, Power } from 'lucide-react-native';
 import type { SwitchState } from '@attendly/protocol';
 import { Screen } from '@kit/components/Screen';
 import { Badge, Button, Card, ErrorState, Loading, SectionLabel, Text } from '@kit/components/ui';
@@ -40,6 +40,26 @@ export default function ConsoleScreen() {
             Demo sandbox: you see only the demo institute, and platform switches are read-only. A real developer account controls every institution.
           </Text>
         </Card>
+      ) : null}
+
+      {c.checklist.length ? (
+        <>
+          <SectionLabel right={<Badge label={`${c.checklist.filter((x) => x.ok).length} / ${c.checklist.length}`} tone={c.checklist.every((x) => x.ok) ? 'green' : 'amber'} dot={false} />}>
+            Production checklist
+          </SectionLabel>
+          <Card style={{ gap: 10 }}>
+            {c.checklist.map((x) => (
+              <View key={x.key} style={{ flexDirection: 'row', gap: 10 }}>
+                {x.ok ? <CheckCircle2 color={colors.green} size={18} /> : <CircleAlert color={colors.amber} size={18} />}
+                <View style={{ flex: 1 }}>
+                  <Text variant="bodyStrong">{x.label}</Text>
+                  {x.ok ? null : <Text variant="small">{x.fix}</Text>}
+                </View>
+              </View>
+            ))}
+            <Text variant="small">{c.checklist.every((x) => x.ok) ? 'Ready for real use.' : 'Change these in Render → your service → Environment; Render restarts the server by itself.'}</Text>
+          </Card>
+        </>
       ) : null}
 
       <SectionLabel right={<Badge label={c.health.db ? 'Nominal' : 'DB DOWN'} tone={c.health.db ? 'green' : 'red'} />}>{`System · ${c.environment.env}`}</SectionLabel>

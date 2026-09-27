@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { Camera } from 'expo-camera';
 import PermissionsScreen from '@kit/screens/PermissionsScreen';
 import { locationPermission, notificationPermission, type PermissionItem, type PermState } from '@kit/lib/permissions';
+import { batteryPermission } from '@kit/lib/battery';
 
 const camera: PermissionItem = {
   key: 'camera',
@@ -38,6 +39,10 @@ export default function Permissions() {
       notificationPermission(
         'So you hear (with sound) when a class is moved, cancelled, taken by another teacher, or an extra class is added — even when the app is closed.',
         'You won’t be alerted about timetable changes; you’ll only see them when you open the app.',
+      ),
+      batteryPermission(
+        'So Android’s battery saver doesn’t hold back class changes and reminders for hours. It barely affects battery life.',
+        'Notifications and class reminders may arrive late, especially when the phone has been idle.',
       ),
     ],
     [],

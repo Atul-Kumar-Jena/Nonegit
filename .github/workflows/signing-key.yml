@@ -1,0 +1,76 @@
+# One-time helper: creates your Android release signing key, so you don't need Java or
+# Android Studio on your own computer. See docs/PRODUCTION.md, step "Signing key".
+#
+# The repository is public, so the key is only ever uploaded inside an AES-256 encrypted zip,
+# locked with the password YOU put in the SIGNING_KEY_ZIP_PASSWORD secret first. Open it with
+# that password, put each text file's content into a repository secret of the same name, keep
+# attendly-release.jks somewhere safe, then delete the workflow run.
+#
+# Runs when this file changes on the app branch; afterwards use "Re-run all jobs" on its run
+# (or "Run workflow" once the file is on the default branch).
+name: Create Android signing key
+on:
+  push:
+    branches: [claude/three-secure-synced-apps-42sdud]
+    paths: [.github/workflows/signing-key.yml]
+  workflow_dispatch:
+    inputs:
+      organisation:
+        description: Name shown in the certificate (e.g. your name or company)
+        default: Attendly
+        required: false
+permissions:
+  contents: read
+jobs:
+  create:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Needs your zip password first
+        env:
+          ZIP_PASSWORD: ${{ secrets.SIGNING_KEY_ZIP_PASSWORD }}
+        run: |
+          if [ ${#ZIP_PASSWORD} -lt 12 ]; then
+            echo "::error::First create the repository secret SIGNING_KEY_ZIP_PASSWORD (12+ characters, a password only you know): Settings → Secrets and variables → Actions → New repository secret. Then re-run this workflow."
+            exit 1
+          fi
+      - name: Generate the key (random password, valid for 30 years)
+        env:
+          ORG: ${{ inputs.organisation || 'Attendly' }}
+          ZIP_PASSWORD: ${{ secrets.SIGNING_KEY_ZIP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir key && cd key
+          PASS=$(openssl rand -base64 36 | tr -dc 'A-Za-z0-9' | head -c 32)
+          echo "::add-mask::$PASS"
+          ORG_CLEAN=$(printf '%s' "$ORG" | tr -dc 'A-Za-z0-9 .-' | head -c 60)
+          keytool -genkeypair -v -storetype PKCS12 -keystore attendly-release.jks -alias attendly \
+            -keyalg RSA -keysize 4096 -validity 10950 -storepass "$PASS" -keypass "$PASS" \
+            -dname "CN=${ORG_CLEAN:-Attendly}, O=${ORG_CLEAN:-Attendly}, C=IN" >/dev/null 2>&1
+          base64 -w0 attendly-release.jks > ANDROID_KEYSTORE_BASE64.txt
+          printf '%s' "$PASS" > ANDROID_KEYSTORE_PASSWORD.txt
+          printf '%s' "$PASS" > ANDROID_KEY_PASSWORD.txt
+          printf 'attendly' > ANDROID_KEY_ALIAS.txt
+          keytool -list -v -keystore attendly-release.jks -storepass "$PASS" | grep -E "SHA256:" | head -1 > CERTIFICATE-SHA256.txt
+          cat > README.txt <<'TXT'
+          1. GitHub → this repository → Settings → Secrets and variables → Actions → New repository secret.
+             Create 4 secrets; for each, the name is the file name (without .txt) and the value is the file's content:
+               ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
+          2. Save attendly-release.jks and the password somewhere safe and private (you need them for every future update).
+          3. Delete this workflow run (Actions → the run → … → Delete workflow run) so this zip disappears.
+          4. Push any change (or re-run CI): the next APKs are signed with your key, plus .aab files for the Play Store.
+             Phones with the old test build must uninstall it once before installing the release-signed app.
+          TXT
+          cat CERTIFICATE-SHA256.txt
+          # Only the encrypted zip leaves this machine.
+          7z a -tzip -mem=AES256 -p"$ZIP_PASSWORD" ../attendly-signing-key.zip ./* >/dev/null
+          cd .. && rm -rf key
+      - uses: actions/upload-artifact@v4
+        with:
+          name: attendly-signing-key-ENCRYPTED
+          path: attendly-signing-key.zip
+          retention-days: 1

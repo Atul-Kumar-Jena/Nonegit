@@ -168,9 +168,7 @@ Nothing more. Your database password lives only in Render's `DATABASE_URL`, and 
 
 ## 7 · Going live (when the beta is done)
 
-- **Email codes**: Render → Environment: `OTP_DELIVERY=smtp`, `SMTP_URL`, `SMTP_FROM`. This also ends demo mode (demo accounts then need codes). Delete `DEV_TOOLS_TOKEN`.
-- **Always on**: Render **Starter** plan (the free one sleeps after 15 minutes).
-- **Firebase** as in §5 for instant notifications.
+Follow **[PRODUCTION.md](PRODUCTION.md)**: always-on server, sign-in emails (Brevo, free), demo and `/dev` off, Firebase push, your own app-signing key (+ Play Store files), Supabase backups. The Developer app's **Production checklist** shows what's left.
 
 ## 8 · Troubleshooting
 
@@ -183,6 +181,6 @@ Nothing more. Your database password lives only in Render's `DATABASE_URL`, and 
 | No code on the /dev page | Wait 30 s between requests for the same email; check the email is exactly the one added. |
 | "Set a screen lock first" (Institute) | Add a PIN/fingerprint in phone Settings → Security. |
 | Scan says "Outside geofence" | Rooms → the room → *Update to my location* while standing in it. |
-| Notifications late | Set up Firebase (§5); meanwhile Settings → Apps → Attendly → Battery → Unrestricted. |
+| Notifications late | Tap **Get notifications on time** on Home (or Permissions → *Battery: don't optimise*) → Allow; on Xiaomi/Oppo/Vivo/Realme also allow Autostart. Set up Firebase (§5) for instant push. |
 | Lost the authenticator phone | Admin: People → the person → Authenticator → **Reset** (back to emailed codes). |
 | Changed phones | Student: Profile → Request device reset; admin approves in **Phone requests**. |

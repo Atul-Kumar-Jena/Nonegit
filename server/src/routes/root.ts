@@ -37,6 +37,7 @@ import { isDemoEmail } from '../lib/demo';
 import { ApiError } from '../lib/errors';
 import { SWITCHES, TENANT_FLAGS, type SwitchKey } from '../lib/flags';
 import { requestStats } from '../lib/metrics';
+import { parseServiceAccount } from '../lib/push';
 import { randomBytes } from '@attendly/protocol';
 
 interface RootAuth extends AuthContext {
@@ -52,6 +53,24 @@ async function requireRoot(req: FastifyRequest, deps: Deps): Promise<RootAuth> {
   const { rows } = await deps.db.query<{ email: string | null; full_name: string }>('select email, full_name from users where id = $1', [auth.userId]);
   const sandbox = isDemoEmail(rows[0]?.email);
   return { ...auth, sandbox, tenants: sandbox ? [auth.tenantId] : null, email: rows[0]?.email ?? null, name: rows[0]?.full_name ?? 'Developer' };
+}
+
+/** What a real (non-demo) deployment needs, and where to change it (Render → your service → Environment). */
+function productionChecklist(deps: Deps): RootConsole['checklist'] {
+  const c = deps.config;
+  return [
+    {
+      key: 'email',
+      label: 'Sign-in codes are emailed',
+      ok: c.otpDelivery !== 'console',
+      fix: 'Set OTP_DELIVERY=brevo, EMAIL_API_KEY=<your Brevo key> and SMTP_FROM="Attendly <your verified sender>" (or use resend / smtp).',
+    },
+    { key: 'demo', label: 'Demo sign-in is off', ok: !c.demoInstantLogin, fix: 'Set DEMO_INSTANT_LOGIN=false (it also turns off by itself once email is set up).' },
+    { key: 'devtools', label: 'The /dev testing page is off', ok: !c.devToolsToken, fix: 'Delete DEV_TOOLS_TOKEN.' },
+    { key: 'push', label: 'Instant notifications (Firebase)', ok: !!parseServiceAccount(process.env.FCM_SERVICE_ACCOUNT), fix: 'Add FCM_SERVICE_ACCOUNT (Firebase service-account JSON) — see the guide.' },
+    { key: 'phones', label: 'Only real phones can sign in', ok: !c.allowWebClients && !c.allowEmulators, fix: 'Delete ALLOW_WEB_CLIENTS and ALLOW_EMULATORS (or set them to false).' },
+    { key: 'https', label: 'Production mode', ok: c.env === 'production', fix: 'Set NODE_ENV=production.' },
+  ];
 }
 
 /** 8 characters from an alphabet without look-alikes (no 0/O, 1/I/L), unique among institutions. */
@@ -199,6 +218,7 @@ export async function rootRoutes(app: FastifyInstance, deps: Deps) {
     return {
       sandbox: r.sandbox,
       environment: { env: deps.config.env, demoMode: deps.config.demoInstantLogin, otpDelivery: deps.config.otpDelivery, apiVersion: API_VERSION, serverKeyId: deps.signer.kid },
+      checklist: productionChecklist(deps),
       health: { db, dbLatencyMs, uptimeSec: stats.uptimeSec, requests: stats.requests, errors5xx: stats.errors5xx, p50Ms: stats.p50Ms, p99Ms: stats.p99Ms },
       counts: {
         tenants: c.tenants!,

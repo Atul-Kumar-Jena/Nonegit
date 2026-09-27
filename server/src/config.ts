@@ -54,7 +54,13 @@ const EnvSchema = z
     BOOTSTRAP_TIMEZONE: z.string().trim().default('Asia/Kolkata'),
     SERVER_SIGNING_KEY: b64Key(32),
     TOKEN_PEPPER: b64Key(32),
-    OTP_DELIVERY: z.enum(['console', 'smtp']).optional(),
+    /**
+     * How sign-in codes reach people: brevo / resend (email over HTTPS — works on hosts that block
+     * mail ports, e.g. Render's free plan), smtp, or console (testing: shown on /dev only).
+     */
+    OTP_DELIVERY: z.enum(['console', 'smtp', 'brevo', 'resend']).optional(),
+    /** API key for OTP_DELIVERY=brevo or resend. */
+    EMAIL_API_KEY: z.string().trim().optional(),
     SMTP_URL: z.string().optional(),
     SMTP_FROM: z.string().default('Attendly <no-reply@attendly.app>'),
     SMS_DELIVERY: z.enum(['console', 'twilio', 'disabled']).optional(),
@@ -80,10 +86,13 @@ const EnvSchema = z
   })
   .superRefine((e, ctx) => {
     const otp = e.OTP_DELIVERY ?? (e.NODE_ENV === 'production' ? undefined : 'console');
-    if (!otp) ctx.addIssue({ code: 'custom', path: ['OTP_DELIVERY'], message: 'must be set explicitly in production (smtp, or console for private testing)' });
+    if (!otp) ctx.addIssue({ code: 'custom', path: ['OTP_DELIVERY'], message: 'must be set explicitly in production (brevo, resend or smtp; console only for private testing)' });
     if ((e.BOOTSTRAP_INSTITUTION_NAME ? 1 : 0) + (e.BOOTSTRAP_ADMIN_EMAIL ? 1 : 0) === 1)
       ctx.addIssue({ code: 'custom', path: ['BOOTSTRAP_ADMIN_EMAIL'], message: 'set both BOOTSTRAP_INSTITUTION_NAME and BOOTSTRAP_ADMIN_EMAIL (or neither)' });
     if (otp === 'smtp' && !e.SMTP_URL) ctx.addIssue({ code: 'custom', path: ['SMTP_URL'], message: 'required when OTP_DELIVERY=smtp' });
+    if ((otp === 'brevo' || otp === 'resend') && !e.EMAIL_API_KEY) ctx.addIssue({ code: 'custom', path: ['EMAIL_API_KEY'], message: `required when OTP_DELIVERY=${otp}` });
+    if ((otp === 'brevo' || otp === 'resend' || otp === 'smtp') && !/<?[^<>\s@]+@[^<>\s@]+\.[^<>\s@]+>?\s*$/.test(e.SMTP_FROM))
+      ctx.addIssue({ code: 'custom', path: ['SMTP_FROM'], message: 'must be an address like "Attendly <you@gmail.com>" (a sender verified with your email service)' });
     if (e.SMS_DELIVERY === 'twilio' && !(e.TWILIO_ACCOUNT_SID && e.TWILIO_AUTH_TOKEN && e.TWILIO_FROM))
       ctx.addIssue({ code: 'custom', path: ['SMS_DELIVERY'], message: 'twilio requires TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_FROM' });
     // The console compares tokens on letters/digits only, so that is what must be long enough.
@@ -110,7 +119,8 @@ export interface Config {
   } | null;
   serverSigningSeed: Uint8Array;
   tokenPepper: Uint8Array;
-  otpDelivery: 'console' | 'smtp';
+  otpDelivery: 'console' | 'smtp' | 'brevo' | 'resend';
+  emailApiKey: string | undefined;
   smtpUrl: string | undefined;
   smtpFrom: string;
   smsDelivery: 'console' | 'twilio' | 'disabled';
@@ -171,6 +181,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     serverSigningSeed: seed.slice(0, 32),
     tokenPepper: decodeKey(e.TOKEN_PEPPER),
     otpDelivery,
+    emailApiKey: e.EMAIL_API_KEY,
     smtpUrl: e.SMTP_URL,
     smtpFrom: e.SMTP_FROM,
     smsDelivery: e.SMS_DELIVERY ?? (e.NODE_ENV === 'production' ? 'disabled' : 'console'),

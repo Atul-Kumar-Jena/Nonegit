@@ -4,6 +4,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { ChevronRight, CloudDownload, Inbox, Plus, Radio, ShieldAlert, Smartphone, UserCheck, UserPlus, Wand2 } from 'lucide-react-native';
 import { NotificationBell } from '@kit/components/NotificationBell';
 import { Screen } from '@kit/components/Screen';
+import { BatteryCard } from '@kit/components/BatteryCard';
 import { usePermissionsOnboarding } from '@kit/lib/notifications';
 import { SyncBanner } from '@kit/components/SyncBanner';
 import { Avatar, Badge, Button, Card, ErrorState, Loading, SectionLabel, Text } from '@kit/components/ui';
@@ -80,6 +81,7 @@ export default function Today() {
       {admin ? <SetupNudge /> : null}
 
       <RequestsBanner requests={reqs.data?.incoming ?? []} tz={tz} />
+      <BatteryCard />
 
       <SyncBanner />
 
