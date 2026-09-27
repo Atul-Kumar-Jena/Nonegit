@@ -92,6 +92,8 @@ const EnvSchema = z
     MIN_APP_VERSION: z.string().default('1.0.0'),
     /** Every Android phone must prove a hardware-backed key (Google key attestation) to bind. */
     REQUIRE_HARDWARE_KEYS: bool,
+    /** Institutions that haven't chosen: must Android phones prove a security-chip key? on (default) / off. */
+    HARDWARE_BINDING_DEFAULT: z.enum(['on', 'off']).optional(),
     /** This server's public address (Render sets RENDER_EXTERNAL_URL itself): used for images in pushes. */
     PUBLIC_URL: z.string().url().optional(),
     RENDER_EXTERNAL_URL: z.string().url().optional(),
@@ -155,6 +157,7 @@ export interface Config {
   attestation: {
     /** All Android phones must have an attested hardware key (institutions can also opt in on their own). */
     requireHardware: boolean;
+    strictByDefault: boolean;
     appCertDigests: string[];
     /** Tests only: trust these roots instead of Google's. */
     testRoots?: string[];
@@ -233,6 +236,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     publicUrl: (e.PUBLIC_URL ?? e.RENDER_EXTERNAL_URL ?? '').replace(/\/+$/, '') || null,
     attestation: {
       requireHardware: e.REQUIRE_HARDWARE_KEYS,
+      strictByDefault: (e.HARDWARE_BINDING_DEFAULT ?? (e.NODE_ENV === 'test' ? 'off' : 'on')) === 'on',
       appCertDigests: (e.ANDROID_APP_CERT_SHA256 ?? '')
         .split(',')
         .map((d) => d.toLowerCase().replace(/[^0-9a-f]/g, ''))

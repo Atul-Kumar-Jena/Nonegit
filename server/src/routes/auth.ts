@@ -365,7 +365,7 @@ export async function authRoutes(app: FastifyInstance, deps: Deps) {
         }
         const info = t.device_info;
         const hw = hardwareHash(deps.hash, info);
-        await assertPhoneFree(tx, hw, user.id, user.role);
+        await assertPhoneFree(tx, hw, user, deps.config.demoInstantLogin && !(await switchOn(tx, 'demo_login_off')));
         const chip = await attestForTicket(tx, deps, user, info.platform, body.ticket, body.attestation?.chain);
         const { rows } = await tx.query<DeviceRow>(
           `insert into devices(user_id, public_key, fingerprint, platform, model, os_version, app_version, status, bound_at, last_seen_at, hw_hash,

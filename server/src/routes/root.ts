@@ -38,7 +38,7 @@ import { appendAudit, verifyAuditChain } from '../lib/audit';
 import { requireDevice, type AuthContext } from '../lib/auth';
 import { isDemoEmail } from '../lib/demo';
 import { ApiError } from '../lib/errors';
-import { SWITCHES, TENANT_FLAGS, type SwitchKey } from '../lib/flags';
+import { SWITCHES, TENANT_FLAGS, flagDefault, type SwitchKey, type TenantFlagKey } from '../lib/flags';
 import { requestStats } from '../lib/metrics';
 import { issueSetupCode } from '../lib/setup-codes';
 import { parseServiceAccount } from '../lib/push';
@@ -264,10 +264,39 @@ export async function rootRoutes(app: FastifyInstance, deps: Deps) {
     const b = SwitchBody.parse(req.body);
     if (b.confirm.trim() !== key) throw new ApiError(400, 'BAD_REQUEST', `Type “${key}” to confirm.`);
     await withTx(deps.db, async (tx) => {
-      await tx.query('update system_flags set enabled = $2, reason = $3, updated_by = $4, updated_at = $5 where key = $1', [key, b.enabled, b.reason, r.userId, new Date(deps.clock())]);
+      // Upsert: a switch always exists once it's been flipped (never a silent no-op).
+      await tx.query(
+        `insert into system_flags(key, enabled, reason, updated_by, updated_at) values ($1, $2, $3, $4, $5)
+         on conflict (key) do update set enabled = excluded.enabled, reason = excluded.reason, updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
+        [key, b.enabled, b.reason, r.userId, new Date(deps.clock())],
+      );
       await appendAudit(tx, { tenantId: null, actorType: 'user', actorId: r.userId, action: 'root.switch', subject: `switch:${key}`, data: { enabled: b.enabled, reason: b.reason } });
     });
     return { ok: true };
+  });
+
+  /**
+   * Emergency: sign everyone out (one institution, or all of them) — every login except developers'
+   * is revoked at once; phones stay bound, so people just sign in again. Typed confirmation + reason.
+   */
+  app.post('/v1/root/sign-out-everyone', write, async (req) => {
+    const r = await requireRoot(req, deps);
+    noSandbox(r, 'signing everyone out');
+    const b = z
+      .object({ confirm: z.string(), reason: z.string().trim().min(3).max(200), tenantId: z.uuid().nullable().default(null) })
+      .parse(req.body);
+    if (b.confirm.trim() !== 'sign-out-everyone') throw new ApiError(400, 'BAD_REQUEST', 'Type “sign-out-everyone” to confirm.');
+    const n = await withTx(deps.db, async (tx) => {
+      const res = await tx.query(
+        `update auth_sessions a set revoked_at = $1, revoke_reason = 'signed out by Attendly: ' || $2
+           from users u
+          where u.id = a.user_id and a.revoked_at is null and u.role <> 'developer' and ($3::uuid is null or u.tenant_id = $3)`,
+        [new Date(deps.clock()), b.reason, b.tenantId],
+      );
+      await appendAudit(tx, { tenantId: b.tenantId, actorType: 'user', actorId: r.userId, action: 'root.sign_out_everyone', subject: b.tenantId ? `tenant:${b.tenantId}` : 'platform', data: { reason: b.reason, sessions: res.rowCount ?? 0 } });
+      return res.rowCount ?? 0;
+    });
+    return { ok: true, signedOut: n };
   });
 
   app.get('/v1/root/audit', async (req): Promise<AuditPage> => {
@@ -324,7 +353,7 @@ export async function rootRoutes(app: FastifyInstance, deps: Deps) {
       emailDomains: t.email_domains,
       minAttendance: Number(t.min_attendance),
       admins: admins.rows.map((a) => ({ id: a.id, name: a.full_name, email: a.email, status: a.status, owner: a.is_owner, authenticator: a.totp })),
-      flags: Object.entries(TENANT_FLAGS).map(([key, def]) => ({ key, enabled: set.get(key) ?? def.default })),
+      flags: Object.keys(TENANT_FLAGS).map((key) => ({ key, enabled: set.get(key) ?? flagDefault(key as TenantFlagKey, deps.config) })),
       recent: await recentAudit(deps.db, [id], 10),
     };
   });
@@ -455,12 +484,12 @@ export async function rootRoutes(app: FastifyInstance, deps: Deps) {
     const byTenant = new Map<string, Map<string, boolean>>();
     for (const f of set.rows) byTenant.set(f.tenant_id, (byTenant.get(f.tenant_id) ?? new Map()).set(f.key, f.enabled));
     return {
-      definitions: Object.entries(TENANT_FLAGS).map(([key, d]) => ({ key, label: d.label, detail: d.detail, default: d.default, enforced: true })),
+      definitions: Object.entries(TENANT_FLAGS).map(([key, d]) => ({ key, label: d.label, detail: d.detail, default: flagDefault(key as TenantFlagKey, deps.config), enforced: true })),
       planned: PLANNED,
       tenants: tenants.rows.map((t) => ({
         id: t.id,
         name: t.name,
-        flags: Object.fromEntries(Object.entries(TENANT_FLAGS).map(([key, d]) => [key, byTenant.get(t.id)?.get(key) ?? d.default])),
+        flags: Object.fromEntries(Object.keys(TENANT_FLAGS).map((key) => [key, byTenant.get(t.id)?.get(key) ?? flagDefault(key as TenantFlagKey, deps.config)])),
       })),
     };
   });

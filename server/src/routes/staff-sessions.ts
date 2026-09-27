@@ -30,7 +30,7 @@ import { decidableStudents } from '../lib/mentors';
 import { announceStarted, markShowing } from '../lib/class-clock';
 import { insertNotifications } from '../lib/notify';
 import { assertPhoneFree, hardwareHash } from '../lib/users';
-import { tenantFlag } from '../lib/flags';
+import { switchOn, tenantFlag } from '../lib/flags';
 import { withTx, type Queryable } from '../db';
 import { STAFF, can, instructorFilter, isAdmin, loadCourseFor, loadSessionFor, requirePerm, type SessionAccessRow } from '../lib/access';
 import { perDeviceKey, requireDevice, type AuthContext } from '../lib/auth';
@@ -590,14 +590,16 @@ export async function staffSessionRoutes(app: FastifyInstance, deps: Deps) {
         if (others.rowCount) throw new ApiError(403, 'FORBIDDEN', 'Another admin must approve your own device change.');
       }
       if (b.decision === 'approve') {
+        // The platform switch stops every new phone, approved changes included.
+        if (r.kind === 'rebind' && (await switchOn(tx, 'new_bindings_blocked'))) throw new ApiError(403, 'FORBIDDEN', 'New phone registrations are paused by Attendly for now. Approve this later.');
         if (r.kind === 'rebind') {
           if (!r.to_public_key || !r.to_device_info) throw new ApiError(400, 'BAD_REQUEST', 'This request has no new device.');
           const taken = await tx.query(`select 1 from devices where public_key = $1 and status = 'active' and user_id <> $2`, [r.to_public_key, r.user_id]);
           if (taken.rowCount) throw new ApiError(409, 'CONFLICT', 'That phone is bound to another account. One phone, one person.');
           const info = r.to_device_info;
           const hw = hardwareHash(deps.hash, info);
-          const role = (await tx.query<{ role: string }>('select role from users where id = $1', [r.user_id])).rows[0]!.role;
-          await assertPhoneFree(tx, hw, r.user_id, role);
+          const who = (await tx.query<{ role: string; email: string | null }>('select role, email from users where id = $1', [r.user_id])).rows[0]!;
+          await assertPhoneFree(tx, hw, { id: r.user_id, role: who.role, email: who.email }, deps.config.demoInstantLogin && !(await switchOn(tx, 'demo_login_off')));
           await revokeActiveDevice(tx, r.user_id, 'replaced by approved device switch', t);
           await tx.query(
             `insert into devices(user_id, public_key, fingerprint, platform, model, os_version, app_version, status, bound_at, hw_hash,

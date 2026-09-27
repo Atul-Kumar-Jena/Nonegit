@@ -89,6 +89,7 @@ export default function ConsoleScreen() {
           <SwitchRow key={s.key} s={s} sandbox={c.sandbox} last={i === c.switches.length - 1} />
         ))}
       </Card>
+      {!c.sandbox ? <SignOutEveryone /> : null}
 
       <SectionLabel right={<Button title="All" kind="ghost" compact onPress={() => router.push('/audit')} />}>Latest events</SectionLabel>
       <Card style={{ gap: 10 }}>
@@ -155,6 +156,35 @@ function SwitchRow({ s, sandbox, last }: { s: SwitchState; sandbox: boolean; las
   );
 }
 
+
+/** Emergency: end every login (developers' aside). Phones stay bound; people sign in again. */
+function SignOutEveryone() {
+  const api = useApi();
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [done, setDone] = useState<string | null>(null);
+  return (
+    <View style={{ marginTop: 10, gap: 8 }}>
+      <Button title="Sign everyone out" kind="danger" onPress={() => setOpen(true)} icon={<Power color={colors.red} size={16} />} />
+      {done ? <Text variant="small">{done}</Text> : null}
+      {open ? (
+        <ConfirmSheet
+          title="Sign everyone out"
+          message="Every student, professor and admin of every institution is signed out at once (you stay in). Their phones stay bound — they sign in again with Google Authenticator. Use it after a suspected leak."
+          confirmText="sign-out-everyone"
+          action="Sign everyone out"
+          danger
+          onClose={() => setOpen(false)}
+          onConfirm={async (reason, typed) => {
+            const r = await rootApi.signOutEveryone(api, { confirm: typed, reason, tenantId: null });
+            setDone(`${r.signedOut} logins ended.`);
+            await qc.invalidateQueries({ queryKey: qk.console });
+          }}
+        />
+      ) : null}
+    </View>
+  );
+}
 
 const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },

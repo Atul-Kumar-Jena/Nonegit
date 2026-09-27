@@ -62,7 +62,7 @@ export function startRevocationRefresh(log: (msg: string) => void): () => void {
 /** Must this user's Android phone have an attested hardware key? */
 export async function hardwareRequired(db: Queryable, deps: Deps, tenantId: string, platform: string): Promise<boolean> {
   if (platform !== 'android') return false;
-  return deps.config.attestation.requireHardware || (await tenantFlag(db, tenantId, 'hardware_binding'));
+  return deps.config.attestation.requireHardware || (await tenantFlag(db, tenantId, 'hardware_binding', deps.config));
 }
 
 const USER_MESSAGE: Record<AttestationError['code'], string> = {

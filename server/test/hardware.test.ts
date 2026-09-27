@@ -51,10 +51,9 @@ describe('one physical phone, one student', () => {
     expect((await verify(other, 'aarav@iit.ac.in')).status).toBe('device_mismatch');
   });
 
-  it('staff may share a phone with a student (not a proxy-attendance risk)', async () => {
+  it('staff can’t share a phone with a student either: one phone, one account', async () => {
     const d = phone('android-id-aaaa1111');
-    await d.signIn('kumar@iit.ac.in');
-    expect((await d.call('GET', '/v1/staff/me')).statusCode).toBe(200);
+    await expect(d.signIn('kumar@iit.ac.in')).rejects.toThrow(/One phone, one account/);
   });
 
   it('an admin can’t approve moving a student onto another student’s phone', async () => {

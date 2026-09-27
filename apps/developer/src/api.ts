@@ -38,6 +38,9 @@ export const rootApi = {
   setTenantStatus: (api: ApiClient, id: string, b: TenantStatusBody) => api.authed('POST', `/v1/root/tenants/${enc(id)}/status`, TenantSummary, b),
   verifyTenant: (api: ApiClient, id: string, verified: boolean) => api.authed('POST', `/v1/root/tenants/${enc(id)}/verify`, TenantSummary, { verified }),
   newTenantCode: (api: ApiClient, id: string) => api.authed('POST', `/v1/root/tenants/${enc(id)}/code`, TenantSummary, {}),
+  /** Emergency: end every login except developers' (one institution, or all when tenantId is null). */
+  signOutEveryone: (api: ApiClient, b: { confirm: string; reason: string; tenantId: string | null }) =>
+    api.authed('POST', '/v1/root/sign-out-everyone', z.object({ ok: z.boolean(), signedOut: z.number() }), b),
   flags: (api: ApiClient) => api.authed('GET', '/v1/root/flags', FlagsResponse),
   setFlag: (api: ApiClient, b: SetFlagBody) => api.authed('POST', '/v1/root/flags', OkResponse, b),
   me: (api: ApiClient) => api.authed('GET', '/v1/root/me', RootMe),

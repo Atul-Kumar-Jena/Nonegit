@@ -1,5 +1,6 @@
 import { keyFingerprint, type DeviceSummary, type Platform, type Role, type UserSummary } from '@attendly/protocol';
 import { ApiError } from './errors';
+import { isDemoEmail } from './demo';
 import type { Queryable } from '../db';
 
 export interface UserRow {
@@ -66,18 +67,28 @@ export function hardwareHash(hash: (purpose: string, value: string) => Buffer, i
 }
 
 /**
- * One phone, one student: refuses when this physical phone is already bound to another
- * student (clearing the app's data doesn't make it a new phone). Staff are not limited.
+ * One phone, one account: a phone (its hardware ID) already bound to someone else can't be bound to
+ * another account — whatever the roles. Developers are exempt (the platform owner tests with their
+ * own phone), and so are demo accounts on a demo server, except two demo students.
  */
-export async function assertPhoneFree(db: Queryable, hw: Buffer | null, userId: string, role: string): Promise<void> {
-  if (!hw || role !== 'student') return;
-  const { rows } = await db.query<{ roll_no: string | null }>(
-    `select u.roll_no from devices d join users u on u.id = d.user_id
-      where d.hw_hash = $1 and d.status = 'active' and d.user_id <> $2 and u.role = 'student' limit 1`,
-    [hw, userId],
+export async function assertPhoneFree(db: Queryable, hw: Buffer | null, user: { id: string; role: string; email: string | null }, demo: boolean): Promise<void> {
+  if (!hw || user.role === 'developer') return;
+  const { rows } = await db.query<{ role: string; email: string | null }>(
+    `select u.role, u.email from devices d join users u on u.id = d.user_id
+      where d.hw_hash = $1 and d.status = 'active' and d.user_id <> $2 and u.role <> 'developer' limit 10`,
+    [hw, user.id],
   );
-  if (rows[0])
-    throw new ApiError(409, 'CONFLICT', 'This phone is already registered to another student. One phone, one student — ask your admin to unbind it from the other account first.');
+  for (const o of rows) {
+    const bothStudents = o.role === 'student' && user.role === 'student';
+    if (demo && isDemoEmail(o.email) && isDemoEmail(user.email) && !bothStudents) continue;
+    throw new ApiError(
+      409,
+      'CONFLICT',
+      bothStudents
+        ? 'This phone is already registered to another student. One phone, one student — ask your admin to unbind it from the other account first.'
+        : 'This phone is already registered to another Attendly account. One phone, one account — ask your admin to unbind it from the other account first.',
+    );
+  }
 }
 
 export async function loadActiveDevice(db: Queryable, userId: string): Promise<DeviceRow | undefined> {

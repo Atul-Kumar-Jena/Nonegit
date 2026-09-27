@@ -7,6 +7,7 @@
  */
 import { notificationCategory } from '@attendly/protocol';
 import { createSign } from 'node:crypto';
+import { switchOn } from './flags';
 import type { Db } from '../db';
 
 interface ServiceAccount {
@@ -93,6 +94,8 @@ export function startPushDispatcher(
   const PARALLEL = 25;
   /** One batch: claim up to BATCH unsent notifications, push them with PARALLEL requests at a time. */
   const round = async (): Promise<number> => {
+    // Platform switch: phone notifications paused (the in-app bell still fills; nothing is pushed).
+    if (await switchOn(db, 'notifications_paused').catch(() => false)) return 0;
     const { rows } = await db.query<{ id: string; user_id: string; kind: string; title: string; body: string; data: Record<string, unknown> }>(
       `update notifications set pushed_at = now()
         where id in (select id from notifications where pushed_at is null and created_at > now() - interval '10 minutes' order by id limit ${BATCH} for update skip locked)
