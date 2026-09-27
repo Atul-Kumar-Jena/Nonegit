@@ -14,6 +14,7 @@ import {
 } from '@attendly/protocol';
 import { z } from 'zod';
 import type { Deps } from '../deps';
+import { CREDIT_REASONS } from '@attendly/protocol';
 import { notifyDeviceRequest } from '../lib/mentors';
 import { isUniqueViolation, withTx } from '../db';
 import { appendAudit } from '../lib/audit';
@@ -258,7 +259,9 @@ export async function studentRoutes(app: FastifyInstance, deps: Deps) {
         room: string | null;
         status: 'scheduled' | 'live' | 'closed' | 'cancelled';
         rec_id: string | null;
-        source: 'scan' | 'manual' | 'import' | 'review' | null;
+        source: 'scan' | 'manual' | 'import' | 'review' | 'credit' | null;
+        credit_reason: string | null;
+        credit_note: string | null;
         offline: boolean | null;
         marked_at: Date | null;
         change_kind: 'rescheduled' | 'substitute' | 'extra' | 'cancelled' | null;
@@ -267,11 +270,13 @@ export async function studentRoutes(app: FastifyInstance, deps: Deps) {
         substitute_name: string | null;
       }>(
         `select s.id, s.scheduled_start, s.lecture_no, coalesce(r.name, s.room) as room, s.status,
-                a.id as rec_id, a.source, a.offline, a.marked_at, s.change_kind, s.change_note, s.original_start, su.full_name as substitute_name
+                a.id as rec_id, a.source, a.offline, a.marked_at, s.change_kind, s.change_note, s.original_start, su.full_name as substitute_name,
+                k.reason as credit_reason, k.note as credit_note
            from class_sessions s
            left join rooms r on r.id = s.room_id
            left join users su on su.id = s.substitute_id
            left join attendance_records a on a.session_id = s.id and a.user_id = $2 and a.revoked_at is null
+           left join attendance_credits k on k.id = a.credit_id
           where s.course_id = $1 and s.scheduled_start >= ($3::date::timestamp at time zone $4)
             and (s.status <> 'scheduled' or s.scheduled_start < now() + interval '14 days')
           order by s.scheduled_start desc limit 400`,
@@ -314,6 +319,7 @@ export async function studentRoutes(app: FastifyInstance, deps: Deps) {
         offline: !!h.offline,
         markedAt: h.marked_at?.toISOString() ?? null,
         change: sessionChange(h),
+        credit: h.credit_reason ? { reason: CREDIT_REASONS[h.credit_reason as keyof typeof CREDIT_REASONS] ?? h.credit_reason, note: h.credit_note ?? '' } : null,
       })),
     };
   });

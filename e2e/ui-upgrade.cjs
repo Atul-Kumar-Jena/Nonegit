@@ -166,6 +166,27 @@ const back = async (p) => {
     await shot(a, 'batch-mentor');
   });
 
+  await step('Admin: attendance credit for a fest, with a note, previewed then given', async () => {
+    await a.getByRole('tab', { name: /^Students/ }).click();
+    await pause(a);
+    await visible(a, 'Aarav Reddy').click();
+    await pause(a);
+    await a.getByRole('button', { name: 'Give attendance credit' }).click();
+    await visible(a, 'Attendance credit · Aarav Reddy').waitFor();
+    await visible(a, 'Fest / event').click();
+    await a.getByPlaceholder('e.g. Hospitalised 3–5 Oct, certificate seen').fill('Represented the college at TechFest');
+    await a.getByLabel('Number of classes').fill('1');
+    await visible(a, /class(es)? will count as attended|No missed classes match/, false).waitFor({ timeout: 20_000 });
+    await shot(a, 'credit-preview');
+    if (await visible(a, /will count as attended/, false).isVisible()) {
+      await a.getByRole('button', { name: 'Give credit & notify' }).click();
+      await visible(a, 'Credit given').waitFor({ timeout: 15_000 });
+      await a.getByRole('button', { name: 'Done' }).click();
+      await visible(a, /Fest \/ event · \+\d+ class/, false).waitFor({ timeout: 15_000 });
+    }
+    await shot(a, 'credit-given');
+  });
+
   await step('Student: grouped notification list with filters; privacy switches in Profile', async () => {
     const s = (await demoSignIn(browser, 'Aarav Reddy', STUDENT)).page;
     await s.getByText('Profile', { exact: true }).last().click();

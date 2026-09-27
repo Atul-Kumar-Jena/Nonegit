@@ -12,7 +12,13 @@ import { useApi } from '@kit/state/session';
 import { colors, fonts } from '@kit/theme';
 import { staffApi } from '@/api';
 import { Header } from '@/components/forms';
-import { qk, useCan, useStudentReport } from '@/queries';
+import { qk, useCan, useOverview, useStudentReport } from '@/queries';
+import { CreditSheet } from '@/components/CreditSheet';
+import { ymdIn } from '@/time';
+import { CREDIT_REASONS } from '@attendly/protocol';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Award } from 'lucide-react-native';
+import { confirmAction } from '@/components/forms';
 
 /** Any student's attendance, subject by subject (every teacher can open this). */
 export default function StudentAttendance() {
@@ -22,6 +28,11 @@ export default function StudentAttendance() {
   const admin = useCan('people');
   const q = useStudentReport(id);
   const [open, setOpen] = useState<string | null>(null);
+  const [crediting, setCrediting] = useState(false);
+  const canAll = useCan('courses');
+  const tz = useOverview().data?.timezone;
+  const qc = useQueryClient();
+  const credits = useQuery({ queryKey: ['staff', 'credits', id], queryFn: () => staffApi.credits(api, id), enabled: !!id });
 
   if (q.isPending) return <Screen scroll={false}><Header title="Student" /><Loading /></Screen>;
   if (!q.data)
@@ -67,6 +78,44 @@ export default function StudentAttendance() {
           r.subjects.map((s) => <SubjectBlock key={s.courseId} userId={id} s={s} min={r.minPercent} open={open === s.courseId} onToggle={() => setOpen(open === s.courseId ? null : s.courseId)} />)
         )}
       </View>
+
+      <SectionLabel>Attendance credit</SectionLabel>
+      <Card style={{ gap: 10 }}>
+        <Text variant="small">Medical leave, a fest, sports or college duty: count missed classes as attended, with a note the student sees.</Text>
+        <Button title="Give attendance credit" onPress={() => setCrediting(true)} icon={<Award color="#0a0a0a" size={16} />} />
+        {(credits.data ?? []).map((c) => (
+          <View key={c.id} style={[styles.credit, c.undone && { opacity: 0.5 }]}>
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text variant="bodyStrong">{`${CREDIT_REASONS[c.reason]} · +${c.credited} ${c.credited === 1 ? 'class' : 'classes'}${c.subject ? ` · ${c.subject}` : ' · all subjects'}`}</Text>
+              <Text variant="small" numberOfLines={3}>
+                {`${c.note}\n${c.requested} · by ${c.by ?? '—'} · ${dayLabel(c.createdAt)}${c.undone ? ' · undone' : ''}`}
+              </Text>
+            </View>
+            {!c.undone ? (
+              <Button
+                title="Undo"
+                kind="ghost"
+                compact
+                onPress={() =>
+                  confirmAction('Undo this credit?', `The ${c.credited} credited ${c.credited === 1 ? 'class goes' : 'classes go'} back to absent.`, 'Undo', () =>
+                    void staffApi.undoCredit(api, c.id).then(() => qc.invalidateQueries({ queryKey: ['staff'] })),
+                  true)
+                }
+              />
+            ) : null}
+          </View>
+        ))}
+      </Card>
+      {crediting ? (
+        <CreditSheet
+          studentId={id}
+          studentName={r.student.fullName}
+          subjects={r.subjects.map((x) => ({ courseId: x.courseId, code: x.code, title: x.title }))}
+          canAll={canAll}
+          today={ymdIn(api.serverNow(), tz)}
+          onClose={() => setCrediting(false)}
+        />
+      ) : null}
 
       {admin ? (
         <Button
@@ -135,6 +184,7 @@ function SubjectBlock({ userId, s, min, open, onToggle }: { userId: string; s: R
 }
 
 const styles = StyleSheet.create({
+  credit: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
   between: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   big: { fontFamily: fonts.bold, fontSize: 30, letterSpacing: -1, color: colors.text, marginTop: 4, flex: 1 },
   pct: { fontFamily: fonts.semibold, fontSize: 18 },

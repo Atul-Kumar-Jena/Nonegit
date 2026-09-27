@@ -41,6 +41,8 @@ export const BatchBody = z.object({
   active: z.boolean().default(true),
   department: Dept.nullable().optional(),
   semester: Semester.nullable().optional(),
+  /** Optional mentor at creation (a professor or admin). */
+  mentorId: uuid.nullable().optional(),
 });
 export type BatchBody = z.infer<typeof BatchBody>;
 export const BatchUpdateBody = z.object({

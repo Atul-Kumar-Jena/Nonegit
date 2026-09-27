@@ -5,6 +5,10 @@
 import { z } from 'zod';
 import {
   AuthenticatorSetup,
+  CreditEntry,
+  CreditResult,
+  MissedClass,
+  type CreditBody,
   Colleague,
   AuthenticatorStatus,
   ChangeRequest,
@@ -69,6 +73,11 @@ const qs = (o: Record<string, string | number | undefined | null>) => {
 };
 
 export const staffApi = {
+  giveCredit: (api: ApiClient, studentId: string, b: CreditBody) => api.authed('POST', `/v1/staff/students/${enc(studentId)}/credit`, CreditResult, b),
+  credits: (api: ApiClient, studentId: string) => api.authed('GET', `/v1/staff/students/${enc(studentId)}/credits`, z.array(CreditEntry)),
+  missed: (api: ApiClient, studentId: string, courseId?: string) =>
+    api.authed('GET', `/v1/staff/students/${enc(studentId)}/missed${courseId ? `?courseId=${enc(courseId)}` : ''}`, z.array(MissedClass)),
+  undoCredit: (api: ApiClient, id: string) => api.authed('POST', `/v1/staff/credits/${enc(id)}/undo`, OkResponse, {}),
   colleagues: (api: ApiClient) => api.authed('GET', '/v1/staff/colleagues', z.array(Colleague)),
   me: (api: ApiClient) => api.authed('GET', '/v1/staff/me', StaffMe),
   overview: (api: ApiClient) => api.authed('GET', '/v1/staff/overview', Overview),

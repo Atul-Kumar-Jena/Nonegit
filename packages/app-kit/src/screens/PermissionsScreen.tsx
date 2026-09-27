@@ -23,6 +23,11 @@ export default function PermissionsScreen({ appName, items }: { appName: string;
     setState(Object.fromEntries(entries));
   }, [items]);
 
+  // Shown once: seen counts as done (it stays reachable from Profile / More any time).
+  useEffect(() => {
+    void markPermissionsOnboarded();
+  }, []);
+
   useEffect(() => {
     void refresh();
     // Coming back from Settings: show the new state.
@@ -47,14 +52,18 @@ export default function PermissionsScreen({ appName, items }: { appName: string;
   const missing = items.filter((i) => state[i.key] === 'denied' || state[i.key] === 'blocked');
   const allDone = items.every((i) => state[i.key] === 'granted' || state[i.key] === 'unavailable');
 
+  function leave() {
+    if (router.canGoBack()) router.back();
+    else router.replace('/home');
+  }
+
   async function finish() {
     if (missing.length && !warned) {
       setWarned(true); // tell them once, clearly, what they're giving up
       return;
     }
     await markPermissionsOnboarded();
-    if (router.canGoBack()) router.back();
-    else router.replace('/home');
+    leave();
   }
 
   return (
@@ -65,6 +74,7 @@ export default function PermissionsScreen({ appName, items }: { appName: string;
           <Text variant="title">Permissions</Text>
           <Text variant="small">{appName} asks only for what it needs, and only uses it when you do something.</Text>
         </View>
+        <Button title={allDone ? 'Done' : 'Later'} kind="secondary" compact onPress={leave} />
       </View>
 
       {!allDone ? <Button title="Allow all" onPress={() => void askAll()} style={{ marginTop: 16 }} /> : null}

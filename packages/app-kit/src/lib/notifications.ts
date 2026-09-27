@@ -275,14 +275,22 @@ export function NotificationRunner() {
  * First time the home screen opens after sign-in (on a phone): show the
  * permissions screen once. Afterwards just keep the background check scheduled.
  */
-export function usePermissionsOnboarding() {
+let onboardingChecked = false;
+
+export function usePermissionsOnboarding(items?: { check: () => Promise<string> }[]) {
   const { phase } = useSession();
   useEffect(() => {
     if (isWeb || phase !== 'signed-in') return;
+    // Once per app run at most (the home screen can mount several times).
+    if (onboardingChecked) return;
+    onboardingChecked = true;
     void (async () => {
       try {
         const done = await vault.get<boolean>('perms.onboarded.v1', (v) => v === true);
-        if (!done) router.push('/permissions');
+        // Everything already allowed: nothing to ask.
+        const all = items?.length ? (await Promise.all(items.map((i) => i.check().catch(() => 'denied')))).every((st) => st === 'granted' || st === 'unavailable') : false;
+        if (!done && all) await markPermissionsOnboarded();
+        if (!done && !all) router.push('/permissions');
         else await ensureBackgroundCheck();
       } catch {
         // best effort

@@ -12,7 +12,7 @@ async function header(db: Queryable, tenantId: string, now: number): Promise<{ h
   };
 }
 
-const HOW: Record<string, string> = { scan: 'QR scan', manual: 'Register', import: 'Imported', review: 'Approved by teacher' };
+const HOW: Record<string, string> = { scan: 'QR scan', manual: 'Register', import: 'Imported', review: 'Approved by teacher', credit: 'Attendance credit' };
 
 /** One student's attendance, every subject; with `courseId`, that subject plus its class-by-class log. */
 export async function buildStudentReport(db: Queryable, tenantId: string, userId: string, now: number, courseId?: string): Promise<StudentReport> {

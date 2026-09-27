@@ -11,6 +11,7 @@ import { ApiError } from './lib/errors';
 import { materializeTimetable } from './lib/timetable';
 import { createServerSigner } from './lib/keys';
 import { makeHasher } from './lib/secrets';
+import { creditRoutes } from './routes/credits';
 import { attendanceRoutes } from './routes/attendance';
 import { authRoutes } from './routes/auth';
 import { presentRoutes } from './routes/present';
@@ -153,6 +154,7 @@ export async function buildApp(opts: BuildOptions): Promise<{ app: FastifyInstan
   await app.register(async (s) => batchRoutes(s, deps));
   await app.register(async (s) => noticeRoutes(s, deps));
   await app.register(async (s) => attendanceRoutes(s, deps));
+  await app.register(async (s) => creditRoutes(s, deps));
   await app.register(async (s) => staffAdminRoutes(s, deps));
   await app.register(async (s) => staffAcademicRoutes(s, deps));
   await app.register(async (s) => staffSessionRoutes(s, deps));

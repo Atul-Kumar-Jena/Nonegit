@@ -391,7 +391,9 @@ function EntryRow({ e, tz, first }: { e: FeedEntry; tz?: string; first: boolean 
       ? `Register${e.markedBy ? ` · ${e.markedBy}` : ''}`
       : e.source === 'review'
         ? 'Approved after review'
-        : `QR${e.offline ? ' · offline' : ''}${e.distanceM !== null ? ` · ${e.distanceM} m` : ''}`;
+        : e.source === 'credit'
+          ? `Attendance credit${e.markedBy ? ` · ${e.markedBy}` : ''}`
+          : `QR${e.offline ? ' · offline' : ''}${e.distanceM !== null ? ` · ${e.distanceM} m` : ''}`;
   return (
     <View style={[styles.entry, !first && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
       <View style={{ flex: 1 }}>

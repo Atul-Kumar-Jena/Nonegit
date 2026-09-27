@@ -25,7 +25,9 @@ const AUDIENCE = {
             ? '/security'
             : d.courseId
               ? `/subject/${d.courseId}`
-              : '/timetable',
+              : d.kind === 'attendance'
+                ? '/subjects'
+                : '/timetable',
 };
 
 export default function RootLayout() {

@@ -433,10 +433,10 @@ function AddStudents({ b, onClose, onAdd }: { b: BatchDetailT; onClose: () => vo
 function AddSubject({ b, onClose, onAttach, onCreated }: { b: BatchDetailT; onClose: () => void; onAttach: (ids: string[]) => Promise<boolean>; onCreated: (d: BatchDetailT, code: string) => void }) {
   const api = useApi();
   const admin = useCan('courses');
-  const canPeople = useCan('people');
+
   const [mode, setMode] = useState<'existing' | 'new'>('existing');
   const all = useAllCourses();
-  const staff = usePeople({ role: 'staff' }, admin && canPeople);
+  const staff = useColleagues(admin);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [code, setCode] = useState('');
   const [title, setTitle] = useState('');
@@ -451,7 +451,7 @@ function AddSubject({ b, onClose, onAttach, onCreated }: { b: BatchDetailT; onCl
     setBusy(true);
     setError(null);
     try {
-      const d = await staffApi.batchSubject(api, b.id, { code: code.trim(), title: title.trim(), kind, instructorId: admin && canPeople ? teacher : undefined });
+      const d = await staffApi.batchSubject(api, b.id, { code: code.trim(), title: title.trim(), kind, instructorId: admin ? teacher : undefined });
       onCreated(d, code.trim().toUpperCase());
       onClose();
     } catch (err) {
@@ -524,14 +524,14 @@ function AddSubject({ b, onClose, onAttach, onCreated }: { b: BatchDetailT; onCl
           <Field label="Type">
             <Chips value={kind} options={[{ value: 'theory', label: 'Theory' }, { value: 'lab', label: 'Lab' }]} onChange={setKind} />
           </Field>
-          {admin && canPeople ? (
-            <Field label="Teacher">
+          {admin ? (
+            <Field label="Teacher" hint="Leave as “Assign later” to add the subject now and choose its professor any time.">
               <Select
                 title="Teacher"
                 value={teacher}
                 onChange={setTeacher}
                 allowNone="Assign later"
-                options={(staff.data ?? []).filter((p) => p.status === 'active').map((p) => ({ value: p.id, label: p.fullName, sub: p.department ?? undefined }))}
+                options={(staff.data ?? []).map((p) => ({ value: p.id, label: p.name, sub: [p.role === 'admin' ? 'Admin' : 'Professor', p.department].filter(Boolean).join(' · ') }))}
               />
             </Field>
           ) : (

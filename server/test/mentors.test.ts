@@ -48,9 +48,9 @@ describe('batch mentors', () => {
     expect((await admin.call('POST', `/v1/staff/batches/${batchId}`, { mentorId: seed.student2Id })).statusCode).toBe(400);
   });
 
-  it('a professor who creates a batch mentors it', async () => {
-    const b = ok(await other.call('POST', '/v1/staff/batches', { name: 'ECE-B' }));
-    expect(b.mentor.name).toBe('Dr. Other');
+  it('creating a batch doesn’t make anyone its mentor; an admin can set one right away', async () => {
+    expect(ok(await other.call('POST', '/v1/staff/batches', { name: 'ECE-B' })).mentor).toBeNull();
+    expect(ok(await admin.call('POST', '/v1/staff/batches', { name: 'ECE-C', mentorId })).mentor.name).toBe('Dr. Mentor');
   });
 
   it('a student’s unbind request goes to their mentor, who decides it; the student hears back', async () => {

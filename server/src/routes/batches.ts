@@ -137,14 +137,22 @@ export async function batchRoutes(app: FastifyInstance, deps: Deps) {
   app.post('/v1/staff/batches', async (req): Promise<Batch> => {
     const auth = await requireDevice(req, deps, STAFF);
     const b = BatchBody.parse(req.body);
+    if (b.mentorId) {
+      const ok = await deps.db.query(`select 1 from users where id = $1 and tenant_id = $2 and role in ('teacher', 'admin') and status = 'active'`, [b.mentorId, auth.tenantId]);
+      if (ok.rowCount !== 1) throw new ApiError(400, 'BAD_REQUEST', 'A mentor must be a professor or admin of this institution.');
+    }
     try {
       const id = await withTx(deps.db, async (tx) => {
         const { rows } = await tx.query<{ id: string }>(
-          // A professor who creates a batch looks after it (its mentor) until someone else is chosen.
+          // The mentor is chosen explicitly (Batch → Settings → Mentor); nobody becomes one by creating a batch.
           'insert into batches(tenant_id, name, active, department, semester, created_by, mentor_id) values ($1, $2, $3, $4, $5, $6, $7) returning id',
-          [auth.tenantId, b.name, b.active, b.department ?? null, b.semester ?? null, auth.userId, auth.role === 'teacher' ? auth.userId : null],
+          [auth.tenantId, b.name, b.active, b.department ?? null, b.semester ?? null, auth.userId, b.mentorId ?? null],
         );
         await staffAudit(tx, auth, 'batch.create', `batch:${rows[0]!.id}`, { name: b.name, semester: b.semester ?? null });
+        if (b.mentorId && b.mentorId !== auth.userId)
+          await insertNotifications(tx, auth.tenantId, [
+            { userId: b.mentorId, kind: 'mentor', title: `You’re now mentor of ${b.name}`, body: 'Phone switch and reset requests from its students will come to you.', data: { batchId: rows[0]!.id } },
+          ]);
         return rows[0]!.id;
       });
       return loadBatch(deps.db, auth, id);

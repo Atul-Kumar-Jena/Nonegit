@@ -157,7 +157,18 @@ export default function SubjectDetail() {
 function HistoryRow({ h, tz, first }: { h: HistoryItem; tz: string; first: boolean }) {
   const tone = h.status === 'present' ? 'green' : h.status === 'absent' ? 'red' : h.status === 'live' ? 'cyan' : 'muted';
   const label = { present: 'Present', absent: 'Absent', cancelled: 'Cancelled', upcoming: 'Upcoming', live: 'Live now' }[h.status];
-  const how = h.status === 'present' ? (h.source === 'manual' ? 'Register' : h.source === 'review' ? 'Approved' : h.offline ? 'QR · offline' : 'QR') : null;
+  const how =
+    h.status === 'present'
+      ? h.credit
+        ? `Credited · ${h.credit.reason}`
+        : h.source === 'manual'
+          ? 'Register'
+          : h.source === 'review'
+            ? 'Approved'
+            : h.offline
+              ? 'QR · offline'
+              : 'QR'
+      : null;
   return (
     <View style={[styles.hist, !first && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
       <View style={[styles.dot, { backgroundColor: toneColor[tone].fg }]} />
@@ -167,8 +178,13 @@ function HistoryRow({ h, tz, first }: { h: HistoryItem; tz: string; first: boole
         </Text>
         <Text variant="small">{[h.lectureNo ? `Lecture ${h.lectureNo}` : null, h.room, how].filter(Boolean).join(' · ') || ' '}</Text>
         <ChangeNote change={h.change} tz={tz} />
+        {h.credit?.note ? (
+          <Text variant="small" color={colors.text} numberOfLines={3}>
+            {`🎖 ${h.credit.note}`}
+          </Text>
+        ) : null}
       </View>
-      <Badge label={label} tone={tone} dot={false} />
+      <Badge label={h.credit ? 'Credited' : label} tone={tone} dot={false} />
     </View>
   );
 }

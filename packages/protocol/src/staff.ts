@@ -319,7 +319,7 @@ export const FeedEntry = z.object({
   fullName: z.string(),
   rollNo: z.string().nullable(),
   present: z.boolean(),
-  source: z.enum(['scan', 'manual', 'import', 'review']).nullable(),
+  source: z.enum(['scan', 'manual', 'import', 'review', 'credit']).nullable(),
   markedAt: IsoDate.nullable(),
   offline: z.boolean(),
   distanceM: z.number().nullable(),
@@ -447,10 +447,12 @@ export const HistoryItem = z.object({
   lectureNo: z.number().int().nullable(),
   room: z.string().nullable(),
   status: z.enum(['present', 'absent', 'cancelled', 'upcoming', 'live']),
-  source: z.enum(['scan', 'manual', 'import', 'review']).nullable(),
+  source: z.enum(['scan', 'manual', 'import', 'review', 'credit']).nullable(),
   offline: z.boolean(),
   markedAt: IsoDate.nullable(),
   change: SessionChange.nullable().default(null),
+  /** Counted as attended by attendance credit (medical leave, a fest…). */
+  credit: z.object({ reason: z.string(), note: z.string() }).nullable().default(null),
 });
 export type HistoryItem = z.infer<typeof HistoryItem>;
 
@@ -493,3 +495,57 @@ export const PresentScreen = z.object({
   approvedBy: z.string().nullable(),
 });
 export type PresentScreen = z.infer<typeof PresentScreen>;
+
+// ───────────────────────────── attendance credit ─────────────────────────────
+
+/** Why classes are counted as attended although the student wasn't there. */
+export const CREDIT_REASONS = { medical: 'Medical', event: 'Fest / event', sports: 'Sports', duty: 'College duty', other: 'Other' } as const;
+export const CreditReason = z.enum(['medical', 'event', 'sports', 'duty', 'other']);
+export type CreditReason = z.infer<typeof CreditReason>;
+
+export const CreditBody = z
+  .object({
+    /** One subject, or null for every subject the student takes. */
+    courseId: uuid.nullable(),
+    reason: CreditReason,
+    note: z.string().trim().min(3, 'Add a short note (e.g. the certificate or the event)').max(300),
+    amount: z.discriminatedUnion('kind', [
+      /** This many missed classes (per subject), most recent first. */
+      z.object({ kind: z.literal('classes'), classes: z.number().int().min(1).max(200) }),
+      /** Missed classes worth this share of the classes held (per subject). */
+      z.object({ kind: z.literal('percent'), percent: z.number().min(0.5).max(100) }),
+      /** Exactly these missed classes. */
+      z.object({ kind: z.literal('sessions'), sessionIds: z.array(uuid).min(1).max(300) }),
+    ]),
+    /** Only missed classes on these dates (e.g. the days of a medical leave). */
+    from: YMD.optional(),
+    to: YMD.optional(),
+    /** Work out the effect without saving anything. */
+    preview: z.boolean().default(false),
+  })
+  .refine((b) => !b.from || !b.to || b.from <= b.to, { message: 'The end date is before the start date', path: ['to'] });
+export type CreditBody = z.infer<typeof CreditBody>;
+
+export const CreditResult = z.object({
+  preview: z.boolean(),
+  credited: z.number().int(),
+  perSubject: z.array(z.object({ courseId: uuid, code: z.string(), credited: z.number().int(), before: z.number().nullable(), after: z.number().nullable() })),
+  creditId: uuid.nullable(),
+});
+export type CreditResult = z.infer<typeof CreditResult>;
+
+export const CreditEntry = z.object({
+  id: uuid,
+  reason: CreditReason,
+  note: z.string(),
+  subject: z.string().nullable(),
+  requested: z.string(),
+  credited: z.number().int(),
+  by: z.string().nullable(),
+  createdAt: IsoDate,
+  undone: z.boolean(),
+});
+export type CreditEntry = z.infer<typeof CreditEntry>;
+
+export const MissedClass = z.object({ sessionId: uuid, courseId: uuid, code: z.string(), scheduledStart: IsoDate, lectureNo: z.number().int().nullable() });
+export type MissedClass = z.infer<typeof MissedClass>;
