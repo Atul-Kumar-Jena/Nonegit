@@ -3,8 +3,9 @@
  * feature flags and institutions. Developer accounts only.
  *
  * A developer account from the demo institute (…@demo.attendly.app, which can sign in without a
- * code on a demo server) is a *sandbox* developer: it sees and manages only the demo institute
- * and can never flip platform switches or touch real institutions.
+ * code on a demo server) is a *sandbox* developer, for testing: it sees the demo institute and the
+ * test institutions it added (and may add and verify more), but never a real institution, and it
+ * can never flip platform switches.
  */
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
@@ -52,7 +53,8 @@ async function requireRoot(req: FastifyRequest, deps: Deps): Promise<RootAuth> {
   const auth = await requireDevice(req, deps, ['developer']);
   const { rows } = await deps.db.query<{ email: string | null; full_name: string }>('select email, full_name from users where id = $1', [auth.userId]);
   const sandbox = isDemoEmail(rows[0]?.email);
-  return { ...auth, sandbox, tenants: sandbox ? [auth.tenantId] : null, email: rows[0]?.email ?? null, name: rows[0]?.full_name ?? 'Developer' };
+  const tenants = sandbox ? [auth.tenantId, ...(await deps.db.query<{ id: string }>('select id from tenants where sandbox and id <> $1', [auth.tenantId])).rows.map((t) => t.id)] : null;
+  return { ...auth, sandbox, tenants, email: rows[0]?.email ?? null, name: rows[0]?.full_name ?? 'Developer' };
 }
 
 /** What a real (non-demo) deployment needs, and where to change it (Render → your service → Environment). */
@@ -85,6 +87,14 @@ async function freshCode(db: Queryable): Promise<string> {
 function noSandbox(r: RootAuth, what: string) {
   if (r.sandbox) throw new ApiError(403, 'FORBIDDEN', `Sandbox developer: ${what} needs a real developer account.`);
 }
+
+/** The sandbox developer may manage its test institutions, but not the shared demo institute everyone tries. */
+function noSandboxOnDemo(r: RootAuth, id: string, what: string) {
+  if (r.sandbox && id === r.tenantId) throw new ApiError(403, 'FORBIDDEN', `Sandbox developer: ${what} for the shared demo institute needs a real developer account.`);
+}
+
+/** Test institutions a sandbox developer may keep at once (the demo server is public). */
+export const SANDBOX_INSTITUTION_LIMIT = 20;
 
 const PLANNED = [
   { key: 'play_integrity_v3', label: 'Play Integrity v3', detail: 'Hardware attestation of the phone. Needs your Google Cloud project.' },
@@ -145,8 +155,9 @@ async function tenantSummaries(db: Queryable, tenants: string[] | null, q: strin
     scans: number;
     code: string;
     verified_at: Date | null;
+    sandbox: boolean;
   }>(
-    `select t.id, t.slug, t.name, t.status, t.status_reason, t.timezone, t.created_at, t.code, t.verified_at,
+    `select t.id, t.slug, t.name, t.status, t.status_reason, t.timezone, t.created_at, t.code, t.verified_at, t.sandbox,
             (select count(*)::int from users u where u.tenant_id = t.id and u.role = 'student') as students,
             (select count(*)::int from users u where u.tenant_id = t.id and u.role = 'teacher') as teachers,
             (select count(*)::int from users u where u.tenant_id = t.id and u.role = 'admin') as admins,
@@ -174,7 +185,7 @@ async function tenantSummaries(db: Queryable, tenants: string[] | null, q: strin
     admins: r.admins,
     liveSessions: r.live,
     scansToday: r.scans,
-    demo: r.slug === 'demo',
+    demo: r.slug === 'demo' || r.sandbox,
   }));
 }
 
@@ -317,19 +328,24 @@ export async function rootRoutes(app: FastifyInstance, deps: Deps) {
   /** Onboard a new institution: it starts empty with its first admin, who sets up the rest. */
   app.post('/v1/root/tenants', write, async (req): Promise<TenantSummary> => {
     const r = await requireRoot(req, deps);
-    noSandbox(r, 'creating an institution');
     const b = CreateTenantBody.parse(req.body);
     try {
       const id = await withTx(deps.db, async (tx) => {
+        if (r.sandbox) {
+          await tx.query(`select pg_advisory_xact_lock(hashtext('sandbox-institutions'))`);
+          const n = (await tx.query<{ n: number }>('select count(*)::int as n from tenants where sandbox')).rows[0]!.n;
+          if (n >= SANDBOX_INSTITUTION_LIMIT)
+            throw new ApiError(409, 'CONFLICT', `The demo server already holds ${SANDBOX_INSTITUTION_LIMIT} test institutions. Suspend or reuse one, or sign in with a real developer account.`);
+        }
         const tz = await tx.query('select 1 from pg_timezone_names where name = $1', [b.timezone]);
         if (tz.rowCount !== 1) throw new ApiError(400, 'BAD_REQUEST', `“${b.timezone}” isn’t a time zone. Use a name like Asia/Kolkata.`);
         const base = b.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30) || 'institution';
         const taken = await tx.query('select 1 from tenants where slug = $1', [base]);
         const slug = taken.rowCount ? `${base}-${Array.from(randomBytes(2), (x) => x.toString(16).padStart(2, '0')).join('')}` : base;
         const t = await tx.query<{ id: string }>(
-          `insert into tenants(slug, name, email_domains, timezone, min_attendance, term_name, term_start, code, verified_at)
-           values ($1, $2, $3, $4, $5, 'Current term', (now() at time zone $4)::date, $6, null) returning id`,
-          [slug, b.name, [b.adminEmail.split('@')[1]!], b.timezone, b.minAttendance, await freshCode(tx)],
+          `insert into tenants(slug, name, email_domains, timezone, min_attendance, term_name, term_start, code, verified_at, sandbox)
+           values ($1, $2, $3, $4, $5, 'Current term', (now() at time zone $4)::date, $6, null, $7) returning id`,
+          [slug, b.name, [b.adminEmail.split('@')[1]!], b.timezone, b.minAttendance, await freshCode(tx), r.sandbox],
         );
         const tenantId = t.rows[0]!.id;
         const admin = await tx.query<{ id: string }>(`insert into users(tenant_id, role, full_name, email, created_by) values ($1, 'admin', $2, $3, $4) returning id`, [
@@ -339,7 +355,7 @@ export async function rootRoutes(app: FastifyInstance, deps: Deps) {
           r.userId,
         ]);
         await appendAudit(tx, { tenantId, actorType: 'user', actorId: r.userId, action: 'institution.create', subject: `user:${admin.rows[0]!.id}`, data: { slug } });
-        await appendAudit(tx, { tenantId: null, actorType: 'user', actorId: r.userId, action: 'root.tenant_create', subject: `tenant:${tenantId}`, data: { slug, name: b.name } });
+        await appendAudit(tx, { tenantId: null, actorType: 'user', actorId: r.userId, action: 'root.tenant_create', subject: `tenant:${tenantId}`, data: { slug, name: b.name, sandbox: r.sandbox } });
         return tenantId;
       });
       return (await tenantSummaries(deps.db, [id], null))[0]!;
@@ -377,7 +393,7 @@ export async function rootRoutes(app: FastifyInstance, deps: Deps) {
     const { id } = z.object({ id: z.uuid() }).parse(req.params);
     const b = TenantVerifyBody.parse(req.body);
     if (r.tenants && !r.tenants.includes(id)) throw new ApiError(404, 'NOT_FOUND', 'Institution not found.');
-    if (!b.verified) noSandbox(r, 'removing a verification');
+    if (!b.verified) noSandboxOnDemo(r, id, 'removing the verification');
     await withTx(deps.db, async (tx) => {
       const t = await tx.query('select 1 from tenants where id = $1 for update', [id]);
       if (!t.rowCount) throw new ApiError(404, 'NOT_FOUND', 'Institution not found.');
@@ -391,8 +407,8 @@ export async function rootRoutes(app: FastifyInstance, deps: Deps) {
   /** A new institution code (e.g. the old one was shared too widely). Signed-in people are unaffected. */
   app.post('/v1/root/tenants/:id/code', write, async (req): Promise<TenantSummary> => {
     const r = await requireRoot(req, deps);
-    noSandbox(r, 'changing an institution code');
     const { id } = z.object({ id: z.uuid() }).parse(req.params);
+    noSandboxOnDemo(r, id, 'changing the code');
     if (r.tenants && !r.tenants.includes(id)) throw new ApiError(404, 'NOT_FOUND', 'Institution not found.');
     await withTx(deps.db, async (tx) => {
       const res = await tx.query('update tenants set code = $2 where id = $1', [id, await freshCode(tx)]);

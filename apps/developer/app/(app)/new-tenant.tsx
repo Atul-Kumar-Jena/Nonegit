@@ -8,6 +8,7 @@ import { Screen } from '@kit/components/Screen';
 import { Button, Card, Input, Notice, Text } from '@kit/components/ui';
 import { useApi } from '@kit/state/session';
 import { rootApi } from '@/api';
+import { useConsole } from '@/queries';
 import { Header, confirmIdentity } from '@/ui';
 
 /** Onboard a new institution: it starts empty with its first admin. */
@@ -21,6 +22,13 @@ export default function NewTenant() {
   const [minAttendance, setMin] = useState('75');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const sandbox = useConsole().data?.sandbox ?? false;
+  /** A demo address signs in without a code while the server is in demo mode: handy for testing. */
+  const testAddress = () => {
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '.').replace(/^\.+|\.+$/g, '').slice(0, 30) || 'institution';
+    setAdminEmail(`admin.${slug}@demo.attendly.app`);
+    if (!adminName.trim()) setAdminName('Test Admin');
+  };
 
   async function create() {
     setError(null);
@@ -66,6 +74,14 @@ export default function NewTenant() {
           <Input value={f.value} onChangeText={f.set} placeholder={f.ph} autoCapitalize={f.email ? 'none' : 'words'} keyboardType={f.email ? 'email-address' : f.num ? 'number-pad' : 'default'} autoCorrect={false} />
         </View>
       ))}
+      {sandbox ? (
+        <Card tone="amber" style={{ marginTop: 14, gap: 10 }}>
+          <Text variant="small">
+            Testing without email? Give the admin an address ending in @demo.attendly.app: it signs in to Attendly Institute without a code while demo mode is on. A real address gets its code by email.
+          </Text>
+          <Button title="Use a test admin address" kind="ghost" compact onPress={testAddress} />
+        </Card>
+      ) : null}
       {error ? (
         <View style={{ marginTop: 12 }}>
           <Notice tone="red" message={error} />

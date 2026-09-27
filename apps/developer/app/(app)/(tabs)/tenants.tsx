@@ -22,7 +22,7 @@ export default function TenantsScreen() {
       <Header
         title="Institutions"
         subtitle={`${all.length} tenants · ${fmtNum(totals.users)} users · ${totals.live} live`}
-        right={!sandbox ? <Button title="New" compact onPress={() => router.push('/new-tenant')} icon={<Plus color="#03141c" size={15} />} /> : undefined}
+        right={<Button title="New" compact onPress={() => router.push('/new-tenant')} icon={<Plus color="#03141c" size={15} />} />}
       />
       <Input value={q} onChangeText={setQ} placeholder="Search institutions…" icon={<Search color={colors.textDim} size={16} />} autoCapitalize="none" />
       <View style={{ gap: 10, marginTop: 14 }}>
@@ -35,7 +35,7 @@ export default function TenantsScreen() {
       </View>
       {sandbox ? (
         <Text variant="small" style={{ marginTop: 14 }}>
-          Sandbox: only the demo institute is shown. A real developer account can add institutions (each gets its first admin, who sets up the rest in Attendly Institute).
+          Testing mode: you see the demo institute and the test institutions you add (marked Demo). Each gets its first admin, who sets up the rest in Attendly Institute. Real institutions appear only to a real developer account.
         </Text>
       ) : null}
     </Screen>

@@ -55,7 +55,6 @@ describe('developer console', () => {
     expect(tenants.map((t: { id: string }) => t.id)).toEqual([demoTenant]);
     expect((await sandbox.call('GET', `/v1/root/tenants/${seed.tenantId}`)).statusCode).toBe(404);
     expect((await sandbox.call('POST', '/v1/root/switches/scans_paused', { enabled: true, reason: 'try', confirm: 'scans_paused' })).statusCode).toBe(403);
-    expect((await sandbox.call('POST', '/v1/root/tenants', { name: 'Evil U', adminName: 'X', adminEmail: 'x@evil.edu' })).statusCode).toBe(403);
     expect((await sandbox.call('POST', `/v1/root/tenants/${seed.tenantId}/status`, { status: 'suspended', reason: 'nope', confirm: 'iit' })).statusCode).toBe(404);
     expect((await sandbox.call('POST', '/v1/root/flags', { tenantId: seed.tenantId, key: 'strict_geo', enabled: true })).statusCode).toBe(404);
     const audit = ok(await sandbox.call('GET', '/v1/root/audit'));
@@ -123,6 +122,38 @@ describe('developer console', () => {
     ok(await root.call('POST', `/v1/root/tenants/${t.id}/status`, { status: 'active', reason: 'paid', confirm: 'green-valley-college' }));
     // …but never your own institution.
     expect((await root.call('POST', `/v1/root/tenants/${seed.tenantId}/status`, { status: 'suspended', reason: 'oops', confirm: 'iit' })).statusCode).toBe(409);
+  });
+
+  it('the sandbox developer adds and verifies test institutions, and still never sees real ones', async () => {
+    const t = ok(await sandbox.call('POST', '/v1/root/tenants', { name: 'Test Polytechnic', adminName: 'Test Admin', adminEmail: 'head.test-poly@demo.attendly.app', timezone: 'Asia/Kolkata' }));
+    expect(t).toMatchObject({ name: 'Test Polytechnic', verified: false, demo: true, admins: 1 });
+    const mine = ok(await sandbox.call('GET', '/v1/root/tenants')).map((x: { id: string }) => x.id);
+    expect(mine).toEqual(expect.arrayContaining([demoTenant, t.id]));
+    expect(mine).not.toContain(seed.tenantId);
+    expect(ok(await sandbox.call('POST', `/v1/root/tenants/${t.id}/verify`, { verified: true })).verified).toBe(true);
+    const code = ok(await sandbox.call('POST', `/v1/root/tenants/${t.id}/code`, {})).code;
+    expect(code).not.toBe(t.code);
+    // The shared demo institute stays as it is for everyone else.
+    expect((await sandbox.call('POST', `/v1/root/tenants/${demoTenant}/code`, {})).statusCode).toBe(403);
+    expect((await sandbox.call('POST', `/v1/root/tenants/${demoTenant}/verify`, { verified: false })).statusCode).toBe(403);
+    // Its demo-address admin signs in to the new institution without a code while demo mode is on.
+    const head = new TestDevice(ctx);
+    const hr = await head.requestOtp('head.test-poly@demo.attendly.app', 'email', code);
+    expect(hr.json().instantCode).toBeTruthy();
+    const hv = await head.verifyOtp(hr.json().challengeId, hr.json().instantCode);
+    expect((await head.bind(hv.json().ticket)).statusCode).toBe(200);
+    expect(ok(await head.call('GET', '/v1/staff/me')).user.role).toBe('admin');
+    // It isn't listed among the shared demo accounts.
+    const meta = (await ctx.app.inject({ method: 'GET', url: '/v1/meta' })).json();
+    expect(meta.demo.accounts.map((a: { email: string }) => a.email)).not.toContain('head.test-poly@demo.attendly.app');
+    // The real developer sees it too, marked as a test institution; platform switches stay closed to the sandbox.
+    expect(ok(await root.call('GET', `/v1/root/tenants/${t.id}`)).demo).toBe(true);
+    expect((await sandbox.call('POST', '/v1/root/switches/scans_paused', { enabled: true, reason: 'try', confirm: 'scans_paused' })).statusCode).toBe(403);
+    // A public demo server can't be flooded with test institutions.
+    await ctx.db.query(`insert into tenants(slug, name, email_domains, timezone, term_name, term_start, code, sandbox)
+      select 'fill-' || g, 'Fill ' || g, '{x.edu}', 'Asia/Kolkata', 'T', current_date, 'FILL' || lpad(g::text, 4, '0'), true from generate_series(1, 30) g`);
+    expect((await sandbox.call('POST', '/v1/root/tenants', { name: 'One Too Many', adminName: 'X', adminEmail: 'x@toomany.edu' })).statusCode).toBe(409);
+    await ctx.db.query(`delete from tenants where slug like 'fill-%'`);
   });
 
   it('feature flags are per institution and enforced', async () => {

@@ -37,7 +37,7 @@ export default function ConsoleScreen() {
         <Card tone="amber" style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
           <FlaskConical color={colors.amber} size={18} />
           <Text variant="small" style={{ flex: 1 }}>
-            Demo sandbox: you see only the demo institute, and platform switches are read-only. A real developer account controls every institution.
+            Testing mode: add and verify test institutions under Institutions. Platform switches are read-only here; a real developer account controls every institution.
           </Text>
         </Card>
       ) : null}

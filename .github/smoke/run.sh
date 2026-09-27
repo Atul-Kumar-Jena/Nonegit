@@ -35,9 +35,10 @@ for n in re.findall(r'<node [^>]*>',x):
 P
 }
 
+FAILED=""
 report() { # $1 = package, $2 = label
   local pid; pid=$(adb shell pidof $1)
-  if [ -n "$pid" ]; then echo "   RUNNING (pid $pid)"; else echo "   NOT RUNNING — crashed or closed"; fi
+  if [ -n "$pid" ]; then echo "   RUNNING (pid $pid)"; else echo "   NOT RUNNING — crashed or closed"; FAILED="$FAILED $2"; fi
   adb logcat -d > $OUT/$2-logcat.txt
   echo "   --- crash / JS errors ---"
   grep -E "FATAL EXCEPTION|AndroidRuntime|ReactNativeJS|E ReactNative|Error:|attendly\]|libc.*Fatal|SIGSEGV|SIGABRT|DEBUG   :" $OUT/$2-logcat.txt | grep -v "^.*W ReactNativeJS" | head -80
@@ -69,4 +70,6 @@ for app in student institute developer; do
     echo "-- after demo / continue"; report $PKG $app-2; screen_text $app-2
   fi
 done
-exit 0
+echo "=================== summary ==================="
+if [ -n "$FAILED" ]; then echo "NOT RUNNING at:$FAILED"; exit 1; fi
+echo "All apps opened and stayed open."

@@ -25,7 +25,7 @@ export async function listDemoAccounts(db: Db, now: number): Promise<{ instituti
     `select u.role, u.full_name, u.email, u.roll_no, t.name as tenant, t.code,
             (select array_agg(c.code order by c.code) from courses c where c.instructor_id = u.id and c.active) as courses
        from users u join tenants t on t.id = u.tenant_id
-      where u.email like $1 and u.status = 'active' and t.status = 'active'
+      where u.email like $1 and u.status = 'active' and t.status = 'active' and t.slug = 'demo'
       order by u.email`,
     [`%@${DEMO_DOMAIN}`],
   );
