@@ -8,6 +8,7 @@ import { materializeTimetable } from './lib/timetable';
 import { createPushSender, parseServiceAccount, startPushDispatcher } from './lib/push';
 import { startRevocationRefresh } from './lib/device-trust';
 import { startClassClock } from './lib/class-clock';
+import { ensureDeveloperAccess, ensureOwners } from './lib/platform-access';
 
 async function main() {
   const config = loadConfig();
@@ -20,7 +21,11 @@ async function main() {
     await seedDemo(db, config, { log: (m) => console.log(`[seed] ${m}`) }).catch((err: Error) => console.error(`[seed] skipped: ${err.message}`));
     await materializeTimetable(db).catch((err: Error) => console.error(`[timetable] ${err.message}`));
   }
+  // Every institution has a main admin (older data: its earliest admin).
+  await ensureOwners(db).catch((err: Error) => console.error(`[owners] ${err.message}`));
   const { app, deps } = await buildApp({ config, db });
+  // The platform owner links Google Authenticator once with a setup code printed here.
+  await ensureDeveloperAccess(db, config, deps.hash, deps.clock(), (m) => console.log(`[developer] ${m}`)).catch((err: Error) => console.error(`[developer] ${err.message}`));
 
   if (config.otpDelivery === 'console') app.log.warn('OTP_DELIVERY=console — sign-in codes are printed to this log, not emailed.');
   if (config.env === 'production' && config.devToolsToken) app.log.warn('DEV_TOOLS_TOKEN is set in production. Unset it before real use.');

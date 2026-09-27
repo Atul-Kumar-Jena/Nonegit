@@ -8,14 +8,16 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { AuthenticatorCodeBody, type AuthenticatorSetup, type AuthenticatorStatus } from '@attendly/protocol';
+import { AuthenticatorCodeBody, type AuthenticatorSetup, type AuthenticatorStatus, type IssuedSetupCode } from '@attendly/protocol';
 import type { Deps } from '../deps';
 import { withTx } from '../db';
 import { STAFF, requirePerm } from '../lib/access';
 import { appendAudit } from '../lib/audit';
 import { requireDevice } from '../lib/auth';
 import { ApiError } from '../lib/errors';
+import { issueSetupCode } from '../lib/setup-codes';
 import { base32Encode, makeSecretBox, newTotpSecret, otpauthUrl, verifyTotp } from '../lib/totp';
+import { isOwner } from './staff-admin';
 
 const ISSUER = 'Attendly';
 const PENDING_TTL_MS = 15 * 60_000;
@@ -88,6 +90,27 @@ export async function authenticatorRoutes(app: FastifyInstance, deps: Deps) {
       await tx.query('update users set totp_secret_enc = $2, totp_enabled_at = $3, totp_last_step = null, totp_pending_enc = null, totp_pending_expires_at = null where id = $1', [id, box.seal(secret), new Date(deps.clock())]);
       await appendAudit(tx, { tenantId: auth.tenantId, actorType: 'user', actorId: auth.userId, action: 'auth.authenticator_issue', subject: `user:${id}` });
       return { secret: base32Encode(secret), otpauthUrl: otpauthUrl(secret, accountOf(u), ISSUER), issuer: ISSUER, account: accountOf(u), active: true };
+    });
+  });
+
+  /**
+   * A one-time setup code for someone to link Google Authenticator on their own phone (no email
+   * needed, nothing to scan in person). Students and professors: anyone with "People". Admins: the
+   * main admin only.
+   */
+  app.post('/v1/staff/people/:id/setup-code', write, async (req): Promise<IssuedSetupCode> => {
+    const auth = await requireDevice(req, deps, STAFF);
+    requirePerm(auth, 'people');
+    const { id } = z.object({ id: z.uuid() }).parse(req.params);
+    if (id === auth.userId) throw new ApiError(400, 'BAD_REQUEST', 'You’re already signed in. Change your own authenticator from More → Sign-in security.');
+    return withTx(deps.db, async (tx) => {
+      const u = (await tx.query<{ role: string; full_name: string; email: string | null; phone: string | null; status: string }>('select role, full_name, email, phone, status from users where id = $1 and tenant_id = $2 for update', [id, auth.tenantId])).rows[0];
+      if (!u || u.role === 'developer') throw new ApiError(404, 'NOT_FOUND', 'Person not found.');
+      if (u.role === 'admin' && !(await isOwner(tx, auth.userId))) throw new ApiError(403, 'FORBIDDEN', 'Only the main admin can give an admin a setup code.');
+      if (u.status !== 'active') throw new ApiError(409, 'CONFLICT', 'This account is suspended. Reactivate it first.');
+      const setup = await issueSetupCode(tx, deps.hash, id, deps.clock());
+      await appendAudit(tx, { tenantId: auth.tenantId, actorType: 'user', actorId: auth.userId, action: 'auth.setup_code_issue', subject: `user:${id}` });
+      return { name: u.full_name, signInId: u.email ?? u.phone ?? '', code: setup.code, expiresAt: setup.expiresAt.toISOString() };
     });
   });
 

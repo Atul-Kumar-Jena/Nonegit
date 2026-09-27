@@ -5,6 +5,7 @@
 import { z } from 'zod';
 import {
   AuthenticatorSetup,
+  IssuedSetupCode,
   CreditEntry,
   CreditResult,
   MissedClass,
@@ -126,6 +127,8 @@ export const staffApi = {
   acceptRequest: (api: ApiClient, id: string, reply?: string, acceptWarnings = false) =>
     api.authed('POST', `/v1/staff/requests/${enc(id)}/accept`, DecisionResponse, { acceptWarnings, ...(reply ? { reply } : {}) }),
   declineRequest: (api: ApiClient, id: string, reply?: string) => api.authed('POST', `/v1/staff/requests/${enc(id)}/decline`, DecisionResponse, reply ? { reply } : {}),
+  /** A one-time setup code: they link Google Authenticator on their own phone (no email needed). */
+  setupCode: (api: ApiClient, personId: string) => api.authed('POST', `/v1/staff/people/${enc(personId)}/setup-code`, IssuedSetupCode, {}),
   issueAuthenticator: (api: ApiClient, personId: string) => api.authed('POST', `/v1/staff/people/${enc(personId)}/authenticator`, AuthenticatorSetup, {}),
   removeAuthenticator: (api: ApiClient, personId: string) => api.authed('POST', `/v1/staff/people/${enc(personId)}/authenticator/remove`, AuthenticatorStatus, {}),
   cancelRequest: (api: ApiClient, id: string) => api.authed('POST', `/v1/staff/requests/${enc(id)}/cancel`, ChangeRequest, {}),

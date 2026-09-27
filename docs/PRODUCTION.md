@@ -17,6 +17,18 @@ When you're done, the **Developer app → Console → Production checklist** sho
 
 ---
 
+## 0 · Sign-up with Google Authenticator (no email needed)
+Nobody needs email to get in. Each person links **Google Authenticator** once with a one-time
+**setup code**, then signs in with their ID and the authenticator's 6-digit code.
+
+1. **You (developer), once:** Render → **Logs** → find `Attendly Developer first-time setup → sign-in ID developer@attendly.app · setup code ABCD-EFGH-JKMN`.
+   Attendly Developer → **First-time setup** → that ID and code → **Open Google Authenticator** (adds "Attendly") → type its code → **Bind this device**.
+   After that: open the app, type the Google Authenticator code. (A new setup code is printed at every restart until you've done this; it's valid 24 h.)
+   Want another ID? Set `DEVELOPER_SIGN_IN_ID` in Render → Environment. Lost the phone? Set `DEVELOPER_AUTHENTICATOR_RESET=true`, restart, set up again from the log, then delete the setting.
+2. **Each institution — only the Developer app creates them:** Institutions → **New** → name, main admin's name and email (their sign-in ID; nothing is emailed) → **Create** → **Verify institution** → **Share instructions** (institution code + the main admin's setup code, shown once). Lost phone: **New setup code for the main admin**.
+3. **The main admin:** Attendly Institute → institution code → **First time? Sign in with a setup code** → ID + code → Google Authenticator → bind. The main admin is the only one who adds, promotes or removes **admins**.
+4. **Everyone else:** an admin adds professors (and gives them extra powers — "sudo" professors — under Role & permissions); a new professor/admin gets a setup code on the spot (**Share instructions**). Students: People → the student → **Create setup code** (or batches, as before).
+
 ## 1 · Always-on server (Render)
 Render → your service (**attendly-api-bt9r**) → **Settings → Instance type → Starter** → Save.
 

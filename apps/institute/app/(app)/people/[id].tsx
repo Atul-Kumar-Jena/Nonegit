@@ -3,12 +3,13 @@ import { View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { Ban, CheckCircle2, FileBarChart, KeyRound, Pencil, Smartphone } from 'lucide-react-native';
-import { STAFF_PERMISSIONS, type AuthenticatorSetup } from '@attendly/protocol';
+import { STAFF_PERMISSIONS, type AuthenticatorSetup, type IssuedSetupCode } from '@attendly/protocol';
+import { SetupCodeCard } from '@kit/components/SetupCodeCard';
 import { QrCode } from '@kit/components/QrCode';
 import { Screen } from '@kit/components/Screen';
 import { Avatar, Badge, Button, Card, ErrorState, InfoRow, Loading, Notice, SectionLabel, Text } from '@kit/components/ui';
 import { dateLong, initials } from '@kit/lib/format';
-import { useApi } from '@kit/state/session';
+import { useApi, useSession } from '@kit/state/session';
 import { colors } from '@kit/theme';
 import { staffApi } from '@/api';
 import { Header, confirmAction } from '@/components/forms';
@@ -17,15 +18,21 @@ import { useCourses, useMe, usePerson } from '@/queries';
 
 /** One person (admins): details, their courses, their phone, suspend / reset. */
 export default function PersonDetail() {
-  const { id: raw } = useLocalSearchParams<{ id: string }>();
+  const params = useLocalSearchParams<{ id: string; setup?: string; sid?: string; nm?: string; exp?: string }>();
+  const raw = params.id;
   const id = String(raw ?? '');
   const api = useApi();
   const qc = useQueryClient();
   const me = useMe();
   const q = usePerson(id);
   const courses = useCourses();
-  const [busy, setBusy] = useState<null | 'status' | 'device' | 'totp'>(null);
+  const [busy, setBusy] = useState<null | 'status' | 'device' | 'totp' | 'setup'>(null);
   const [issued, setIssued] = useState<AuthenticatorSetup | null>(null);
+  // Just added: their first-sign-in setup code comes with the navigation (shown once).
+  const [setupCode, setSetupCode] = useState<IssuedSetupCode | null>(
+    params.setup && params.sid && params.nm && params.exp ? { code: String(params.setup), signInId: String(params.sid), name: String(params.nm), expiresAt: String(params.exp) } : null,
+  );
+  const { institution } = useSession();
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
 
@@ -136,10 +143,64 @@ export default function PersonDetail() {
         )}
       </Card>
 
+      {!self && (p.role !== 'admin' || me.data?.owner) && me.data?.permissions.includes('people') ? (
+        <>
+          <SectionLabel>First sign-in</SectionLabel>
+          {setupCode ? (
+            <SetupCodeCard
+              issued={setupCode}
+              app={p.role === 'student' ? 'Attendly' : 'Attendly Institute'}
+              institution={me.data?.institution.name}
+              institutionCode={p.role === 'student' ? undefined : institution?.code}
+              onDone={() => setSetupCode(null)}
+            />
+          ) : (
+            <Card style={{ gap: 10 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <KeyRound color={p.authenticator ? colors.green : p.setupPending ? colors.amber : colors.textDim} size={18} />
+                <Text variant="body" style={{ flex: 1 }}>
+                  {p.authenticator
+                    ? 'Signs in with Google Authenticator.'
+                    : p.setupPending
+                      ? 'Setup code given — not used yet.'
+                      : 'Not signed in yet. Give them a setup code: they link Google Authenticator with it (no email needed).'}
+                </Text>
+              </View>
+              <Button
+                title={p.authenticator || p.setupPending ? 'New setup code' : 'Create setup code'}
+                kind={p.authenticator ? 'secondary' : 'primary'}
+                compact
+                loading={busy === 'setup'}
+                onPress={() =>
+                  confirmAction(
+                    p.authenticator || p.setupPending ? 'Create a new setup code?' : `Create a setup code for ${p.fullName}?`,
+                    `${p.setupPending ? 'The earlier code stops working. ' : ''}${p.authenticator ? 'Use this when they’re moving to a new phone: they link Google Authenticator again. ' : ''}You’ll see the code once, with a button to share the steps.`,
+                    'Create',
+                    () =>
+                      void (async () => {
+                        setBusy('setup');
+                        setError(null);
+                        try {
+                          setSetupCode(await staffApi.setupCode(api, p.id));
+                          void qc.invalidateQueries({ queryKey: ['staff', 'person', p.id] });
+                        } catch (err) {
+                          setError(err instanceof Error ? err.message : 'Couldn’t create a setup code.');
+                        } finally {
+                          setBusy(null);
+                        }
+                      })(),
+                  )
+                }
+              />
+            </Card>
+          )}
+        </>
+      ) : null}
+
       {(p.role === 'teacher' || p.role === 'admin') && me.data?.user.role === 'admin' ? (
         <>
           <SectionLabel>Role & permissions</SectionLabel>
-          <RoleEditor p={p} self={self} />
+          <RoleEditor p={p} self={self} owner={!!me.data?.owner} />
         </>
       ) : p.role === 'teacher' && p.permissions.length ? (
         <>

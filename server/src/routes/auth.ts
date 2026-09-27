@@ -204,9 +204,12 @@ export async function authRoutes(app: FastifyInstance, deps: Deps) {
       [body.identifier, new Date(now - 3_600_000)],
     );
     const r = recent.rows[0]!;
+    // Nothing is sent to someone who uses Google Authenticator, so the "codes sent" throttles don't
+    // apply; the daily wrong-code budget still caps guessing.
+    const viaAuthenticator = !!user?.totp && user.status === 'active';
     if (!instant && (await failuresToday(deps.db, body.identifier, now)) >= OTP_MAX_FAILURES_PER_DAY) throw lockedOut();
-    if (!instant && r.n >= OTP_MAX_PER_HOUR) throw new ApiError(429, 'RATE_LIMITED', 'Too many codes requested. Try again in an hour.');
-    if (!instant && r.last && now - r.last.getTime() < OTP_RESEND_AFTER_MS)
+    if (!instant && !viaAuthenticator && r.n >= OTP_MAX_PER_HOUR) throw new ApiError(429, 'RATE_LIMITED', 'Too many codes requested. Try again in an hour.');
+    if (!instant && !viaAuthenticator && r.last && now - r.last.getTime() < OTP_RESEND_AFTER_MS)
       throw new ApiError(429, 'RATE_LIMITED', 'Please wait a few seconds before requesting another code.', {
         retryAfterSec: Math.ceil((OTP_RESEND_AFTER_MS - (now - r.last.getTime())) / 1000),
       });

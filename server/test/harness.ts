@@ -122,6 +122,8 @@ export async function seedBasic(db: Db): Promise<Seeded> {
       [foreignCourseId, outsiderId],
     ] as const)
       await tx.query('insert into enrollments(course_id, user_id) values ($1, $2)', [cid, uid]);
+    // The first admin of each institution is its main admin.
+    await tx.query(`update users set is_owner = true where id in (select distinct on (tenant_id) id from users where role = 'admin' order by tenant_id, created_at, id)`);
     return { tenantId, otherTenantId, studentId, student2Id, outsiderId, courseId, otherCourseId, foreignCourseId };
   });
 }

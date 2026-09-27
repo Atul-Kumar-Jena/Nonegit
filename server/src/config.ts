@@ -52,6 +52,14 @@ const EnvSchema = z
     /** The platform owner's developer account (Attendly Developer app); signs in with a normal code. */
     BOOTSTRAP_DEVELOPER_EMAIL: z.string().trim().toLowerCase().pipe(z.email()).optional(),
     BOOTSTRAP_TIMEZONE: z.string().trim().default('Asia/Kolkata'),
+    /**
+     * Sign-in ID of the platform owner in Attendly Developer (defaults to BOOTSTRAP_DEVELOPER_EMAIL,
+     * else developer@attendly.app). Until Google Authenticator is linked, a one-time setup code for it
+     * is printed in this log at every start.
+     */
+    DEVELOPER_SIGN_IN_ID: z.string().trim().toLowerCase().pipe(z.email()).optional(),
+    /** Lost the developer phone: set to true once and restart — a new setup code is printed. Then remove it. */
+    DEVELOPER_AUTHENTICATOR_RESET: bool,
     SERVER_SIGNING_KEY: b64Key(32),
     TOKEN_PEPPER: b64Key(32),
     /**
@@ -124,6 +132,7 @@ export interface Config {
     developerEmail: string | null;
     timezone: string;
   } | null;
+  developer: { signInId: string; resetAuthenticator: boolean };
   serverSigningSeed: Uint8Array;
   tokenPepper: Uint8Array;
   otpDelivery: 'console' | 'smtp' | 'brevo' | 'resend';
@@ -194,6 +203,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
             timezone: e.BOOTSTRAP_TIMEZONE,
           }
         : null,
+    developer: {
+      signInId: e.DEVELOPER_SIGN_IN_ID ?? e.BOOTSTRAP_DEVELOPER_EMAIL ?? 'developer@attendly.app',
+      resetAuthenticator: e.DEVELOPER_AUTHENTICATOR_RESET,
+    },
     serverSigningSeed: seed.slice(0, 32),
     tokenPepper: decodeKey(e.TOKEN_PEPPER),
     otpDelivery,

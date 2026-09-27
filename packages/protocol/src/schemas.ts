@@ -366,3 +366,46 @@ export const AuthenticatorStatus = z.object({ enabled: z.boolean(), enabledAt: I
 export type AuthenticatorStatus = z.infer<typeof AuthenticatorStatus>;
 export const AuthenticatorCodeBody = z.object({ code: z.string().regex(/^[0-9]{6}$/, 'Enter the 6-digit code') });
 export type AuthenticatorCodeBody = z.infer<typeof AuthenticatorCodeBody>;
+
+// ── First sign-in with a one-time setup code (no email needed) ──
+// The developer (for an institution's main admin), an admin (for staff and students) or the server
+// log (for the developer) hands out a setup code. With it, the person links Google Authenticator on
+// their phone once; afterwards they sign in with their ID and the authenticator's code.
+
+/** Setup codes: 12 characters without look-alikes (no 0/O, 1/I/L), shown as ABCD-EFGH-JKMN. */
+export const SETUP_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+/** "abcd efgh-jkmn" → "ABCDEFGHJKMN" (null if it can't be a setup code). */
+export function normalizeSetupCode(input: unknown): string | null {
+  if (typeof input !== 'string') return null;
+  const c = input.toUpperCase().replace(/[\s-]/g, '');
+  if (c.length !== 12) return null;
+  for (const ch of c) if (!SETUP_CODE_ALPHABET.includes(ch)) return null;
+  return c;
+}
+export const formatSetupCode = (c: string) => (c.length === 12 ? `${c.slice(0, 4)}-${c.slice(4, 8)}-${c.slice(8)}` : c);
+const SetupCodeInput = z
+  .string()
+  .max(30)
+  .transform((v, ctx) => normalizeSetupCode(v) ?? (ctx.addIssue({ code: 'custom', message: 'A setup code has 12 letters and digits, e.g. ABCD-EFGH-JKMN' }), z.NEVER));
+/** The sign-in ID: the email (or mobile number) the account was registered with. Nothing is sent to it. */
+const SignInId = z.string().trim().min(3).max(254).transform((v) => (v.includes('@') ? v.toLowerCase() : v.replace(/[\s-]/g, '')));
+
+export const SetupStartBody = z.object({ identifier: SignInId, setupCode: SetupCodeInput, institutionCode: InstitutionCode.optional() });
+export type SetupStartBody = z.input<typeof SetupStartBody>;
+export const SetupStartResponse = z.object({
+  name: z.string(),
+  institution: z.string(),
+  issuer: z.string(),
+  account: z.string(),
+  /** Base32 key to type into Google Authenticator by hand. */
+  secret: z.string(),
+  /** otpauth:// link: opens Google Authenticator to add the account (or shown as a QR). */
+  otpauthUrl: z.string(),
+  expiresAt: IsoDate,
+});
+export type SetupStartResponse = z.infer<typeof SetupStartResponse>;
+export const SetupFinishBody = SetupStartBody.extend({ code: z.string().regex(/^[0-9]{6}$/, 'Enter the 6-digit code') });
+export type SetupFinishBody = z.input<typeof SetupFinishBody>;
+/** A setup code just issued — shown once; share it with the person privately. */
+export const IssuedSetupCode = z.object({ name: z.string(), signInId: z.string(), code: z.string(), expiresAt: IsoDate });
+export type IssuedSetupCode = z.infer<typeof IssuedSetupCode>;

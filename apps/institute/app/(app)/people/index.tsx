@@ -6,7 +6,7 @@ import { Screen } from '@kit/components/Screen';
 import { Badge, Button, Input, Loading, Notice, Segmented, Text } from '@kit/components/ui';
 import { colors, radius } from '@kit/theme';
 import { Header } from '@/components/forms';
-import { useIsAdmin, usePeople } from '@/queries';
+import { useMe, usePeople } from '@/queries';
 
 type Role = 'student' | 'teacher' | 'admin';
 
@@ -21,13 +21,14 @@ export default function People() {
     return () => clearTimeout(t);
   }, [q]);
   const list = usePeople({ role, q: debounced || undefined });
-  const isAdmin = useIsAdmin();
+  // Only the main admin adds admins.
+  const owner = useMe().data?.owner ?? false;
 
   return (
     <Screen scroll={false} keyboard>
       <Header info="people"
         title="People & roles"
-        right={role !== 'admin' || isAdmin ? <Button title="Add" compact onPress={() => router.push({ pathname: '/person-form', params: { role } })} icon={<UserPlus color={colors.bg} size={15} />} /> : undefined}
+        right={role !== 'admin' || owner ? <Button title="Add" compact onPress={() => router.push({ pathname: '/person-form', params: { role } })} icon={<UserPlus color={colors.bg} size={15} />} /> : undefined}
       />
       <Segmented
         value={role}
@@ -65,8 +66,9 @@ export default function People() {
                 {[item.rollNo, item.email ?? item.phone].filter(Boolean).join(' · ')}
               </Text>
             </View>
+            {item.owner ? <Badge label="Main admin" tone="violet" dot={false} /> : null}
             {item.role === 'teacher' && item.permissions.length ? <Badge label={`+${item.permissions.length}`} tone="muted" dot={false} /> : null}
-            {item.status === 'suspended' ? <Badge label="Suspended" tone="red" dot={false} /> : item.device ? <Badge label="Phone bound" tone="green" dot={false} /> : <Badge label="Not signed in" tone="muted" dot={false} />}
+            {item.status === 'suspended' ? <Badge label="Suspended" tone="red" dot={false} /> : item.device ? <Badge label="Phone bound" tone="green" dot={false} /> : <Badge label={item.setupPending ? 'Setup code given' : 'Not signed in'} tone={item.setupPending ? 'amber' : 'muted'} dot={false} />}
             <ChevronRight color={colors.textDim} size={16} />
           </Pressable>
         )}

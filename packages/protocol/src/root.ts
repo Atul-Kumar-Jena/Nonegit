@@ -3,7 +3,7 @@
  * per-institution feature flags and institution (tenant) management.
  */
 import { z } from 'zod';
-import { IsoDate } from './schemas';
+import { IsoDate, IssuedSetupCode } from './schemas';
 
 const uuid = z.uuid();
 
@@ -123,7 +123,18 @@ export type FlagDefinition = z.infer<typeof FlagDefinition>;
 export const TenantDetail = TenantSummary.extend({
   emailDomains: z.array(z.string()),
   minAttendance: z.number(),
-  admins: z.array(z.object({ id: uuid, name: z.string(), email: z.string().nullable(), status: z.string() })),
+  admins: z.array(
+    z.object({
+      id: uuid,
+      name: z.string(),
+      email: z.string().nullable(),
+      status: z.string(),
+      /** The main admin (adds and manages the other admins). */
+      owner: z.boolean().default(false),
+      /** Linked Google Authenticator (has signed in with a setup code). */
+      authenticator: z.boolean().default(false),
+    }),
+  ),
   flags: z.array(z.object({ key: z.string(), enabled: z.boolean() })),
   recent: z.array(AuditEntry),
 });
@@ -137,6 +148,10 @@ export const CreateTenantBody = z.object({
   minAttendance: z.number().min(0).max(100).default(75),
 });
 export type CreateTenantBody = z.infer<typeof CreateTenantBody>;
+
+/** A new institution, with its main admin's one-time setup code (shown once — share it privately). */
+export const CreatedTenant = TenantSummary.extend({ adminSetup: IssuedSetupCode });
+export type CreatedTenant = z.infer<typeof CreatedTenant>;
 
 export const TenantStatusBody = z.object({
   status: z.enum(['active', 'suspended']),

@@ -79,10 +79,13 @@ interface PersonRow {
   course_ids: string[] | null;
   totp: boolean;
   permissions: string[];
+  is_owner: boolean;
+  setup_pending: boolean;
 }
 
 const PERSON_SELECT = `
-  select u.id, u.role, u.full_name, u.email, u.phone, u.roll_no, u.department, u.semester, u.status, u.totp_enabled_at is not null as totp, u.permissions,
+  select u.id, u.role, u.full_name, u.email, u.phone, u.roll_no, u.department, u.semester, u.status, u.totp_enabled_at is not null as totp, u.permissions, u.is_owner,
+         (u.setup_code_hash is not null and u.setup_code_expires_at > now() and u.setup_code_attempts < 5) as setup_pending,
          d.model as device_model, d.fingerprint as device_fingerprint, d.bound_at as device_bound_at, case when d.hw_key_spki is not null then d.attest_level end as device_attest_level,
          (select array_agg(e.course_id) from enrollments e where e.user_id = u.id) as course_ids
     from users u left join devices d on d.user_id = u.id and d.status = 'active'`;
@@ -102,7 +105,18 @@ function toPerson(r: PersonRow): Person {
     courseIds: r.course_ids ?? [],
     authenticator: r.totp,
     permissions: r.role === 'teacher' ? (r.permissions as Person['permissions']) : [],
+    owner: r.is_owner,
+    setupPending: r.setup_pending,
   };
+}
+
+/** The institution's main admin: the only one who adds, changes or removes other admins. */
+export async function isOwner(db: Queryable, userId: string): Promise<boolean> {
+  const { rows } = await db.query<{ is_owner: boolean }>('select is_owner from users where id = $1', [userId]);
+  return rows[0]?.is_owner === true;
+}
+export async function requireOwner(db: Queryable, auth: AuthContext): Promise<void> {
+  if (!(await isOwner(db, auth.userId))) throw new ApiError(403, 'FORBIDDEN', 'Only the main admin can add, change or remove admins.');
 }
 
 async function loadPerson(db: Queryable, tenantId: string, id: string): Promise<Person> {
@@ -171,6 +185,7 @@ export async function staffAdminRoutes(app: FastifyInstance, deps: Deps) {
       institution: await institution(deps.db, auth.tenantId),
       permissions: STAFF_PERMISSION_KEYS.filter((p) => can(auth, p)),
       mentorOf: await mentoredBatches(deps.db, auth),
+      owner: await isOwner(deps.db, auth.userId),
     };
   });
 
@@ -340,7 +355,7 @@ export async function staffAdminRoutes(app: FastifyInstance, deps: Deps) {
     const auth = await requireDevice(req, deps, STAFF);
     requirePerm(auth, 'people');
     const b = PersonBody.parse(req.body);
-    if (b.role === 'admin') requireAdmin(auth); // only admins make admins
+    if (b.role === 'admin') await requireOwner(deps.db, auth); // only the main admin makes admins
     try {
       const id = await withTx(deps.db, (tx) => createPerson(tx, auth, b));
       return loadPerson(deps.db, auth.tenantId, id);
@@ -418,17 +433,22 @@ export async function staffAdminRoutes(app: FastifyInstance, deps: Deps) {
     return { created, addedExisting, skipped };
   });
 
-  /** Admins only: admin ↔ professor, and a professor's extra powers. At least one admin always remains. */
+  /**
+   * Admins: a professor's extra powers ("sudo" professors). The main admin only: making someone an
+   * admin or an admin a professor. The main admin always stays an admin; at least one admin remains.
+   */
   app.post('/v1/staff/people/:id/access', async (req): Promise<Person> => {
     const auth = await requireDevice(req, deps, STAFF);
     requireAdmin(auth);
     const { id } = IdParam.parse(req.params);
     const b = StaffAccessBody.parse(req.body);
     await withTx(deps.db, async (tx) => {
-      const cur = await tx.query<{ role: string; permissions: string[]; status: string }>('select role, permissions, status from users where id = $1 and tenant_id = $2 for update', [id, auth.tenantId]);
+      const cur = await tx.query<{ role: string; permissions: string[]; status: string; is_owner: boolean }>('select role, permissions, status, is_owner from users where id = $1 and tenant_id = $2 for update', [id, auth.tenantId]);
       const u = cur.rows[0];
       if (!u) throw new ApiError(404, 'NOT_FOUND', 'Person not found.');
       if (u.role !== 'teacher' && u.role !== 'admin') throw new ApiError(400, 'BAD_REQUEST', 'Only professors and admins have roles to change.');
+      if (u.is_owner && b.role !== 'admin') throw new ApiError(409, 'CONFLICT', 'The main admin always stays an admin. Attendly can hand the main-admin role to someone else.');
+      if (u.role === 'admin' || b.role === 'admin') await requireOwner(tx, auth);
       if (u.role === 'admin' && b.role !== 'admin') {
         const others = await tx.query(`select 1 from users where tenant_id = $1 and role = 'admin' and status = 'active' and id <> $2 for update`, [auth.tenantId, id]);
         if (!others.rowCount) throw new ApiError(409, 'CONFLICT', 'Every institution needs at least one admin. Make someone else an admin first.');
@@ -466,10 +486,10 @@ export async function staffAdminRoutes(app: FastifyInstance, deps: Deps) {
     if (id === auth.userId && b.resetDevice) throw new ApiError(400, 'BAD_REQUEST', 'You cannot unbind your own phone. Ask another admin.');
     try {
       await withTx(deps.db, async (tx) => {
-        const cur = await tx.query<{ role: string }>('select role from users where id = $1 and tenant_id = $2 for update', [id, auth.tenantId]);
+        const cur = await tx.query<{ role: string; is_owner: boolean }>('select role, is_owner from users where id = $1 and tenant_id = $2 for update', [id, auth.tenantId]);
         if (!cur.rows[0]) throw new ApiError(404, 'NOT_FOUND', 'Person not found.');
         if (cur.rows[0].role === 'developer') throw new ApiError(403, 'FORBIDDEN');
-        if (cur.rows[0].role === 'admin' && !isAdmin(auth)) throw new ApiError(403, 'FORBIDDEN', 'Only an admin can change another admin’s account.');
+        if (cur.rows[0].role === 'admin' && id !== auth.userId) await requireOwner(tx, auth);
         const has = (k: keyof typeof b) => Object.prototype.hasOwnProperty.call(b, k);
         await tx.query(
           `update users set

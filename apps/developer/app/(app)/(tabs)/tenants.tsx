@@ -35,7 +35,7 @@ export default function TenantsScreen() {
       </View>
       {sandbox ? (
         <Text variant="small" style={{ marginTop: 14 }}>
-          Testing mode: you see the demo institute and the test institutions you add (marked Demo). Each gets its first admin, who sets up the rest in Attendly Institute. Real institutions appear only to a real developer account.
+          Demo console: you see the demo institute and the test institutions you add (marked Demo). Each gets its first admin, who sets up the rest in Attendly Institute. Real institutions appear only to a real developer account.
         </Text>
       ) : null}
     </Screen>

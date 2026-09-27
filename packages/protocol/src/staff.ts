@@ -74,6 +74,8 @@ export const StaffMe = z.object({
   permissions: z.array(StaffPermission).default([]),
   /** Batches this person mentors (their students' phone requests come to them). */
   mentorOf: z.array(z.object({ id: uuid, name: z.string() })).default([]),
+  /** The institution's main admin: the only one who adds, changes or removes other admins. */
+  owner: z.boolean().default(false),
 });
 export type StaffMe = z.infer<typeof StaffMe>;
 
@@ -130,6 +132,10 @@ export const Person = z.object({
   authenticator: z.boolean().default(false),
   /** Professors only: extra powers given by an admin. */
   permissions: z.array(StaffPermission).default([]),
+  /** The institution's main admin (set by Attendly when the institution was created). */
+  owner: z.boolean().default(false),
+  /** A setup code is out and not used yet (they haven't linked Google Authenticator). */
+  setupPending: z.boolean().default(false),
 });
 export type Person = z.infer<typeof Person>;
 

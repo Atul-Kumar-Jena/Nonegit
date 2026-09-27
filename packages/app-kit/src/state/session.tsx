@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { InstitutionLookup, normalizeInstitutionCode, type Channel, type OtpVerifyResponse, type Role, type UserSummary } from '@attendly/protocol';
+import { InstitutionLookup, normalizeInstitutionCode, type Channel, type OtpVerifyResponse, type Role, type UserSummary, type SetupStartResponse } from '@attendly/protocol';
 import { ApiClient, ApiRequestError, normalizeBaseUrl } from '../lib/api-core';
 import { collectDeviceInfo } from '../lib/device-info';
 import { destroyDeviceKey, deviceKeys } from '../lib/device-key';
@@ -54,6 +54,10 @@ interface SessionValue {
   setInstitution(i: InstitutionLookup | null): Promise<void>;
   connect(url: string): Promise<void>;
   requestOtp(channel: Channel, identifier: string): Promise<PendingOtp>;
+  /** First sign-in with a setup code (no email): step 1 → the Google Authenticator key to add. */
+  startSetup(identifier: string, setupCode: string): Promise<SetupStartResponse>;
+  /** Step 2: the first authenticator code → a pending sign-in to pass to verifyOtp (its instantCode). */
+  finishSetup(identifier: string, setupCode: string, code: string): Promise<PendingOtp>;
   verifyOtp(code: string, otp?: PendingOtp): Promise<'signed-in' | 'bind' | 'mismatch'>;
   bindDevice(): Promise<void>;
   requestRebind(reason: string): Promise<void>;
@@ -310,6 +314,39 @@ export function SessionProvider({ children, audience }: { children: ReactNode; a
     return p;
   }, [audience.institutionGate]);
 
+  const startSetup = useCallback(
+    async (identifier: string, setupCode: string) => {
+      const client = apiRef.current;
+      if (!client) throw new Error('Not connected to the server yet.');
+      const institutionCode = audience.institutionGate ? institutionRef.current?.code : undefined;
+      return client.setupStart({ identifier, setupCode, institutionCode });
+    },
+    [audience.institutionGate],
+  );
+
+  const finishSetup = useCallback(
+    async (identifier: string, setupCode: string, code: string) => {
+      const client = apiRef.current;
+      if (!client) throw new Error('Not connected to the server yet.');
+      const institutionCode = audience.institutionGate ? institutionRef.current?.code : undefined;
+      const r = await client.setupFinish({ identifier, setupCode, code, institutionCode });
+      const p: PendingOtp = {
+        channel: identifier.includes('@') ? 'email' : 'phone',
+        identifier,
+        challengeId: r.challengeId,
+        destination: r.destination,
+        expiresAt: r.expiresAt,
+        resendAt: Date.now() + r.resendAfterSec * 1000,
+        method: 'authenticator',
+        ...(r.instantCode ? { instantCode: r.instantCode } : {}),
+      };
+      setPendingOtp(p);
+      setNotice(null);
+      return p;
+    },
+    [audience.institutionGate],
+  );
+
   const lookupInstitution = useCallback(async (code: string) => {
     const client = apiRef.current;
     if (!client) throw new Error('Not connected to the server yet.');
@@ -428,6 +465,8 @@ export function SessionProvider({ children, audience }: { children: ReactNode; a
       setInstitution,
       connect,
       requestOtp,
+      startSetup,
+      finishSetup,
       verifyOtp,
       bindDevice,
       requestRebind,
@@ -436,7 +475,7 @@ export function SessionProvider({ children, audience }: { children: ReactNode; a
       audience,
       clearNotice: () => setNotice(null),
     }),
-    [audience, phase, server, api, notice, identityError, pendingOtp, pendingDevice, institution, lookupInstitution, setInstitution, connect, requestOtp, verifyOtp, bindDevice, requestRebind, signOut, resetPhone],
+    [audience, phase, server, api, notice, identityError, pendingOtp, pendingDevice, institution, lookupInstitution, setInstitution, connect, requestOtp, startSetup, finishSetup, verifyOtp, bindDevice, requestRebind, signOut, resetPhone],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

@@ -19,6 +19,7 @@ import { staffPlannerRoutes } from './routes/staff-planner';
 import { requestRoutes } from './routes/requests';
 import { rootRoutes } from './routes/root';
 import { authenticatorRoutes } from './routes/authenticator';
+import { setupRoutes } from './routes/setup';
 import { recordRequest } from './lib/metrics';
 import { devRoutes } from './routes/dev';
 import { metaRoutes } from './routes/meta';
@@ -163,6 +164,7 @@ export async function buildApp(opts: BuildOptions): Promise<{ app: FastifyInstan
   await app.register(async (s) => requestRoutes(s, deps));
   await app.register(async (s) => rootRoutes(s, deps));
   await app.register(async (s) => authenticatorRoutes(s, deps));
+  await app.register(async (s) => setupRoutes(s, deps));
   await app.register(async (s) => devRoutes(s, deps));
 
   return { app, deps };

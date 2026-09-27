@@ -53,6 +53,9 @@ import {
   type MarkResponse as MarkResponseT,
   type OtpRequestBody,
   type RejectionCode,
+  SetupStartResponse,
+  type SetupStartBody,
+  type SetupFinishBody,
 } from '@attendly/protocol';
 
 export interface DeviceKeyProvider {
@@ -352,6 +355,16 @@ export class ApiClient {
 
   requestOtp(body: OtpRequestBody) {
     return this.publicCall('POST', '/v1/auth/otp/request', OtpRequestResponse, body);
+  }
+
+  /** First sign-in with a setup code: a Google Authenticator key to add. */
+  setupStart(body: SetupStartBody) {
+    return this.publicCall('POST', '/v1/auth/setup/start', SetupStartResponse, body);
+  }
+
+  /** The first authenticator code: links it and hands back a one-time sign-in code for this phone. */
+  setupFinish(body: SetupFinishBody) {
+    return this.publicCall('POST', '/v1/auth/setup/finish', OtpRequestResponse, body);
   }
 
   async verifyOtp(challengeId: string, code: string, device: Omit<DeviceInfo, 'publicKey'>) {

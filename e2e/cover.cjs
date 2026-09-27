@@ -160,11 +160,13 @@ async function demoSignIn(browser, url, name) {
   });
 
   await step('Developer console (sandbox): console, audit, flags, institutions', async () => {
-    // Testing mode: the developer app opens straight into the console by itself.
+    // The demo console: one tap on the developer sign-in screen, then bind.
     const dctx = await browser.newContext({ viewport: { width: 412, height: 880 }, deviceScaleFactor: 1 });
     const p = await dctx.newPage();
     lastPage = p;
     await p.goto(DEVELOPER);
+    await p.getByText('Try the demo console').click({ timeout: 60_000 });
+    await p.getByRole('button', { name: 'Bind this device' }).click({ timeout: 30_000 });
     dev = { ctx: dctx, page: p };
     await p.getByText('Kill switches').waitFor({ timeout: 30_000 });
     await p.getByText('SANDBOX').first().waitFor();
@@ -190,10 +192,7 @@ async function demoSignIn(browser, url, name) {
     const ctx = await browser.newContext({ viewport: { width: 412, height: 880 } });
     const p = await ctx.newPage();
     await p.goto(DEVELOPER);
-    await p.getByText('Kill switches').waitFor({ timeout: 60_000 });
-    await p.getByRole('tab', { name: 'Profile' }).click();
-    await p.getByRole('button', { name: /Sign out/ }).first().click();
-    await p.getByText('Sign in with a developer email instead').click({ timeout: 30_000 });
+    await p.getByText('Sign in with an emailed code instead').click({ timeout: 60_000 });
     await p.getByPlaceholder('you@iit.ac.in').fill('vikram@demo.attendly.app');
     await p.getByRole('button', { name: 'Send OTP' }).click();
     await p.getByText(/developers only/).first().waitFor({ timeout: 20_000 });

@@ -9,7 +9,7 @@ import { useApi } from '@kit/state/session';
 import { colors } from '@kit/theme';
 import { staffApi } from '@/api';
 import { Checkbox, Chips, Field, Header, firstIssue } from '@/components/forms';
-import { useCourses, usePerson } from '@/queries';
+import { useCourses, useMe, usePerson } from '@/queries';
 
 type Role = 'student' | 'teacher' | 'admin';
 
@@ -21,6 +21,7 @@ export default function PersonForm() {
   const qc = useQueryClient();
   const existing = usePerson(id ?? '');
   const courses = useCourses();
+  const me = useMe();
 
   const [role, setRole] = useState<Role>(params.role === 'teacher' || params.role === 'admin' ? params.role : 'student');
   const [fullName, setFullName] = useState('');
@@ -76,7 +77,9 @@ export default function PersonForm() {
         if (!parsed.success) throw new Error(firstIssue(parsed.error));
         const p = await staffApi.createPerson(api, parsed.data);
         void qc.invalidateQueries({ queryKey: ['staff'] });
-        router.replace({ pathname: '/people/[id]', params: { id: p.id } });
+        // Staff get their first-sign-in setup code straight away (shown once on the next screen).
+        const setup = role !== 'student' ? await staffApi.setupCode(api, p.id).catch(() => null) : null;
+        router.replace({ pathname: '/people/[id]', params: setup ? { id: p.id, setup: setup.code, sid: setup.signInId, nm: setup.name, exp: setup.expiresAt } : { id: p.id } });
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Couldn’t save.');
@@ -94,8 +97,9 @@ export default function PersonForm() {
             value={role}
             options={[
               { value: 'student', label: 'Student' },
-              { value: 'teacher', label: 'Teacher' },
-              { value: 'admin', label: 'Admin' },
+              { value: 'teacher', label: 'Professor' },
+              // Only the main admin adds admins.
+              ...(me.data?.owner ? [{ value: 'admin' as const, label: 'Admin' }] : []),
             ]}
             onChange={setRole}
           />
@@ -103,13 +107,13 @@ export default function PersonForm() {
       ) : null}
       {role === 'admin' && !id ? (
         <View style={{ marginTop: 10 }}>
-          <Notice tone="amber" message="Admins can change everything: people, timetable, settings and every register. Add only people you fully trust." />
+          <Notice tone="amber" message="Admins can change everything except other admins: people, timetable, settings and every register. Add only people you fully trust." />
         </View>
       ) : null}
       <Field label="Full name">
         <Input value={fullName} onChangeText={setFullName} placeholder="As on the ID card" maxLength={120} autoCapitalize="words" />
       </Field>
-      <Field label="Email" hint="They sign in with a one-time code sent here.">
+      <Field label="Email" hint="Their sign-in ID. For the first sign-in they get a setup code and link Google Authenticator — nothing has to be emailed.">
         <Input value={email} onChangeText={setEmail} placeholder="name@college.edu" keyboardType="email-address" autoCapitalize="none" autoCorrect={false} maxLength={254} />
       </Field>
       <Field label="Mobile (optional)" hint="With country code, e.g. +919876543210.">
@@ -177,7 +181,7 @@ export default function PersonForm() {
           <Notice tone="red" message={error} />
         </View>
       ) : null}
-      <Button title={id ? 'Save changes' : `Add ${role}`} onPress={() => void save()} loading={busy} disabled={!fullName.trim()} style={{ marginTop: 20 }} />
+      <Button title={id ? 'Save changes' : `Add ${role === 'teacher' ? 'professor' : role}`} onPress={() => void save()} loading={busy} disabled={!fullName.trim()} style={{ marginTop: 20 }} />
     </Screen>
   );
 }

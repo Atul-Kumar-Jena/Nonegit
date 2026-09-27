@@ -8,7 +8,6 @@ import { Screen } from '@kit/components/Screen';
 import { Button, Card, Input, Notice, Text } from '@kit/components/ui';
 import { useApi } from '@kit/state/session';
 import { rootApi } from '@/api';
-import { useConsole } from '@/queries';
 import { Header, confirmIdentity } from '@/ui';
 
 /** Onboard a new institution: it starts empty with its first admin. */
@@ -22,14 +21,6 @@ export default function NewTenant() {
   const [minAttendance, setMin] = useState('75');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const sandbox = useConsole().data?.sandbox ?? false;
-  /** A demo address signs in without a code while the server is in demo mode: handy for testing. */
-  const testAddress = () => {
-    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '.').replace(/^\.+|\.+$/g, '').slice(0, 30) || 'institution';
-    setAdminEmail(`admin.${slug}@demo.attendly.app`);
-    if (!adminName.trim()) setAdminName('Test Admin');
-  };
-
   async function create() {
     setError(null);
     const parsed = CreateTenantBody.safeParse({ name, adminName, adminEmail, timezone, minAttendance: Number(minAttendance) });
@@ -43,7 +34,8 @@ export default function NewTenant() {
     try {
       const t = await rootApi.createTenant(api, parsed.data);
       await qc.invalidateQueries({ queryKey: ['root'] });
-      router.replace({ pathname: '/tenant/[id]', params: { id: t.id } });
+      // The main admin's setup code is shown once, on the next screen.
+      router.replace({ pathname: '/tenant/[id]', params: { id: t.id, setup: t.adminSetup.code, sid: t.adminSetup.signInId, nm: t.adminSetup.name, exp: t.adminSetup.expiresAt } });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Couldn’t create it.');
     } finally {
@@ -57,13 +49,13 @@ export default function NewTenant() {
       <Card style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
         <Building2 color="#a78bfa" size={20} />
         <Text variant="small" style={{ flex: 1 }}>
-          It starts empty with one admin, pending verification. Verify it on the next screen, then share its institution code: the admin enters it in Attendly Institute, signs in with this email and follows the setup checklist.
+          It starts empty with its main admin, pending verification. On the next screen: verify it, then share the institution code and the main admin’s one-time setup code. They sign in to Attendly Institute with Google Authenticator (no email is sent), then add the other admins and professors.
         </Text>
       </Card>
       {[
         { label: 'Institution name', value: name, set: setName, ph: 'e.g. Green Valley College' },
-        { label: 'First admin’s name', value: adminName, set: setAdminName, ph: 'e.g. Dr. Anita Rao (Principal)' },
-        { label: 'First admin’s email', value: adminEmail, set: setAdminEmail, ph: 'principal@greenvalley.edu', email: true },
+        { label: 'Main admin’s name', value: adminName, set: setAdminName, ph: 'e.g. Dr. Anita Rao (Principal)' },
+        { label: 'Main admin’s email (their sign-in ID)', value: adminEmail, set: setAdminEmail, ph: 'principal@greenvalley.edu', email: true },
         { label: 'Time zone', value: timezone, set: setTimezone, ph: 'Asia/Kolkata' },
         { label: 'Minimum attendance %', value: minAttendance, set: setMin, ph: '75', num: true },
       ].map((f) => (
@@ -74,14 +66,6 @@ export default function NewTenant() {
           <Input value={f.value} onChangeText={f.set} placeholder={f.ph} autoCapitalize={f.email ? 'none' : 'words'} keyboardType={f.email ? 'email-address' : f.num ? 'number-pad' : 'default'} autoCorrect={false} />
         </View>
       ))}
-      {sandbox ? (
-        <Card tone="amber" style={{ marginTop: 14, gap: 10 }}>
-          <Text variant="small">
-            Testing without email? Give the admin an address ending in @demo.attendly.app: it signs in to Attendly Institute without a code while demo mode is on. A real address gets its code by email.
-          </Text>
-          <Button title="Use a test admin address" kind="ghost" compact onPress={testAddress} />
-        </Card>
-      ) : null}
       {error ? (
         <View style={{ marginTop: 12 }}>
           <Notice tone="red" message={error} />

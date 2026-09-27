@@ -10,10 +10,11 @@ import { staffApi } from '@/api';
 import { Checkbox, confirmAction } from './forms';
 
 /**
- * Admins only: make someone an admin (principal / HOD — everything) or a professor, and pick which
- * extra powers a professor has. Saved at once; the person sees the change on their next screen.
+ * Admins: pick which extra powers a professor has ("sudo" professors). The main admin only: make
+ * someone an admin (principal / HOD — everything) or an admin a professor. Saved at once; the person
+ * sees the change on their next screen.
  */
-export function RoleEditor({ p, self }: { p: Person; self: boolean }) {
+export function RoleEditor({ p, self, owner }: { p: Person; self: boolean; /** The viewer is the main admin. */ owner: boolean }) {
   const api = useApi();
   const qc = useQueryClient();
   const [role, setRole] = useState<'teacher' | 'admin'>(p.role === 'admin' ? 'admin' : 'teacher');
@@ -45,8 +46,24 @@ export function RoleEditor({ p, self }: { p: Person; self: boolean }) {
     }
   }
 
+  // The main admin always stays admin; other admins' roles are the main admin's to change.
+  if (p.owner || (p.role === 'admin' && !owner))
+    return (
+      <Card style={{ gap: 8 }}>
+        <View style={styles.line}>
+          <Crown color={colors.text} size={18} />
+          <Text variant="small" style={{ flex: 1 }}>
+            {p.owner
+              ? 'Main admin: runs the institution and is the only one who adds, changes or removes admins. Attendly can hand this role to someone else.'
+              : 'Admin (principal / HOD): everything except managing admins. Only the main admin changes an admin’s role.'}
+          </Text>
+        </View>
+      </Card>
+    );
+
   return (
     <Card style={{ gap: 12 }}>
+      {owner ? (
       <Segmented
         value={role}
         options={[
@@ -55,6 +72,7 @@ export function RoleEditor({ p, self }: { p: Person; self: boolean }) {
         ]}
         onChange={setRole}
       />
+      ) : null}
       {role === 'admin' ? (
         <View style={styles.line}>
           <Crown color={colors.text} size={18} />

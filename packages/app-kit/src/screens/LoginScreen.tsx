@@ -161,6 +161,11 @@ export default function Login() {
         </View>
       ) : null}
       <Button title="Send OTP" onPress={() => void submit()} loading={busy} disabled={!value.trim()} style={{ marginTop: 22 }} icon={<ArrowRight color="#0a0a0a" size={18} />} />
+      <Pressable onPress={() => router.push('/setup')} accessibilityRole="button" hitSlop={8} style={{ marginTop: 16, alignSelf: 'flex-start' }}>
+        <Text variant="small" color={colors.text}>
+          First time? Sign in with a setup code and Google Authenticator
+        </Text>
+      </Pressable>
       {demoAccounts.length ? (
         <View style={{ marginTop: 26, gap: 8 }}>
           <Text variant="label">Demo accounts{server.demo?.institution ? ` · ${server.demo.institution}` : ''}</Text>

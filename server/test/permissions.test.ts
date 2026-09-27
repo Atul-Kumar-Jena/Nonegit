@@ -21,6 +21,8 @@ beforeAll(async () => {
   const mk = async (role: string, email: string) =>
     (await ctx.db.query<{ id: string }>(`insert into users(tenant_id, role, full_name, email) values ($1, $2, $3, $4) returning id`, [seed.tenantId, role, email.split('@')[0], email])).rows[0]!.id;
   adminId = await mk('admin', 'hod@iit.ac.in');
+  // The HOD is this institution's main admin (the one who manages admins).
+  await ctx.db.query('update users set is_owner = true where id = $1', [adminId]);
   profId = await mk('teacher', 'kumar@iit.ac.in');
   admin = new TestDevice(ctx);
   prof = new TestDevice(ctx);
@@ -86,10 +88,10 @@ describe('professor vs admin', () => {
     expect(StaffMe.parse(ok(await prof.call('GET', '/v1/staff/me'))).permissions).toHaveLength(5);
     // Two admins: one can step the other down…
     expect(ok(await grant(['planner'], 'teacher'))).toMatchObject({ role: 'teacher', permissions: ['planner'] });
-    // …but the last admin can't be demoted.
+    // …but the main admin always stays an admin (so an institution never runs out of admins).
     const last = await grant([], 'teacher', adminId);
     expect(last.statusCode).toBe(409);
-    expect(last.json().error.message).toContain('at least one admin');
+    expect(last.json().error.message).toContain('main admin');
     const audit = await ctx.db.query(`select 1 from audit_log where action = 'person.access'`);
     expect(audit.rowCount).toBeGreaterThanOrEqual(6);
   });

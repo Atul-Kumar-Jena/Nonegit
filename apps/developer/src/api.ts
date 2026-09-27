@@ -3,6 +3,8 @@ import { z } from 'zod';
 import {
   AuditPage,
   AuditVerification,
+  CreatedTenant,
+  IssuedSetupCode,
   FlagsResponse,
   OkResponse,
   RootConsole,
@@ -30,7 +32,9 @@ export const rootApi = {
   verifyAudit: (api: ApiClient) => api.authed('POST', '/v1/root/audit/verify', AuditVerification, {}),
   tenants: (api: ApiClient, q?: string) => api.authed('GET', `/v1/root/tenants${qs({ q })}`, z.array(TenantSummary)),
   tenant: (api: ApiClient, id: string) => api.authed('GET', `/v1/root/tenants/${enc(id)}`, TenantDetail),
-  createTenant: (api: ApiClient, b: CreateTenantBody) => api.authed('POST', '/v1/root/tenants', TenantSummary, b),
+  createTenant: (api: ApiClient, b: CreateTenantBody) => api.authed('POST', '/v1/root/tenants', CreatedTenant, b),
+  /** A new one-time setup code for the main admin (first sign-in or a new phone). */
+  adminSetup: (api: ApiClient, id: string) => api.authed('POST', `/v1/root/tenants/${enc(id)}/admin-setup`, IssuedSetupCode, {}),
   setTenantStatus: (api: ApiClient, id: string, b: TenantStatusBody) => api.authed('POST', `/v1/root/tenants/${enc(id)}/status`, TenantSummary, b),
   verifyTenant: (api: ApiClient, id: string, verified: boolean) => api.authed('POST', `/v1/root/tenants/${enc(id)}/verify`, TenantSummary, { verified }),
   newTenantCode: (api: ApiClient, id: string) => api.authed('POST', `/v1/root/tenants/${enc(id)}/code`, TenantSummary, {}),

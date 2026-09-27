@@ -113,6 +113,16 @@ jobs:
       - name: Generate native Android project
         working-directory: apps/${{ matrix.app }}
         run: npx expo prebuild --platform android --no-install
+      # Three CPU types (phones + the emulator check) need more than Gradle's default 2 GB heap.
+      - name: Give the Android build more memory
+        working-directory: apps/${{ matrix.app }}/android
+        run: |
+          if grep -q '^org.gradle.jvmargs=' gradle.properties; then
+            sed -i 's/^org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx6g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8/' gradle.properties
+          else
+            echo 'org.gradle.jvmargs=-Xmx6g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8' >> gradle.properties
+          fi
+          grep '^org.gradle.jvmargs=' gradle.properties
       # Production signing: your own private key from the repository secrets (see docs/PRODUCTION.md).
       # Without them the APKs are signed with the public debug key — fine for testing only.
       - name: Release signing key, when the secrets are set

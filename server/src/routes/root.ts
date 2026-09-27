@@ -13,6 +13,8 @@ import {
   API_VERSION,
   AuditCategory,
   CreateTenantBody,
+  type CreatedTenant,
+  type IssuedSetupCode,
   SetFlagBody,
   SwitchBody,
   TenantStatusBody,
@@ -38,8 +40,10 @@ import { isDemoEmail } from '../lib/demo';
 import { ApiError } from '../lib/errors';
 import { SWITCHES, TENANT_FLAGS, type SwitchKey } from '../lib/flags';
 import { requestStats } from '../lib/metrics';
+import { issueSetupCode } from '../lib/setup-codes';
 import { parseServiceAccount } from '../lib/push';
 import { randomBytes } from '@attendly/protocol';
+import { revokeActiveDevice } from './staff-admin';
 
 interface RootAuth extends AuthContext {
   sandbox: boolean;
@@ -309,8 +313,8 @@ export async function rootRoutes(app: FastifyInstance, deps: Deps) {
     const [summary] = await tenantSummaries(deps.db, [id], null);
     if (!summary) throw new ApiError(404, 'NOT_FOUND', 'Institution not found.');
     const t = (await deps.db.query<{ email_domains: string[]; min_attendance: string }>('select email_domains, min_attendance from tenants where id = $1', [id])).rows[0]!;
-    const admins = await deps.db.query<{ id: string; full_name: string; email: string | null; status: string }>(
-      `select id, full_name, email, status from users where tenant_id = $1 and role = 'admin' order by full_name`,
+    const admins = await deps.db.query<{ id: string; full_name: string; email: string | null; status: string; is_owner: boolean; totp: boolean }>(
+      `select id, full_name, email, status, is_owner, totp_enabled_at is not null as totp from users where tenant_id = $1 and role = 'admin' order by is_owner desc, full_name`,
       [id],
     );
     const flags = await deps.db.query<{ key: string; enabled: boolean }>('select key, enabled from tenant_flags where tenant_id = $1', [id]);
@@ -319,14 +323,14 @@ export async function rootRoutes(app: FastifyInstance, deps: Deps) {
       ...summary,
       emailDomains: t.email_domains,
       minAttendance: Number(t.min_attendance),
-      admins: admins.rows.map((a) => ({ id: a.id, name: a.full_name, email: a.email, status: a.status })),
+      admins: admins.rows.map((a) => ({ id: a.id, name: a.full_name, email: a.email, status: a.status, owner: a.is_owner, authenticator: a.totp })),
       flags: Object.entries(TENANT_FLAGS).map(([key, def]) => ({ key, enabled: set.get(key) ?? def.default })),
       recent: await recentAudit(deps.db, [id], 10),
     };
   });
 
   /** Onboard a new institution: it starts empty with its first admin, who sets up the rest. */
-  app.post('/v1/root/tenants', write, async (req): Promise<TenantSummary> => {
+  app.post('/v1/root/tenants', write, async (req): Promise<CreatedTenant> => {
     const r = await requireRoot(req, deps);
     const b = CreateTenantBody.parse(req.body);
     try {
@@ -348,17 +352,20 @@ export async function rootRoutes(app: FastifyInstance, deps: Deps) {
           [slug, b.name, [b.adminEmail.split('@')[1]!], b.timezone, b.minAttendance, await freshCode(tx), r.sandbox],
         );
         const tenantId = t.rows[0]!.id;
-        const admin = await tx.query<{ id: string }>(`insert into users(tenant_id, role, full_name, email, created_by) values ($1, 'admin', $2, $3, $4) returning id`, [
+        const admin = await tx.query<{ id: string }>(`insert into users(tenant_id, role, full_name, email, created_by, is_owner) values ($1, 'admin', $2, $3, $4, true) returning id`, [
           tenantId,
           b.adminName,
           b.adminEmail,
           r.userId,
         ]);
+        // The main admin signs in the first time with this code and Google Authenticator (no email needed).
+        const setup = await issueSetupCode(tx, deps.hash, admin.rows[0]!.id, deps.clock());
         await appendAudit(tx, { tenantId, actorType: 'user', actorId: r.userId, action: 'institution.create', subject: `user:${admin.rows[0]!.id}`, data: { slug } });
         await appendAudit(tx, { tenantId: null, actorType: 'user', actorId: r.userId, action: 'root.tenant_create', subject: `tenant:${tenantId}`, data: { slug, name: b.name, sandbox: r.sandbox } });
-        return tenantId;
+        return { tenantId, setup };
       });
-      return (await tenantSummaries(deps.db, [id], null))[0]!;
+      const summary = (await tenantSummaries(deps.db, [id.tenantId], null))[0]!;
+      return { ...summary, adminSetup: { name: b.adminName, signInId: b.adminEmail, code: id.setup.code, expiresAt: id.setup.expiresAt.toISOString() } };
     } catch (err) {
       if (isUniqueViolation(err, 'users_email_key')) throw new ApiError(409, 'CONFLICT', 'That email already belongs to an account. Use a different admin email.');
       throw err;
@@ -402,6 +409,26 @@ export async function rootRoutes(app: FastifyInstance, deps: Deps) {
       await appendAudit(tx, { tenantId: null, actorType: 'user', actorId: r.userId, action: 'root.tenant_verify', subject: `tenant:${id}`, data: { verified: b.verified } });
     });
     return (await tenantSummaries(deps.db, [id], null))[0]!;
+  });
+
+  /**
+   * A new setup code for the institution's main admin (first sign-in, or a new phone): the old code and
+   * the old phone stop working; they link Google Authenticator again with the new code.
+   */
+  app.post('/v1/root/tenants/:id/admin-setup', write, async (req): Promise<IssuedSetupCode> => {
+    const r = await requireRoot(req, deps);
+    const { id } = z.object({ id: z.uuid() }).parse(req.params);
+    if (r.tenants && !r.tenants.includes(id)) throw new ApiError(404, 'NOT_FOUND', 'Institution not found.');
+    noSandboxOnDemo(r, id, 'a new main-admin setup code');
+    return withTx(deps.db, async (tx) => {
+      const o = (await tx.query<{ id: string; full_name: string; email: string | null; phone: string | null }>(`select id, full_name, email, phone from users where tenant_id = $1 and is_owner for update`, [id])).rows[0];
+      if (!o) throw new ApiError(404, 'NOT_FOUND', 'This institution has no main admin.');
+      const setup = await issueSetupCode(tx, deps.hash, o.id, deps.clock());
+      await revokeActiveDevice(tx, o.id, 'new main-admin setup code', new Date(deps.clock()));
+      await appendAudit(tx, { tenantId: id, actorType: 'user', actorId: r.userId, action: 'institution.owner_setup_code', subject: `user:${o.id}` });
+      await appendAudit(tx, { tenantId: null, actorType: 'user', actorId: r.userId, action: 'root.owner_setup_code', subject: `tenant:${id}` });
+      return { name: o.full_name, signInId: o.email ?? o.phone ?? '', code: setup.code, expiresAt: setup.expiresAt.toISOString() };
+    });
   });
 
   /** A new institution code (e.g. the old one was shared too widely). Signed-in people are unaffected. */

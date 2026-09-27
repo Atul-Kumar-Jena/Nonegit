@@ -192,6 +192,8 @@ export async function seedDemo(pool: Db, config: Config, opts: { reset?: boolean
     await ensureDemoBatches(tx, tenantId);
     await ensureDemoNotices(tx, tenantId);
     await ensureDemoMentors(tx, tenantId);
+    // Dr. Iyer, the principal, is the demo institute's main admin.
+    await tx.query(`update users set is_owner = true where tenant_id = $1 and role = 'admin' and email = 'iyer@demo.attendly.app'`, [tenantId]);
     await appendAudit(tx, { tenantId, actorType: 'system', action: 'seed.demo', data: { students: studentIds.length, records } });
     log(`Seeded "Demo Institute of Technology": ${studentIds.length} students, ${COURSES.length} courses, ${records} historic attendance records.`);
     log('Sign in to the Student app as  aarav@demo.attendly.app  (or +919000000001).');
