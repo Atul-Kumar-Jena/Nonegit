@@ -57,3 +57,7 @@ Same demo-mode server as `cover.cjs` (reset it between runs; needs `fflate` from
 Same demo-mode server (reset between runs).
 - **bigscreen.cjs**: a live CS-301 class (started via /dev); a "classroom PC" tab opens `/tv`; its **pairing QR is decoded from the screen's pixels** and must equal the code shown; the teacher pairs and approves in the Institute app; the PC's rotating class QR is decoded from pixels and a student is marked present with it; the PC's count goes to 1; ending the class blanks the PC.
 - **roles.cjs**: a plain professor has no planner/cover (and sees the institution code in More); the admin grants "Planner & cover" in People & roles; the professor gets the planner and the cover board; the admin takes it back.
+
+## `notices.cjs` (5 steps)
+
+Same demo-mode server. A student sees new notices on Home, opens the pinned welcome (formatting rendered, no raw Markdown), reacts and un-reacts; a professor (no "Everyone" option) writes a notice to CSE-6A with the toolbar ("Reaches 8 people"), previews and sends it; the student opens it; the professor sees "Seen by 1 of 8"; the admin can address everyone.

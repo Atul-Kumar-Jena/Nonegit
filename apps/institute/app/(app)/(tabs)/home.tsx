@@ -5,6 +5,7 @@ import { ChevronRight, CloudDownload, Inbox, Plus, Radio, ShieldAlert, Smartphon
 import { NotificationBell } from '@kit/components/NotificationBell';
 import { Screen } from '@kit/components/Screen';
 import { BatteryCard } from '@kit/components/BatteryCard';
+import { NoticeHomeCard } from '@kit/components/Notices';
 import { usePermissionsOnboarding } from '@kit/lib/notifications';
 import { SyncBanner } from '@kit/components/SyncBanner';
 import { Avatar, Badge, Button, Card, ErrorState, Loading, SectionLabel, Text } from '@kit/components/ui';
@@ -82,6 +83,7 @@ export default function Today() {
 
       <RequestsBanner requests={reqs.data?.incoming ?? []} tz={tz} />
       <BatteryCard />
+      <NoticeHomeCard />
 
       <SyncBanner />
 

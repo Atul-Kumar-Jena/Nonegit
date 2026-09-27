@@ -20,8 +20,8 @@ export function requireAdmin(auth: AuthContext): void {
   if (!isAdmin(auth)) throw new ApiError(403, 'FORBIDDEN', 'Only institution admins can do this.');
 }
 
-export type Permission = 'people' | 'courses' | 'planner' | 'devices';
-const PERMISSION_LABEL: Record<Permission, string> = { people: 'People', courses: 'Courses & timetable', planner: 'Planner & cover', devices: 'Phones & scans' };
+export type Permission = 'people' | 'courses' | 'planner' | 'devices' | 'broadcast';
+const PERMISSION_LABEL: Record<Permission, string> = { people: 'People', courses: 'Courses & timetable', planner: 'Planner & cover', devices: 'Phones & scans', broadcast: 'Notices to everyone' };
 
 /** Admins can do everything; a professor only what an admin granted them. */
 export function can(auth: AuthContext, p: Permission): boolean {

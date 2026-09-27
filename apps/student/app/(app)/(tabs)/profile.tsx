@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Switch, View } from 'react-native';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { AlarmClock, Bell, BookOpen, Download, CalendarDays, KeyRound, LogOut, MessageSquareText, RefreshCw, ScanLine, Server, ShieldCheck, Smartphone, Trash2 } from 'lucide-react-native';
+import { AlarmClock, Bell, BookOpen, Download, Megaphone, CalendarDays, KeyRound, LogOut, MessageSquareText, RefreshCw, ScanLine, Server, ShieldCheck, Smartphone, Trash2 } from 'lucide-react-native';
 import { Screen } from '@kit/components/Screen';
 import { FeatureGrid, InfoButton } from '@kit/components/Features';
+import { useNoticeInbox } from '@kit/components/Notices';
 import { SyncBanner } from '@kit/components/SyncBanner';
 import { useOutbox } from '@kit/lib/outbox';
 import { Avatar, Badge, Button, Card, Divider, ErrorState, IconTile, InfoRow, Input, Loading, Notice, SectionLabel, Text } from '@kit/components/ui';
@@ -19,6 +20,7 @@ import { colors } from '@kit/theme';
 
 /** 09 · Profile · device — bound HWID, reset, preferences. */
 export default function Profile() {
+  const notices = useNoticeInbox();
   const q = useProfile();
   const api = useApi();
   const { server, signOut, resetPhone } = useSession();
@@ -121,6 +123,7 @@ export default function Profile() {
           { icon: <CalendarDays color={colors.text} size={18} />, label: 'Timetable', href: '/timetable' },
           { icon: <BookOpen color={colors.text} size={18} />, label: 'Subjects', href: '/subjects' },
           { icon: <Download color={colors.text} size={18} />, label: 'Download attendance', href: '/report' },
+          { icon: <Megaphone color={colors.text} size={18} />, label: 'Notice centre', href: '/notices', badge: notices.data?.unread ? String(notices.data.unread) : null },
           { icon: <MessageSquareText color={colors.text} size={18} />, label: 'My requests', href: '/requests' },
           { icon: <Bell color={colors.text} size={18} />, label: 'Notifications', href: '/notifications' },
           { icon: <AlarmClock color={colors.text} size={18} />, label: 'Class reminders', href: '/reminders' },

@@ -32,7 +32,7 @@ afterAll(async () => ctx?.close());
 describe('professor vs admin', () => {
   it('a plain professor teaches, but can’t run the institution', async () => {
     expect(StaffMe.parse(ok(await prof.call('GET', '/v1/staff/me'))).permissions).toEqual([]);
-    expect(StaffMe.parse(ok(await admin.call('GET', '/v1/staff/me'))).permissions).toEqual(['people', 'courses', 'planner', 'devices']);
+    expect(StaffMe.parse(ok(await admin.call('GET', '/v1/staff/me'))).permissions).toEqual(['people', 'courses', 'planner', 'devices', 'broadcast']);
     const planner = await prof.call('GET', '/v1/staff/planner');
     expect(planner.statusCode).toBe(403);
     expect(planner.json().error.message).toContain('Planner & cover');
@@ -83,7 +83,7 @@ describe('professor vs admin', () => {
 
   it('promotes a professor to admin and back; an institution always keeps one admin', async () => {
     expect(ok(await grant(['planner'], 'admin'))).toMatchObject({ role: 'admin', permissions: [] });
-    expect(StaffMe.parse(ok(await prof.call('GET', '/v1/staff/me'))).permissions).toHaveLength(4);
+    expect(StaffMe.parse(ok(await prof.call('GET', '/v1/staff/me'))).permissions).toHaveLength(5);
     // Two admins: one can step the other down…
     expect(ok(await grant(['planner'], 'teacher'))).toMatchObject({ role: 'teacher', permissions: ['planner'] });
     // …but the last admin can't be demoted.

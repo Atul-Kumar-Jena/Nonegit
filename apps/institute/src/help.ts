@@ -1,5 +1,14 @@
 /** Short explanations behind the ⓘ buttons. Plain words, one idea per line. */
 export const HELP: Record<string, { title: string; text: string[] }> = {
+  notices: {
+    title: 'Notices',
+    text: [
+      'Send to: a batch or your subjects (any professor), or everyone / all students / all faculty (admins, and professors an admin gave “Notices to everyone”).',
+      'Everyone it’s for gets a notification at once; tapping it opens the notice. They can react with emojis; you see how many have seen it.',
+      'Formatting: select words and tap B (bold), I (italic) or S (strike). Heading, bullet, numbered list and quote buttons act on the current line. Link wraps the selection. Preview shows exactly how it will look.',
+      'Pin keeps it on top of everyone’s Notice centre; Important highlights it in red. You (or an admin) can edit or delete it later.',
+    ],
+  },
   reports: {
     title: 'Attendance reports',
     text: [

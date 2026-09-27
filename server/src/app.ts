@@ -23,6 +23,7 @@ import { metaRoutes } from './routes/meta';
 import { studentRoutes } from './routes/student';
 import { reportRoutes } from './routes/reports';
 import { batchRoutes } from './routes/batches';
+import { noticeRoutes } from './routes/notices';
 import { staffAcademicRoutes } from './routes/staff-academics';
 import { staffAdminRoutes } from './routes/staff-admin';
 import { staffSessionRoutes } from './routes/staff-sessions';
@@ -134,6 +135,7 @@ export async function buildApp(opts: BuildOptions): Promise<{ app: FastifyInstan
   await app.register(async (s) => studentRoutes(s, deps));
   await app.register(async (s) => reportRoutes(s, deps));
   await app.register(async (s) => batchRoutes(s, deps));
+  await app.register(async (s) => noticeRoutes(s, deps));
   await app.register(async (s) => attendanceRoutes(s, deps));
   await app.register(async (s) => staffAdminRoutes(s, deps));
   await app.register(async (s) => staffAcademicRoutes(s, deps));

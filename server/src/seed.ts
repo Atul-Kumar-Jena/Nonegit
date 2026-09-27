@@ -76,6 +76,7 @@ export async function seedDemo(pool: Db, config: Config, opts: { reset?: boolean
     if (existing.rows[0]) {
       if (!reset) {
         if (await ensureDemoBatches(tx, existing.rows[0].id)) log('Added the demo batches (CSE-6A, CSE-6B).');
+        if (await ensureDemoNotices(tx, existing.rows[0].id)) log('Added the demo notices.');
         log('Demo institution already exists. Run "npm run seed -- --reset" to recreate it.');
         return false;
       }
@@ -188,6 +189,7 @@ export async function seedDemo(pool: Db, config: Config, opts: { reset?: boolean
         );
     }
     await ensureDemoBatches(tx, tenantId);
+    await ensureDemoNotices(tx, tenantId);
     await appendAudit(tx, { tenantId, actorType: 'system', action: 'seed.demo', data: { students: studentIds.length, records } });
     log(`Seeded "Demo Institute of Technology": ${studentIds.length} students, ${COURSES.length} courses, ${records} historic attendance records.`);
     log('Sign in to the Student app as  aarav@demo.attendly.app  (or +919000000001).');
@@ -219,6 +221,34 @@ async function ensureDemoBatches(tx: PoolClient, tenantId: string): Promise<bool
       [batchId, tenantId],
     );
   }
+  return true;
+}
+
+/** Two sample notices (idempotent): a pinned welcome to everyone, a quiz notice to one batch. */
+async function ensureDemoNotices(tx: PoolClient, tenantId: string): Promise<boolean> {
+  const has = await tx.query('select 1 from notices where tenant_id = $1 limit 1', [tenantId]);
+  if (has.rowCount) return false;
+  const who = async (email: string) => (await tx.query<{ id: string }>('select id from users where tenant_id = $1 and email = $2', [tenantId, email])).rows[0]?.id ?? null;
+  const iyer = await who('iyer@demo.attendly.app');
+  const banerjee = await who('banerjee@demo.attendly.app');
+  const batch = (await tx.query<{ id: string }>(`select id from batches where tenant_id = $1 and name = 'CSE-6A'`, [tenantId])).rows[0]?.id;
+  const everyone = await tx.query<{ n: number }>(`select count(*)::int as n from users where tenant_id = $1 and role in ('student', 'teacher', 'admin') and status = 'active'`, [tenantId]);
+  await tx.query(
+    `insert into notices(tenant_id, author_id, title, body, category, audience, audience_label, pinned, recipients, created_at)
+     values ($1, $2, 'Welcome to the Spring Term', $3, 'general', 'everyone', 'Everyone', true, $4, now() - interval '2 days')`,
+    [
+      tenantId,
+      iyer,
+      '# Welcome back!\nClasses run **Monday to Friday, 9 AM – 5 PM**.\n\n## Please remember\n- Mark attendance with the **Attendly** app — the QR changes every few seconds.\n- Keep your phone’s location on during class.\n- Minimum attendance is *75%* in every subject.\n\n> Questions? Use **Ask** on any class in your timetable.\n\n---\nHave a great term! 🎉',
+      Math.max(0, (everyone.rows[0]?.n ?? 1) - 1),
+    ],
+  );
+  if (batch)
+    await tx.query(
+      `insert into notices(tenant_id, author_id, title, body, category, audience, batch_ids, audience_label, important, recipients, created_at)
+       values ($1, $2, 'MA-202 quiz on Friday', $3, 'exam', 'batches', array[$4]::uuid[], 'CSE-6A', true, 8, now() - interval '3 hours')`,
+      [tenantId, banerjee, 'A short quiz in **Linear Algebra** this Friday.\n\n1. Chapters 3 and 4\n2. 20 minutes, no calculators\n3. Bring your ID card\n\n~~Thursday~~ → moved to **Friday, 10 AM, LH-1**.', batch],
+    );
   return true;
 }
 

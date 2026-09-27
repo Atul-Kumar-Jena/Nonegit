@@ -24,6 +24,12 @@ import {
   OtpVerifyResponse,
   ProfileResponse,
   SubjectsResponse,
+  NoticesResponse,
+  NoticeDetail,
+  AudienceCountResponse,
+  type NoticeAudience,
+  type NoticeBody,
+  type NoticeUpdateBody,
   InstitutionLookup,
   StudentReport,
   bindProofString,
@@ -101,6 +107,8 @@ const SESSION_FATAL: readonly string[] = ['UNAUTHENTICATED', 'DEVICE_REVOKED', '
 export function normalizeBaseUrl(raw: string, allowHttp: boolean): string {
   return parseServerAddress(raw, allowHttp);
 }
+
+const OkLike = z.object({ ok: z.literal(true) });
 
 export class ApiClient {
   readonly baseUrl: string;
@@ -334,6 +342,37 @@ export class ApiClient {
 
   subjects() {
     return this.authed('GET', '/v1/me/subjects', SubjectsResponse);
+  }
+
+  // ── notice centre (everyone) ──
+  notices(q: { filter?: 'all' | 'unread' | 'pinned' | 'mine'; category?: string; before?: string } = {}) {
+    const qs = Object.entries(q)
+      .filter(([, v]) => v)
+      .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
+      .join('&');
+    return this.authed('GET', `/v1/notices${qs ? `?${qs}` : ''}`, NoticesResponse);
+  }
+  notice(id: string) {
+    return this.authed('GET', `/v1/notices/${encodeURIComponent(id)}`, NoticeDetail);
+  }
+  reactToNotice(id: string, emoji: string) {
+    return this.authed('POST', `/v1/notices/${encodeURIComponent(id)}/react`, NoticeDetail.shape.reactions, { emoji });
+  }
+  readAllNotices() {
+    return this.authed('POST', '/v1/notices/read-all', OkLike, {});
+  }
+  // ── notices (staff) ──
+  noticeAudience(a: NoticeAudience) {
+    return this.authed('POST', '/v1/notices/audience', AudienceCountResponse, a);
+  }
+  sendNotice(b: NoticeBody) {
+    return this.authed('POST', '/v1/notices', NoticeDetail, b);
+  }
+  editNotice(id: string, b: NoticeUpdateBody) {
+    return this.authed('POST', `/v1/notices/${encodeURIComponent(id)}`, NoticeDetail, b);
+  }
+  deleteNotice(id: string) {
+    return this.authed('POST', `/v1/notices/${encodeURIComponent(id)}/delete`, OkLike, {});
   }
 
   /** Own attendance report (all subjects, or one with its class-by-class log). */

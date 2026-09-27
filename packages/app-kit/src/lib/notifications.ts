@@ -38,7 +38,7 @@ const PUSH_KEY = 'notify.push-active.v1';
 export function targetOf(n: Pick<AppNotification, 'kind' | 'data'>): NotificationTarget {
   const first = (n.data.changes as { sessionId?: string | null; courseId?: string }[] | undefined)?.[0];
   const str = (v: unknown) => (typeof v === 'string' ? v : undefined);
-  return { kind: n.kind, sessionId: first?.sessionId ?? str(n.data.sessionId), courseId: first?.courseId, requestId: str(n.data.requestId) };
+  return { kind: n.kind, sessionId: first?.sessionId ?? str(n.data.sessionId), courseId: first?.courseId, requestId: str(n.data.requestId), noticeId: str(n.data.noticeId) };
 }
 export const NOTIFICATION_TASK = 'attendly-notification-check';
 export const notificationsKey = ['notifications'] as const;

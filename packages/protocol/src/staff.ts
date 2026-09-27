@@ -56,13 +56,14 @@ export const UpdateInstitutionBody = z
 export type UpdateInstitutionBody = z.infer<typeof UpdateInstitutionBody>;
 
 /** Extra powers an admin can give a professor (admins have them all). */
-export const StaffPermission = z.enum(['people', 'courses', 'planner', 'devices']);
+export const StaffPermission = z.enum(['people', 'courses', 'planner', 'devices', 'broadcast']);
 export type StaffPermission = z.infer<typeof StaffPermission>;
 export const STAFF_PERMISSIONS: readonly { key: StaffPermission; label: string; detail: string }[] = [
   { key: 'people', label: 'People', detail: 'Add and edit students and professors, paste class lists, unbind phones, reset authenticators.' },
   { key: 'courses', label: 'Courses & timetable', detail: 'Every course and its students, the weekly timetable, rooms.' },
   { key: 'planner', label: 'Planner & cover', detail: 'Drag-and-drop planner, publish changes, give a class to another professor.' },
   { key: 'devices', label: 'Phones & scans', detail: 'Approve students moving to a new phone, review suspicious scans.' },
+  { key: 'broadcast', label: 'Notices to everyone', detail: 'Send notices to the whole institution, all students or all faculty (any professor can already post to batches and their own subjects).' },
 ];
 
 export const StaffMe = z.object({
@@ -122,7 +123,7 @@ export const Person = z.object({
 export type Person = z.infer<typeof Person>;
 
 /** Admins only: make someone an admin or a professor, and choose a professor's extra powers. */
-export const StaffAccessBody = z.object({ role: z.enum(['teacher', 'admin']), permissions: z.array(StaffPermission).max(4).default([]) });
+export const StaffAccessBody = z.object({ role: z.enum(['teacher', 'admin']), permissions: z.array(StaffPermission).max(5).default([]) });
 export type StaffAccessBody = z.infer<typeof StaffAccessBody>;
 
 export const PersonBody = z

@@ -56,6 +56,7 @@ The server contains a ready-made **Demo Institute of Technology** (code **DEMO-2
 11. **Reports:** More → **Attendance reports** → pick *CSE-6A* → a subject → **PDF** / **Excel**. Tap a student to see every subject and every class. On **B** (Aarav): Profile → **Download attendance**.
 12. **Roles:** as *Dr. N. Iyer* → More → **People & roles** → Professors → *Dr. S. Banerjee* → **Role & permissions** → tick **Planner & cover** → Save. Banerjee gets a notification, and More now shows *Cover a class* and *Planner*. Untick it to take it back.
 13. **Big screen:** see "Big screen" below — open `attendly-api-bt9r.onrender.com/tv` on a laptop.
+14. **Notices:** as *Aarav* → Home → *Notices* → open *Welcome to the Spring Term* → react 🎉. As *Dr. S. Banerjee* → More → **Notice centre → New notice** → CSE-6A → write with the toolbar → **Preview** → **Send**; Aarav gets a notification.
 
 ## 3 · Beta test (your own institution, new accounts)
 
@@ -132,6 +133,13 @@ More / Profile → **Class reminders**: pick any of 5 / 10 / 15 / 30 min, 1 hour
   - **Phones & scans**: approve phone switches, review suspicious scans.
 - The same screen turns a professor into an admin (or back). The person gets a notification and sees the change at once.
 - Only admins change roles; a professor with *People* can't create admins or edit an admin. An institution always keeps at least one admin.
+
+### Notice centre (announcements)
+- **Who can send:** any professor → one or more **batches**, or the **subjects** they teach. Admins (and professors given **Notices to everyone** in Role & permissions) → **everyone**, **all students** or **all faculty** too.
+- **Write:** More → **Notice centre → New notice** → *Send to* (it shows "Reaches N people") → topic (📢 General, 📚 Academic, 📝 Exam, 🎉 Event, 🌴 Holiday) → title → text. The toolbar: **B** bold, *I* italic, ~~S~~ strike, heading, small heading, • list, 1. list, quote, link, divider — select words then tap. **Preview** shows exactly what people will see. Optional 📌 **Pin** (stays on top) and ⚠️ **Important** (red, "Important" in the notification) → **Send**.
+- **Delivery:** everyone it's for gets a notification straight away (instant with Firebase; within seconds while the app is open); tapping it opens the notice. Home shows the newest unread ones.
+- **Read & react:** open a notice → react with 👍 ❤️ 🎉 😂 😮 🙏 (tap again to take it back). The author (and admins) see **Seen by N of M**, and can **Edit** or **Delete** it.
+- Students: Home → *Notices*, or Profile → **Notice centre**. Filters: All · Unread · Pinned, and by topic; **✓✓** marks everything read.
 
 ### Big screen (projector / smartboard / laptop)
 1. On the classroom computer open **`attendly-api-bt9r.onrender.com/tv`** in any browser (or in the app: class → **Show on a big screen → Send the link**). It shows a **pairing QR** and a code like `KXF7-M2QD`.

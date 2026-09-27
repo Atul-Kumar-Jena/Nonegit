@@ -12,3 +12,5 @@ export * from './timetable';
 export * from './requests';
 export * from './root';
 export * from './reports';
+export * from './richtext';
+export * from './notices';

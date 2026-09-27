@@ -69,34 +69,48 @@ export function createPushSender(sa: ServiceAccount, log: (msg: string, extra?: 
 /** Sends every committed, not-yet-pushed notification of the last 10 minutes. */
 export function startPushDispatcher(db: Db, sender: ReturnType<typeof createPushSender>, log: (msg: string, extra?: unknown) => void): () => void {
   let running = false;
+  const BATCH = 500;
+  const PARALLEL = 25;
+  /** One batch: claim up to BATCH unsent notifications, push them with PARALLEL requests at a time. */
+  const round = async (): Promise<number> => {
+    const { rows } = await db.query<{ id: string; user_id: string; kind: string; title: string; body: string; data: Record<string, unknown> }>(
+      `update notifications set pushed_at = now()
+        where id in (select id from notifications where pushed_at is null and created_at > now() - interval '10 minutes' order by id limit ${BATCH} for update skip locked)
+        returning id, user_id, kind, title, body, data`,
+    );
+    if (!rows.length) return 0;
+    const tokens = await db.query<{ user_id: string; token: string; device_id: string }>(
+      `select p.user_id, p.token, p.device_id from push_tokens p join devices d on d.id = p.device_id and d.status = 'active' where p.user_id = any($1::uuid[])`,
+      [[...new Set(rows.map((r) => r.user_id))]],
+    );
+    const byUser = new Map<string, { token: string; device_id: string }[]>();
+    for (const t of tokens.rows) byUser.set(t.user_id, [...(byUser.get(t.user_id) ?? []), t]);
+    const jobs: (() => Promise<void>)[] = [];
+    for (const n of rows) {
+      const first = (n.data.changes as { sessionId?: string | null; courseId?: string }[] | undefined)?.[0];
+      const data: Record<string, string> = {
+        notificationId: String(n.id),
+        kind: n.kind,
+        ...(first?.sessionId ? { sessionId: first.sessionId } : typeof n.data.sessionId === 'string' ? { sessionId: n.data.sessionId } : {}),
+        ...(first?.courseId ? { courseId: first.courseId } : {}),
+        ...(typeof n.data.requestId === 'string' ? { requestId: n.data.requestId } : {}),
+        ...(typeof n.data.noticeId === 'string' ? { noticeId: n.data.noticeId } : {}),
+      };
+      for (const t of byUser.get(n.user_id) ?? [])
+        jobs.push(async () => {
+          const alive = await sender.send(t.token, { title: n.title, body: n.body, data }).catch((err: Error) => (log('FCM error', { err: err.message }), true));
+          if (!alive) await db.query('delete from push_tokens where device_id = $1', [t.device_id]);
+        });
+    }
+    for (let i = 0; i < jobs.length; i += PARALLEL) await Promise.all(jobs.slice(i, i + PARALLEL).map((j) => j()));
+    return rows.length;
+  };
   const tick = async () => {
     if (running) return;
     running = true;
     try {
-      const { rows } = await db.query<{ id: string; user_id: string; kind: string; title: string; body: string; data: Record<string, unknown> }>(
-        `update notifications set pushed_at = now()
-          where id in (select id from notifications where pushed_at is null and created_at > now() - interval '10 minutes' order by id limit 200 for update skip locked)
-          returning id, user_id, kind, title, body, data`,
-      );
-      if (!rows.length) return;
-      const tokens = await db.query<{ user_id: string; token: string; device_id: string }>(
-        `select p.user_id, p.token, p.device_id from push_tokens p join devices d on d.id = p.device_id and d.status = 'active' where p.user_id = any($1::uuid[])`,
-        [[...new Set(rows.map((r) => r.user_id))]],
-      );
-      for (const n of rows) {
-        const first = (n.data.changes as { sessionId?: string | null; courseId?: string }[] | undefined)?.[0];
-        const data: Record<string, string> = {
-          notificationId: String(n.id),
-          kind: n.kind,
-          ...(first?.sessionId ? { sessionId: first.sessionId } : typeof n.data.sessionId === 'string' ? { sessionId: n.data.sessionId } : {}),
-          ...(first?.courseId ? { courseId: first.courseId } : {}),
-          ...(typeof n.data.requestId === 'string' ? { requestId: n.data.requestId } : {}),
-        };
-        for (const t of tokens.rows.filter((x) => x.user_id === n.user_id)) {
-          const alive = await sender.send(t.token, { title: n.title, body: n.body, data }).catch((err: Error) => (log('FCM error', { err: err.message }), true));
-          if (!alive) await db.query('delete from push_tokens where device_id = $1', [t.device_id]);
-        }
-      }
+      // Keep going until the queue is empty, so a broadcast to thousands goes out in seconds.
+      for (let i = 0; i < 40 && (await round()) === BATCH; i++);
     } catch (err) {
       log('push dispatcher error', { err: (err as Error).message });
     } finally {

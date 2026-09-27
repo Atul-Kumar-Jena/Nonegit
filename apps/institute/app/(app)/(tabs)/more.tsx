@@ -1,7 +1,7 @@
 import { useCallback, type ReactNode } from 'react';
 import { Pressable, Share, StyleSheet, Switch, View } from 'react-native';
 import { router, useFocusEffect, type Href } from 'expo-router';
-import { Share2, AlarmClock, Bell, Building2, CalendarDays, CalendarRange, ChevronRight, Clock4, Inbox, KeyRound, Library, Lock, LogOut, MapPin, Play, Plus, ShieldAlert, Smartphone, Trash2, UserPlus, Users, UsersRound, Wand2, FileBarChart } from 'lucide-react-native';
+import { Share2, Megaphone, AlarmClock, Bell, Building2, CalendarDays, CalendarRange, ChevronRight, Clock4, Inbox, KeyRound, Library, Lock, LogOut, MapPin, Play, Plus, ShieldAlert, Smartphone, Trash2, UserPlus, Users, UsersRound, Wand2, FileBarChart } from 'lucide-react-native';
 import { STAFF_PERMISSIONS, formatInstitutionCode, type StaffPermission } from '@attendly/protocol';
 import { Screen } from '@kit/components/Screen';
 import { SyncBanner } from '@kit/components/SyncBanner';
@@ -14,6 +14,7 @@ import { displayHost } from '@kit/lib/server-config';
 import { useSession } from '@kit/state/session';
 import { colors } from '@kit/theme';
 import { confirmAction } from '@/components/forms';
+import { useNoticeInbox } from '@kit/components/Notices';
 import { FeatureGrid, InfoButton } from '@kit/components/Features';
 import { HELP } from '@/help';
 import { localSessions } from '@/local-sessions';
@@ -21,6 +22,7 @@ import { useMe, useOverview } from '@/queries';
 
 /** Everything else: people, rooms, reviews, settings, your account. */
 export default function More() {
+  const notices = useNoticeInbox();
   const me = useMe();
   // Role / permissions may have just been changed by an admin: re-check whenever this tab is shown.
   useFocusEffect(useCallback(() => void me.refetch(), [me.refetch]));
@@ -92,6 +94,7 @@ export default function More() {
           { icon: <Play color={colors.text} size={18} />, label: 'Take attendance', href: '/attend' },
           { icon: <CalendarDays color={colors.text} size={18} />, label: 'Timetable', href: '/timetable' },
           { icon: <Library color={colors.text} size={18} />, label: 'Classes & reports', href: '/classes' },
+          { icon: <Megaphone color={colors.text} size={18} />, label: 'Notice centre', href: '/notices', badge: notices.data?.unread ? String(notices.data.unread) : null },
           { icon: <FileBarChart color={colors.text} size={18} />, label: 'Attendance reports', href: '/reports' },
           { icon: <Plus color={colors.text} size={18} />, label: 'Extra class', href: '/extra-class' },
           { icon: <Inbox color={colors.text} size={18} />, label: 'Requests', href: '/inbox' },

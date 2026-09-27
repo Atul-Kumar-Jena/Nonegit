@@ -11,7 +11,7 @@ const AUDIENCE = {
   allowedRoles: ['student'] as const,
   wrongRoleMessage: 'This is the student app. Staff accounts sign in with the Attendly Institute app.',
   requestsRoute: '/requests',
-  routeFor: (d: NotificationTarget) => (d.kind === 'request' ? '/requests' : d.courseId ? `/subject/${d.courseId}` : '/timetable'),
+  routeFor: (d: NotificationTarget) => (d.kind === 'notice' && d.noticeId ? `/notice/${d.noticeId}` : d.kind === 'request' ? '/requests' : d.courseId ? `/subject/${d.courseId}` : '/timetable'),
 };
 
 export default function RootLayout() {

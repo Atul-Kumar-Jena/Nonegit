@@ -6,6 +6,7 @@ import type { DashboardResponse, TodaySession } from '@attendly/protocol';
 import { NotificationBell } from '@kit/components/NotificationBell';
 import { Screen } from '@kit/components/Screen';
 import { BatteryCard } from '@kit/components/BatteryCard';
+import { NoticeHomeCard } from '@kit/components/Notices';
 import { usePermissionsOnboarding } from '@kit/lib/notifications';
 import { SyncBanner } from '@kit/components/SyncBanner';
 import { Avatar, Badge, Card, ErrorState, Loading, ProgressBar, SectionLabel, Text } from '@kit/components/ui';
@@ -94,6 +95,7 @@ export default function Home() {
         </View>
       )}
       <BatteryCard />
+      <NoticeHomeCard />
       <ComingUp tz={d.timezone} today={dayLabel(d.serverTime, d.timezone)} />
       <Pressable onPress={() => router.push('/timetable')} accessibilityRole="button" style={{ marginTop: 10 }}>
         <Card style={styles.link}>
