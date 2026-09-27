@@ -4,8 +4,21 @@
  */
 import { useSyncExternalStore } from 'react';
 import { Platform } from 'react-native';
-import * as ScreenCapture from 'expo-screen-capture';
 import { vault } from './vault';
+
+type ScreenCaptureModule = typeof import('expo-screen-capture');
+/**
+ * Loaded on first use, never at start-up: an app built without the native module (a missing
+ * dependency) must still open instead of crashing on launch.
+ */
+function screenCapture(): ScreenCaptureModule | null {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require('expo-screen-capture') as ScreenCaptureModule;
+  } catch {
+    return null;
+  }
+}
 
 const KEY = 'privacy.block-screenshots.v1';
 let blocked = false;
@@ -13,6 +26,8 @@ const listeners = new Set<() => void>();
 
 async function apply(on: boolean) {
   if (Platform.OS === 'web') return;
+  const ScreenCapture = screenCapture();
+  if (!ScreenCapture) return;
   try {
     if (on) {
       await ScreenCapture.preventScreenCaptureAsync('attendly');
