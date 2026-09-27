@@ -93,6 +93,32 @@ describe('kill switches, all enforced', () => {
     ok(await flip('sign_ins_paused', false));
   });
 
+  it('“Testing: phone rules off” — shared phones and instant phone switches; strict again when off', async () => {
+    const a = await person('student', 'test-phone');
+    const b = await person('teacher', 'test-phone');
+    expect((await tryBind(a.phone, a.email)).statusCode).toBe(200);
+    expect((await tryBind(b.phone, b.email)).statusCode).toBe(409);
+    ok(await flip('phone_rules_off', true));
+    expect((await tryBind(b.phone, b.email)).statusCode).toBe(200); // one phone, two accounts
+    // The same app key used for another account: the earlier holder is signed out, not refused.
+    const c = await person('student');
+    expect((await tryBind(b.phone, c.email)).statusCode).toBe(200);
+    // A new phone takes over without an admin's approval.
+    const other = new TestDevice(ctx, { hardwareId: 'new-phone' });
+    ctx.clock.now += 31_000;
+    const r = await other.requestOtp(a.email);
+    const v = await other.verifyOtp(r.json().challengeId, other.lastCode(a.email));
+    expect(v.json().status).toBe('bind_required');
+    expect((await other.bind(v.json().ticket)).statusCode).toBe(200);
+    expect((await ctx.db.query(`select 1 from audit_log where action = 'device.testing_handover'`)).rowCount).toBe(1);
+    expect((await ctx.db.query(`select 1 from audit_log where action = 'device.testing_takeover'`)).rowCount).toBe(1);
+    ok(await flip('phone_rules_off', false));
+    const d = await person('teacher', 'new-phone');
+    expect((await tryBind(d.phone, d.email)).statusCode).toBe(409);
+    const listed = ok(await root.call('GET', '/v1/root/console')).switches.map((s: { key: string }) => s.key);
+    expect(listed).toContain('phone_rules_off');
+  });
+
   it('“Pause phone notifications” is a real, listed switch', async () => {
     const c = ok(await root.call('GET', '/v1/root/console'));
     expect(c.switches.map((s: { key: string }) => s.key)).toEqual(expect.arrayContaining(['notifications_paused', 'scans_paused', 'sign_ins_paused', 'new_bindings_blocked', 'hardware_checks_relaxed', 'demo_login_off']));

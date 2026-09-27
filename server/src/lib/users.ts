@@ -1,6 +1,7 @@
 import { keyFingerprint, type DeviceSummary, type Platform, type Role, type UserSummary } from '@attendly/protocol';
 import { ApiError } from './errors';
 import { isDemoEmail } from './demo';
+import { switchOn } from './flags';
 import type { Queryable } from '../db';
 
 export interface UserRow {
@@ -73,6 +74,7 @@ export function hardwareHash(hash: (purpose: string, value: string) => Buffer, i
  */
 export async function assertPhoneFree(db: Queryable, hw: Buffer | null, user: { id: string; role: string; email: string | null }, demo: boolean): Promise<void> {
   if (!hw || user.role === 'developer') return;
+  if (await switchOn(db, 'phone_rules_off')) return; // testing: several accounts may share a phone
   const { rows } = await db.query<{ role: string; email: string | null }>(
     `select u.role, u.email from devices d join users u on u.id = d.user_id
       where d.hw_hash = $1 and d.status = 'active' and d.user_id <> $2 and u.role <> 'developer' limit 10`,

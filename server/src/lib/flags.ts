@@ -12,6 +12,11 @@ export const SWITCHES = {
     label: 'Relax phone hardware checks (emergency)',
     detail: 'Phones whose secure-hardware check fails may still bind. Use only if a phone model is wrongly refused.',
   },
+  phone_rules_off: {
+    label: 'Testing: phone rules off',
+    detail:
+      'Nobody is stopped by phone binding: one phone can hold several accounts, a new phone takes over without admin approval, and the security-chip check never refuses. Every takeover is recorded. Turn off before real use.',
+  },
   demo_login_off: { label: 'Turn off one-tap demo sign-in', detail: 'Demo accounts need a sign-in code like everyone else.' },
   notifications_paused: {
     label: 'Pause phone notifications',

@@ -158,7 +158,7 @@ async function attestForTicket(
     });
   }
   const required = (await hardwareRequired(tx, deps, user.tenant_id, platform)) || (platform === 'android' && (await hadHardwareKey(tx, user.id)));
-  const relaxed = await switchOn(tx, 'hardware_checks_relaxed');
+  const relaxed = (await switchOn(tx, 'hardware_checks_relaxed')) || (await switchOn(tx, 'phone_rules_off'));
   return checkAttestation(deps, chain, bindChallenge(ticket), required && !relaxed, relaxed, (code, detail) => {
     // Its own transaction: the refusal is on record even though the binding is rolled back.
     void withTx(deps.db, (audit) =>
@@ -315,6 +315,12 @@ export async function authRoutes(app: FastifyInstance, deps: Deps) {
         await appendAudit(tx, { tenantId: user.tenant_id, actorType: 'user', actorId: user.id, action: 'device.demo_handover', subject: `device:${bound.id}` });
         bound = undefined;
       }
+      // Testing mode (phone rules off): a new phone takes over without an admin's approval.
+      if (bound && !bound.public_key.equals(pk) && (await switchOn(tx, 'phone_rules_off'))) {
+        await revokeActiveDevice(tx, user.id, 'testing: phone rules off — signed in on another phone', new Date(deps.clock()));
+        await appendAudit(tx, { tenantId: user.tenant_id, actorType: 'user', actorId: user.id, action: 'device.testing_handover', subject: `device:${bound.id}` });
+        bound = undefined;
+      }
       // Developers skip phone binding for now: the Google Authenticator code signs them straight in on
       // whichever phone they use (a new phone replaces the old one). Recorded in the audit log.
       if (user.role === 'developer' && (!bound || !bound.public_key.equals(pk))) {
@@ -389,6 +395,18 @@ export async function authRoutes(app: FastifyInstance, deps: Deps) {
           );
           for (const o of others.rows)
             if (isDemoEmail(o.email)) await revokeActiveDevice(tx, o.user_id, 'demo: phone used for another demo account', new Date(deps.clock()));
+        }
+        if (await switchOn(tx, 'phone_rules_off')) {
+          // Testing mode: this app's key may still be held by another account on this phone
+          // (e.g. a demo account used earlier) — that account is signed out here instead of refusing.
+          const holders = await tx.query<{ user_id: string }>(
+            `select user_id from devices where status = 'active' and public_key = $1 and user_id <> $2`,
+            [t.public_key, user.id],
+          );
+          for (const o of holders.rows) {
+            await revokeActiveDevice(tx, o.user_id, 'testing: phone rules off — phone used for another account', new Date(deps.clock()));
+            await appendAudit(tx, { tenantId: user.tenant_id, actorType: 'user', actorId: user.id, action: 'device.testing_takeover', subject: `user:${o.user_id}` });
+          }
         }
         const hw = hwEarly;
         await assertPhoneFree(tx, hw, user, deps.config.demoInstantLogin && !(await switchOn(tx, 'demo_login_off')));
@@ -520,7 +538,7 @@ export async function authRoutes(app: FastifyInstance, deps: Deps) {
       const f = failures[0];
       if (f) {
         // Google proved this phone tampered with: remember it (its scans are refused) unless checks are relaxed.
-        if (isTamperEvidence(f.code) && !(await switchOn(deps.db, 'hardware_checks_relaxed')) && (await hardwareRequired(deps.db, deps, auth.tenantId, auth.devicePlatform)))
+        if (isTamperEvidence(f.code) && !(await switchOn(deps.db, 'hardware_checks_relaxed')) && !(await switchOn(deps.db, 'phone_rules_off')) && (await hardwareRequired(deps.db, deps, auth.tenantId, auth.devicePlatform)))
           await deps.db.query('update devices set attest_failure = $2 where id = $1', [auth.deviceId, f.code]);
         await withTx(deps.db, (tx) =>
           appendAudit(tx, { tenantId: auth.tenantId, actorType: 'user', actorId: auth.userId, action: 'device.attest_failed', subject: `device:${auth.deviceId}`, data: f }),
