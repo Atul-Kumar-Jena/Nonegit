@@ -39,7 +39,9 @@ interface NoticeRow {
   title: string;
   body: string;
   category: NoticeSummary['category'];
-  audience: 'everyone' | 'students' | 'staff' | 'batches' | 'courses';
+  audience: 'everyone' | 'students' | 'staff' | 'admins' | 'batches' | 'courses';
+  platform: boolean;
+  author_label: string | null;
   batch_ids: string[];
   course_ids: string[];
   audience_label: string;
@@ -61,6 +63,7 @@ const VISIBLE = `n.tenant_id = $1 and n.deleted_at is null and (
     or n.audience = 'everyone'
     or (n.audience = 'students' and $3 = 'student')
     or (n.audience = 'staff' and $3 in ('teacher', 'admin'))
+    or (n.audience = 'admins' and $3 = 'admin')
     or (n.audience = 'batches' and exists (select 1 from batch_members m where m.user_id = $2 and m.batch_id = any(n.batch_ids)))
     or (n.audience = 'courses' and exists (select 1 from enrollments e where e.user_id = $2 and e.course_id = any(n.course_ids)))
     or (n.audience = 'courses' and exists (select 1 from courses c where c.id = any(n.course_ids) and c.instructor_id = $2)))`;
@@ -74,7 +77,8 @@ const SELECT = `
     from notices n left join users a on a.id = n.author_id`;
 
 const params = (auth: AuthContext) => [auth.tenantId, auth.userId, auth.role, isAdmin(auth)];
-const mayEdit = (auth: AuthContext, r: { author_id: string | null }) => isAdmin(auth) || r.author_id === auth.userId;
+/** Notices from Attendly (the platform) are Attendly's to change; the institution only reads them. */
+const mayEdit = (auth: AuthContext, r: { author_id: string | null; platform?: boolean }) => !r.platform && (isAdmin(auth) || r.author_id === auth.userId);
 
 function toSummary(auth: AuthContext, r: NoticeRow): NoticeSummary {
   return {
@@ -84,7 +88,9 @@ function toSummary(auth: AuthContext, r: NoticeRow): NoticeSummary {
     category: r.category,
     pinned: r.pinned,
     important: r.important,
-    author: { id: r.author_id ?? r.id, name: r.author_name ?? 'Former staff', role: r.author_role === 'admin' ? 'Admin' : r.author_role === 'teacher' ? 'Professor' : 'Staff' },
+    author: r.platform
+      ? { id: r.author_id ?? r.id, name: r.author_label ?? 'Attendly', role: (r.author_label ?? 'Attendly') === 'Attendly' ? 'Official' : 'Attendly' }
+      : { id: r.author_id ?? r.id, name: r.author_name ?? 'Former staff', role: r.author_role === 'admin' ? 'Admin' : r.author_role === 'teacher' ? 'Professor' : 'Staff' },
     audienceLabel: r.audience_label,
     createdAt: r.created_at.toISOString(),
     editedAt: r.edited_at?.toISOString() ?? null,
@@ -94,13 +100,15 @@ function toSummary(auth: AuthContext, r: NoticeRow): NoticeSummary {
   };
 }
 
+export const audienceLabel = (k: 'everyone' | 'students' | 'staff' | 'admins') => (k === 'everyone' ? 'Everyone' : k === 'students' ? 'All students' : k === 'admins' ? 'All admins' : 'All faculty');
+
 /** Checks the caller may address this audience; returns its label and recipients. */
 async function resolveAudience(db: Queryable, auth: AuthContext, a: NoticeAudience): Promise<{ label: string; recipients: string[] }> {
   let label: string;
-  if (a.kind === 'everyone' || a.kind === 'students' || a.kind === 'staff') {
+  if (a.kind === 'everyone' || a.kind === 'students' || a.kind === 'staff' || a.kind === 'admins') {
     if (!can(auth, 'broadcast'))
       throw new ApiError(403, 'FORBIDDEN', 'Notices to the whole institution, all students or all faculty need the “Notices to everyone” permission. You can post to batches and your own subjects.');
-    label = a.kind === 'everyone' ? 'Everyone' : a.kind === 'students' ? 'All students' : 'All faculty';
+    label = audienceLabel(a.kind);
   } else if (a.kind === 'batches') {
     const ids = [...new Set(a.batchIds)];
     const { rows } = await db.query<{ name: string }>('select name from batches where tenant_id = $1 and id = any($2::uuid[]) order by name', [auth.tenantId, ids]);
@@ -121,6 +129,7 @@ async function resolveAudience(db: Queryable, auth: AuthContext, a: NoticeAudien
         ($3 = 'everyone' and u.role in ('student', 'teacher', 'admin'))
         or ($3 = 'students' and u.role = 'student')
         or ($3 = 'staff' and u.role in ('teacher', 'admin'))
+        or ($3 = 'admins' and u.role = 'admin')
         or ($3 = 'batches' and exists (select 1 from batch_members m where m.user_id = u.id and m.batch_id = any($4::uuid[])))
         or ($3 = 'courses' and u.role = 'student' and exists (select 1 from enrollments e where e.user_id = u.id and e.course_id = any($5::uuid[]))))`,
     [auth.tenantId, auth.userId, kind, kind === 'batches' ? a.batchIds : [], kind === 'courses' ? a.courseIds : []],

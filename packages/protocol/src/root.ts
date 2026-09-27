@@ -206,3 +206,37 @@ export const SupportPerson = z.object({
 export type SupportPerson = z.infer<typeof SupportPerson>;
 export const SupportActionResult = z.object({ person: Person, setup: IssuedSetupCode.nullable(), message: z.string() });
 export type SupportActionResult = z.infer<typeof SupportActionResult>;
+
+// ── Broadcasts: a notice from Attendly to many institutions at once ──
+export const BroadcastAudience = z.enum(['everyone', 'students', 'admins', 'staff']);
+export type BroadcastAudience = z.infer<typeof BroadcastAudience>;
+export const BroadcastTarget = z.object({
+  audience: BroadcastAudience,
+  /** null: every active, verified institution. */
+  tenantId: uuid.nullable().default(null),
+});
+export type BroadcastTarget = z.infer<typeof BroadcastTarget>;
+export const BroadcastBody = BroadcastTarget.extend({
+  title: z.string().trim().min(1, 'Add a title').max(120),
+  body: z.string().trim().min(1, 'Write the message').max(5000),
+  category: z.enum(['general', 'academic', 'exam', 'event', 'holiday']).default('general'),
+  important: z.boolean().default(false),
+  pinned: z.boolean().default(false),
+  /** Signed as "Attendly" or with the developer's name (always recorded under their account). */
+  as: SupportAttribution.default('support'),
+});
+export type BroadcastBody = z.input<typeof BroadcastBody>;
+export const BroadcastPreview = z.object({ institutions: z.number().int(), recipients: z.number().int(), label: z.string() });
+export type BroadcastPreview = z.infer<typeof BroadcastPreview>;
+export const BroadcastSummary = z.object({
+  id: uuid,
+  title: z.string(),
+  audienceLabel: z.string(),
+  signedAs: z.string(),
+  institutions: z.number().int(),
+  recipients: z.number().int(),
+  seen: z.number().int(),
+  important: z.boolean(),
+  createdAt: IsoDate,
+});
+export type BroadcastSummary = z.infer<typeof BroadcastSummary>;

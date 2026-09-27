@@ -8,6 +8,10 @@ import {
   FlagsResponse,
   OkResponse,
   RootConsole,
+  BroadcastPreview,
+  BroadcastSummary,
+  type BroadcastBody,
+  type BroadcastTarget,
   Person,
   SupportActionResult,
   SupportPerson,
@@ -48,6 +52,11 @@ export const rootApi = {
   flags: (api: ApiClient) => api.authed('GET', '/v1/root/flags', FlagsResponse),
   setFlag: (api: ApiClient, b: SetFlagBody) => api.authed('POST', '/v1/root/flags', OkResponse, b),
   me: (api: ApiClient) => api.authed('GET', '/v1/root/me', RootMe),
+  /** Broadcasts: a message from Attendly to everyone / students / admins, everywhere or in one institution. */
+  broadcastPreview: (api: ApiClient, t: BroadcastTarget) => api.authed('POST', '/v1/root/broadcast/preview', BroadcastPreview, t),
+  broadcast: (api: ApiClient, b: BroadcastBody) => api.authed('POST', '/v1/root/broadcast', BroadcastSummary, b),
+  broadcasts: (api: ApiClient) => api.authed('GET', '/v1/root/broadcasts', z.array(BroadcastSummary)),
+  withdrawBroadcast: (api: ApiClient, id: string) => api.authed('POST', `/v1/root/broadcasts/${enc(id)}/withdraw`, z.object({ ok: z.boolean(), withdrawn: z.number() }), {}),
   /** Support: an institution's people, one person (attendance + history), and actions on them. */
   people: (api: ApiClient, tenantId: string, role: 'student' | 'staff', q?: string) =>
     api.authed('GET', `/v1/root/tenants/${enc(tenantId)}/people${qs({ role, q })}`, z.array(Person)),

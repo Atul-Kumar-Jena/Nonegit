@@ -44,6 +44,10 @@ A class never started in its time is logged as missed ("Not held").
   reactivate, unlink a phone, new setup code, make admin / professor, hand over the main-admin role.
   A reason is required. "They see this as done by: My name / Attendly support" only changes the
   person's notification — every action is in the audit log under your developer account.
+- **Broadcast a message** (Console): to everyone, only students, only admins, or professors & admins — in
+  every institution or one. It arrives as a notice (read-only for the institution) and a phone
+  notification, signed "Attendly" or with your name; **Sent** shows reach and reads, and **Withdraw**
+  takes it back everywhere.
 - **Phones**: one phone, one account for everyone (developers excepted). The security-chip check (Google
   key attestation) is **on by default** for every institution (`HARDWARE_BINDING_DEFAULT=off` to change the
   default; each institution's flag and the emergency switch still apply).

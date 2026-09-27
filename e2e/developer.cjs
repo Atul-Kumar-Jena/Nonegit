@@ -153,6 +153,31 @@ const nextWindow = () => new Promise((r) => setTimeout(r, 30_500 - (Date.now() %
     await d.goBack();
   });
 
+  await step('Broadcast: the developer sends a message to the admins of one institution; its main admin sees it', async () => {
+    lastPage = d;
+    await d.goBack();
+    await d.getByRole('tab', { name: 'Console' }).click({ timeout: 20_000 });
+    await d.waitForTimeout(900);
+    await d.getByRole('button', { name: 'Broadcast a message' }).click();
+    await d.getByRole('button', { name: 'Admins', exact: true }).click({ timeout: 20_000 });
+    await d.getByRole('button', { name: 'Riverside College' }).click();
+    await d.getByText(/Reaches 1 person/).waitFor({ timeout: 20_000 });
+    await d.getByPlaceholder('Title, e.g. Planned maintenance on Sunday').fill('Welcome to Attendly, Riverside');
+    await d.getByPlaceholder('Write the message…').fill('Your institution is live. Add your professors from People.');
+    await d.getByRole('button', { name: 'Review & send' }).click();
+    await d.getByRole('button', { name: 'Send now' }).click();
+    await d.getByText(/Sent to 1 person in 1 institution/).waitFor({ timeout: 20_000 });
+    await d.getByText(/Seen by 0 of 1/).waitFor();
+    await shot(d, 'dev-broadcast');
+    lastPage = a;
+    await a.evaluate(() => window.__router.push('/notices'));
+    await a.getByText('Welcome to Attendly, Riverside').first().waitFor({ timeout: 30_000 });
+    await a.getByText(/Attendly · /).first().waitFor().catch(() => {});
+    await shot(a, 'admin-sees-broadcast');
+    lastPage = d;
+    await d.goBack();
+  });
+
   await step('The developer signs in again with only the authenticator code (ID remembered)', async () => {
     lastPage = d;
     await d.goBack();

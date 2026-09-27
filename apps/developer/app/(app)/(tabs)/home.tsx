@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { StyleSheet, Switch, View } from 'react-native';
 import { router } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
-import { Activity, CheckCircle2, CircleAlert, FlaskConical, Power } from 'lucide-react-native';
+import { Activity, CheckCircle2, CircleAlert, FlaskConical, Power, Megaphone } from 'lucide-react-native';
 import type { SwitchState } from '@attendly/protocol';
 import { Screen } from '@kit/components/Screen';
 import { Badge, Button, Card, ErrorState, Loading, SectionLabel, Text } from '@kit/components/ui';
@@ -81,6 +81,16 @@ export default function ConsoleScreen() {
         <Text variant="small" style={{ marginTop: 6 }}>
           Waiting: {c.counts.pendingDeviceRequests} phone changes · {c.counts.pendingCoverRequests} cover requests (handled by each institution’s admins)
         </Text>
+      ) : null}
+
+      {!c.sandbox ? (
+        <Button
+          title="Broadcast a message"
+          kind="secondary"
+          onPress={() => router.push('/broadcast')}
+          icon={<Megaphone color={colors.text} size={16} />}
+          style={{ marginTop: 14 }}
+        />
       ) : null}
 
       <SectionLabel>Kill switches</SectionLabel>

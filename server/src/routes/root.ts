@@ -88,7 +88,7 @@ async function freshCode(db: Queryable): Promise<string> {
   }
 }
 
-function noSandbox(r: RootAuth, what: string) {
+export function noSandbox(r: RootAuth, what: string) {
   if (r.sandbox) throw new ApiError(403, 'FORBIDDEN', `Sandbox developer: ${what} needs a real developer account.`);
 }
 

@@ -15,7 +15,7 @@ import { Checkbox, Header, ToggleRow } from '@/components/forms';
 import { useBatches, useCan, useCourses } from '@/queries';
 
 type Kind = NoticeAudience['kind'];
-const KIND_LABEL: Record<Kind, string> = { everyone: 'Everyone', students: 'All students', staff: 'All faculty', batches: 'Batches', courses: 'Subjects' };
+const KIND_LABEL: Record<Kind, string> = { everyone: 'Everyone', students: 'All students', staff: 'All faculty', admins: 'All admins', batches: 'Batches', courses: 'Subjects' };
 
 /** Write (or edit) a notice: audience, topic, title, formatted text with a live preview. */
 export default function NoticeCompose() {
@@ -152,7 +152,7 @@ export default function NoticeCompose() {
     }
   }
 
-  const kinds: Kind[] = broadcast ? ['everyone', 'students', 'staff', 'batches', 'courses'] : ['batches', 'courses'];
+  const kinds: Kind[] = broadcast ? ['everyone', 'students', 'staff', 'admins', 'batches', 'courses'] : ['batches', 'courses'];
   const toggleIn = (set: Set<string>, id: string) => {
     const n = new Set(set);
     if (n.has(id)) n.delete(id);

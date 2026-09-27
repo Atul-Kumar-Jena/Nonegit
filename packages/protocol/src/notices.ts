@@ -26,6 +26,7 @@ export const NoticeAudience = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('everyone') }),
   z.object({ kind: z.literal('students') }),
   z.object({ kind: z.literal('staff') }),
+  z.object({ kind: z.literal('admins') }),
   z.object({ kind: z.literal('batches'), batchIds: z.array(uuid).min(1).max(50) }),
   z.object({ kind: z.literal('courses'), courseIds: z.array(uuid).min(1).max(50) }),
 ]);
