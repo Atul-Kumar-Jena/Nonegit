@@ -150,9 +150,8 @@ export default function More() {
           />
         </View>
         <Divider style={{ marginVertical: 12 }} />
-        <InfoRow label="DEVICE" value={me.data ? `${me.data.device.model} · ${me.data.device.fingerprint}` : '—'} />
+        <InfoRow label="PHONE" value={me.data ? me.data.device.model : '—'} mono={false} />
         <InfoRow label="SERVER" value={server ? displayHost(server.url) : '—'} />
-        <InfoRow label="SERVER KEY" value={server?.kid ?? '—'} />
         <InfoRow label="VERSION" value={APP_VERSION} />
       </Card>
 

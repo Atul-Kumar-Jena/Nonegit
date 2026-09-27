@@ -4,7 +4,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { useQueryClient } from '@tanstack/react-query';
 import { ClipboardList, CloudOff, Monitor, Users, X } from 'lucide-react-native';
-import { currentQrSeq, encodeQrToken, fromB64url, msUntilNextRotation, randomToken, seqLabel } from '@attendly/protocol';
+import { currentQrSeq, encodeQrToken, fromB64url, msUntilNextRotation, randomToken } from '@attendly/protocol';
 import { Screen } from '@kit/components/Screen';
 import { Badge, Button, IconButton, Notice, Text } from '@kit/components/ui';
 import { ApiRequestError } from '@kit/lib/api-core';
@@ -147,8 +147,7 @@ export default function LiveQr() {
             <View style={[styles.progressFill, { width: `${Math.max(0, Math.min(100, (left / (rotation * 1000)) * 100))}%` }]} />
           </View>
           <View style={styles.meta}>
-            <Text style={styles.seq}>{seqLabel(seq)}</Text>
-            <Text variant="monoSmall">changes in {Math.ceil(left / 1000)} s</Text>
+            <Text variant="small">{`New code in ${Math.ceil(left / 1000)} s`}</Text>
           </View>
           <View style={styles.count}>
             <Users color={colors.green} size={18} />
@@ -189,7 +188,6 @@ const styles = StyleSheet.create({
   progress: { height: 4, borderRadius: 2, backgroundColor: colors.border, marginTop: 14, overflow: 'hidden' },
   progressFill: { height: 4, backgroundColor: colors.cyan },
   meta: { flexDirection: 'row', alignItems: 'baseline', gap: 12, marginTop: 10 },
-  seq: { fontFamily: fonts.monoMedium, fontSize: 18, color: colors.text },
   count: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 18 },
   countText: { fontFamily: fonts.bold, fontSize: 26, color: colors.text },
   actions: { flexDirection: 'row', gap: 10, alignSelf: 'stretch', marginTop: 10 },

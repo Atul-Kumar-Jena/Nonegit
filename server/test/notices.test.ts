@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { NoticeDetail, NoticesResponse } from '@attendly/protocol';
+import { NoticeDetail,
+  NoticeReaders, NoticesResponse } from '@attendly/protocol';
 import { createTestApp, seedBasic, TestDevice, type Seeded, type TestCtx } from './harness';
 
 let ctx: TestCtx;
@@ -76,6 +77,12 @@ describe('notice centre', () => {
     expect((await list(aarav, '?filter=unread')).items.some((x) => x.id === batchNotice)).toBe(false);
     expect((await bell(aarav)).find((x) => x.title === '📚 Lab moved')?.read).toBe(true);
     expect(NoticeDetail.parse(ok(await prof.call('GET', `/v1/notices/${batchNotice}`))).stats).toEqual({ recipients: 1, seen: 1 });
+    // …and exactly who: names, with when they opened it.
+    const readers = NoticeReaders.parse(ok(await prof.call('GET', `/v1/notices/${batchNotice}/readers`)));
+    expect(readers.seen.map((r) => r.name)).toEqual(['aarav']);
+    expect(readers.seen[0]!.readAt).toBeTruthy();
+    expect(readers.notSeen).toEqual([]);
+    expect((await aarav.call('GET', `/v1/notices/${batchNotice}/readers`)).statusCode).toBe(403);
     // Not in the batch: can't open it.
     expect((await priya.call('GET', `/v1/notices/${batchNotice}`)).statusCode).toBe(404);
   });

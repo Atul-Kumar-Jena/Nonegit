@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Switch, View } from 'react-native';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { AlarmClock, Bell, BookOpen, Download, Megaphone, CalendarDays, KeyRound, LogOut, MessageSquareText, RefreshCw, ScanLine, Server, ShieldCheck, Smartphone, Trash2 } from 'lucide-react-native';
+import { AlarmClock, Bell, BookOpen, Download, Fingerprint, Lock, Megaphone, CalendarDays, KeyRound, LogOut, MessageSquareText, RefreshCw, ScanLine, Server, ShieldCheck, Smartphone, Trash2 } from 'lucide-react-native';
 import { Screen } from '@kit/components/Screen';
 import { FeatureGrid, InfoButton } from '@kit/components/Features';
 import { useNoticeInbox } from '@kit/components/Notices';
@@ -18,7 +18,7 @@ import { qk, useProfile } from '@/state/queries';
 import { useApi, useSession } from '@kit/state/session';
 import { colors } from '@kit/theme';
 
-/** 09 · Profile · device — bound HWID, reset, preferences. */
+/** 09 · Profile — this phone, reset, privacy (app lock), preferences. */
 export default function Profile() {
   const notices = useNoticeInbox();
   const q = useProfile();
@@ -27,6 +27,7 @@ export default function Profile() {
   const qc = useQueryClient();
   const [bio, setBio] = useState<BiometricSupport | null>(null);
   const [bioOn, setBioOn] = useState(false);
+  const [lockOn, setLockOn] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const { items: unsent } = useOutbox();
   const unsentWarning = unsent.length
@@ -35,7 +36,10 @@ export default function Profile() {
 
   useEffect(() => {
     void biometricSupport().then(setBio);
-    void loadPrefs().then((p) => setBioOn(p.biometricForScans));
+    void loadPrefs().then((p) => {
+      setBioOn(p.biometricForScans);
+      setLockOn(p.appLock);
+    });
   }, []);
 
   const reset = useMutation({
@@ -46,10 +50,18 @@ export default function Profile() {
     },
   });
 
+  const unlockName = bio?.available ? `${bio.label.toLowerCase()} or phone lock` : 'phone lock';
+
+  // Turning either on or off needs the owner: a friend holding the phone can't switch it off.
   async function toggleBio(next: boolean) {
-    if (next && !(await confirmWithBiometrics(`Enable ${bio?.label ?? 'biometrics'} for scans`))) return;
+    if (!(await confirmWithBiometrics(next ? 'Confirm it’s you to turn this on' : 'Confirm it’s you to turn this off'))) return;
     setBioOn(next);
     await savePrefs({ biometricForScans: next });
+  }
+  async function toggleLock(next: boolean) {
+    if (!(await confirmWithBiometrics(next ? 'Confirm it’s you to lock Attendly' : 'Confirm it’s you to remove the lock'))) return;
+    setLockOn(next);
+    await savePrefs({ appLock: next });
   }
 
   function confirm(title: string, message: string, action: string, destructive: boolean, run: () => void) {
@@ -132,7 +144,7 @@ export default function Profile() {
         ]}
       />
 
-      <SectionLabel>Bound device</SectionLabel>
+      <SectionLabel>This phone</SectionLabel>
       <Card>
         <View style={styles.row}>
           <IconTile tone="cyan">
@@ -140,11 +152,9 @@ export default function Profile() {
           </IconTile>
           <View style={{ flex: 1 }}>
             <Text variant="bodyStrong">{p.device.model}</Text>
-            <Text variant="monoSmall">
-              {p.device.osVersion} · HWID {p.device.fingerprint}
-            </Text>
+            <Text variant="small">{p.device.hardware !== 'none' ? 'Locked to this phone’s security chip' : 'Locked to this phone'}</Text>
           </View>
-          <Badge label="Bound" tone="green" />
+          <Badge label="Your phone" tone="green" />
         </View>
         <Divider style={{ marginVertical: 12 }} />
         <InfoRow label="Bound on" value={p.device.boundAt ? dateLong(p.device.boundAt) : '—'} />
@@ -169,25 +179,48 @@ export default function Profile() {
 
       <SyncBanner />
 
-      <SectionLabel>Preferences</SectionLabel>
+      <SectionLabel>Privacy</SectionLabel>
       <Card>
         <View style={styles.row}>
+          <IconTile tone="cyan">
+            <Lock color={colors.cyan} size={17} />
+          </IconTile>
           <View style={{ flex: 1 }}>
-            <Text variant="bodyStrong">Biometric unlock</Text>
-            <Text variant="small">{bio?.available ? `${bio.label} before every scan` : 'Not set up on this device'}</Text>
+            <Text variant="bodyStrong">Lock Attendly</Text>
+            <Text variant="small">
+              {bio?.screenLock ? `Open the app with your ${unlockName}. Locks again after 30 seconds away.` : 'Set a screen lock (PIN, pattern or fingerprint) on this phone first.'}
+            </Text>
+          </View>
+          <Switch
+            value={lockOn}
+            disabled={!bio?.screenLock}
+            onValueChange={(v) => void toggleLock(v)}
+            trackColor={{ true: colors.cyan, false: colors.borderHi }}
+            thumbColor="#ffffff"
+            ios_backgroundColor={colors.borderHi}
+            accessibilityLabel="Lock Attendly with fingerprint or phone lock"
+          />
+        </View>
+        <Divider style={{ marginVertical: 12 }} />
+        <View style={styles.row}>
+          <IconTile tone="violet">
+            <Fingerprint color="#d4d4d4" size={17} />
+          </IconTile>
+          <View style={{ flex: 1 }}>
+            <Text variant="bodyStrong">Confirm each scan</Text>
+            <Text variant="small">{bio?.screenLock ? `Ask for your ${unlockName} before marking attendance.` : 'Needs a screen lock on this phone.'}</Text>
           </View>
           <Switch
             value={bioOn}
-            disabled={!bio?.available}
+            disabled={!bio?.screenLock}
             onValueChange={(v) => void toggleBio(v)}
             trackColor={{ true: colors.cyan, false: colors.borderHi }}
             thumbColor="#ffffff"
             ios_backgroundColor={colors.borderHi}
-            accessibilityLabel="Require biometrics before scanning"
+            accessibilityLabel="Confirm it’s you before each scan"
           />
         </View>
       </Card>
-
 
       <SectionLabel>App</SectionLabel>
       <Card>
@@ -196,8 +229,8 @@ export default function Profile() {
             <Server color="#d4d4d4" size={17} />
           </IconTile>
           <View style={{ flex: 1 }}>
-            <Text variant="bodyStrong">{server ? displayHost(server.url) : '—'}</Text>
-            <Text variant="monoSmall">Pinned key {server?.kid ?? '—'}</Text>
+            <Text variant="bodyStrong">Connected to Attendly</Text>
+            <Text variant="small">{server ? displayHost(server.url) : '—'}</Text>
           </View>
         </View>
         <Divider style={{ marginVertical: 12 }} />

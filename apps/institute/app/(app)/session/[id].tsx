@@ -8,7 +8,7 @@ import { Screen } from '@kit/components/Screen';
 import { Badge, Button, Card, ErrorState, InfoRow, Loading, Notice, SectionLabel, Text } from '@kit/components/ui';
 import { ApiRequestError } from '@kit/lib/api-core';
 import { dayLabel, timeAgo, timeRange, zoned, clock } from '@kit/lib/format';
-import { LocationError, getFreshFix } from '@kit/lib/location';
+import { LocationError, getPreciseFix } from '@kit/lib/location';
 import { outbox } from '@kit/lib/outbox';
 import { useApi } from '@kit/state/session';
 import { colors } from '@kit/theme';
@@ -94,18 +94,21 @@ export default function SessionScreen() {
     try {
       let lat: number | null = null;
       let lng: number | null = null;
+      let centerAccuracyM: number | null = null;
       if (m === 'qr' && (w === 'phone' || !roomHasLocation)) {
         try {
-          const fix = await getFreshFix(20_000);
+          // Several seconds of fixes averaged: the classroom centre every scan is measured against.
+          const fix = await getPreciseFix({ maxWaitMs: 6_000, timeoutMs: 20_000 });
           if (fix.mocked) throw new LocationError('unavailable', 'This phone reports a mock location. Turn off mock-location apps to start a QR class.');
           lat = fix.lat;
           lng = fix.lng;
+          centerAccuracyM = Math.round(fix.accuracyM * 10) / 10;
         } catch (err) {
           if (!roomHasLocation) throw err;
           setInfo('Couldn’t get this phone’s location — using the room’s saved location instead.');
         }
       }
-      const body: StartSessionBody = { mode: m, ...(lat !== null ? { lat, lng } : {}), radiusM: r, rotationS: rot, clientRef };
+      const body: StartSessionBody = { mode: m, ...(lat !== null ? { lat, lng, centerAccuracyM } : {}), radiusM: r, rotationS: rot, clientRef };
       try {
         const res = await staffApi.start(api, s!.id, body);
         qc.setQueryData(qk.session(s!.id), res);

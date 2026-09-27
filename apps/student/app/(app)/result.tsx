@@ -2,10 +2,10 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Redirect, router } from 'expo-router';
 import { BarChart3, Check, CloudUpload, ChevronDown, ChevronRight, Clock, MapPin, ShieldAlert, ShieldX, Smartphone, TriangleAlert, WifiOff, X } from 'lucide-react-native';
-import { REJECTION_CODES, seqLabel, type RejectionCode } from '@attendly/protocol';
+import { REJECTION_CODES, type RejectionCode } from '@attendly/protocol';
 import { Screen } from '@kit/components/Screen';
 import { Badge, Button, Card, IconTile, InfoRow, Text } from '@kit/components/ui';
-import { pct, utcStamp, zoned, clock } from '@kit/lib/format';
+import { pct, zoned, clock } from '@kit/lib/format';
 import { clearScanOutcome, takeScanOutcome, type ScanOutcome } from '@/state/scan-result';
 import { colors, fonts, toneColor } from '@kit/theme';
 
@@ -36,7 +36,6 @@ function Success({ o }: { o: Extract<ScanOutcome, { kind: 'success' }> }) {
   const { res, receiptVerified } = o;
   const r = res.record;
   const subtitle = [`${r.courseCode} · ${r.courseTitle}`, r.lectureNo ? `${r.kind === 'lab' ? 'Lab' : 'Lecture'} ${r.lectureNo}` : null].filter(Boolean).join(' · ');
-  const sessionRef = [r.sessionCode, r.courseCode.replace(/[^A-Za-z0-9]/g, ''), r.lectureNo].filter(Boolean).join('·');
   return (
     <Screen edges={['top', 'bottom']} contentStyle={{ paddingTop: 28, alignItems: 'stretch' }}>
       <Halo tone={receiptVerified ? 'green' : 'amber'}>{receiptVerified ? <Check color="#052e1c" size={36} strokeWidth={3} /> : <ShieldAlert color="#3b2303" size={34} />}</Halo>
@@ -48,21 +47,15 @@ function Success({ o }: { o: Extract<ScanOutcome, { kind: 'success' }> }) {
       </Text>
 
       <Card style={{ marginTop: 22, paddingVertical: 10 }}>
-        <InfoRow label="TIMESTAMP" value={utcStamp(r.markedAt)} />
-        <InfoRow label="SESSION ID" value={sessionRef} />
-        <InfoRow label="QR TOKEN" value={`${seqLabel(r.qrSeq)} · rotating${r.offline ? ' · offline' : ''}`} />
-        <InfoRow label="DISTANCE" value={`${r.distanceM} m from room`} />
-        <InfoRow
-          label="SIGNATURE"
-          value={receiptVerified ? 'ed25519 ✓ verified' : 'ed25519 ✗ not verified'}
-          valueColor={receiptVerified ? colors.green : colors.amber}
-        />
+        <InfoRow label="TIME" value={`${clock(r.markedAt)}${r.offline ? ' · saved offline' : ''}`} mono={false} />
+        <InfoRow label="DISTANCE" value={`${r.distanceM} m from the room’s centre`} mono={false} />
+        <InfoRow label="RECORD" value={receiptVerified ? 'Signed by Attendly ✓' : 'Couldn’t confirm'} valueColor={receiptVerified ? colors.green : colors.amber} mono={false} />
       </Card>
 
       {!receiptVerified ? (
         <Card tone="amber" style={{ marginTop: 12 }}>
           <Text variant="small" color={colors.text}>
-            The server accepted the mark, but its receipt signature did not match the pinned server key. Your attendance is likely recorded — tell your instructor so they can confirm it on their screen.
+            Your mark was accepted, but this phone couldn’t confirm Attendly’s signature on it. It’s most likely recorded — ask your professor to check it on their screen.
           </Text>
         </Card>
       ) : null}

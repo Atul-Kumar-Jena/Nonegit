@@ -65,7 +65,16 @@ Right now the APKs are signed with Android's public *debug* key: fine for testin
 - **Pro plan** (recommended for real data): daily backups kept 7 days, and the project never pauses. (Free projects pause after a week without traffic and have no downloadable backups.)
 - Keep the database password only in Render's `DATABASE_URL`. If it ever leaks: Supabase → Project settings → Database → **Reset password**, then update `DATABASE_URL` in Render.
 
-## 7 · Go-live check
+## 7 · Phone binding with the security chip (Android)
+Every Android phone now creates its key **inside its security chip** (TEE / StrongBox). Google signs a certificate that proves where the key is, that the phone isn't rooted or bootloader-unlocked, and that the key belongs to the official Attendly app. The server checks all of this against Google's root certificates and its list of revoked keys (refreshed every 6 hours). Every scan must then carry the chip's signature, so copying the app's data to another phone gets nothing.
+- **Always on:** a phone that Google proves is rooted or unlocked, or that runs a copied app, is refused.
+- **Stricter, per institution:** Developer app → Institutions → Flags → **Secure-hardware phones only**. Then phones without a working chip can't be bound at all. Turn it on once a few real phones have bound fine.
+- **Stricter, for every institution:** Render env `REQUIRE_HARDWARE_KEYS=true`.
+- **Only your signed APK:** Render env `ANDROID_APP_CERT_SHA256` = the SHA-256 of your release key's certificate (from `keytool -list -v -keystore attendly-release.jks`, "SHA256:"). Don't set it while testing debug-signed builds.
+- **Emergency:** if a phone model is wrongly refused, Developer app → Console → switch **Relax phone hardware checks** on, and tell us the model.
+- Phones bound before this update move their key into the chip by themselves the next time the app opens online.
+
+## 8 · Go-live check
 1. Developer app → **Console → Production checklist**: 6/6 ✓.
 2. Developer app → **Institutions** → each real institution shows **✓ Verified**; share its code with its admin.
 3. A real professor and a real student sign in with emailed codes, run a class, scan, download a report.

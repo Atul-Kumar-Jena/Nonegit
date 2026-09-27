@@ -73,6 +73,19 @@ export const NoticeDetail = NoticeSummary.extend({
 });
 export type NoticeDetail = z.infer<typeof NoticeDetail>;
 
+/** Who has (and hasn't yet) seen a notice — for its author and admins. */
+export const NoticeReader = z.object({
+  id: z.uuid(),
+  name: z.string(),
+  role: z.enum(['student', 'teacher', 'admin']),
+  rollNo: z.string().nullable(),
+  /** When they opened it; null = not yet. */
+  readAt: z.string().nullable(),
+});
+export type NoticeReader = z.infer<typeof NoticeReader>;
+export const NoticeReaders = z.object({ seen: z.array(NoticeReader), notSeen: z.array(NoticeReader) });
+export type NoticeReaders = z.infer<typeof NoticeReaders>;
+
 export const NoticesResponse = z.object({
   /** Pinned notices (first page only, filter "all"). */
   pinned: z.array(NoticeSummary).default([]),

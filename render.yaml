@@ -74,6 +74,11 @@ services:
         generateValue: true
       - key: SMTP_URL
         sync: false
+      # Optional: every Android phone must prove a security-chip key; only your signed APK may bind.
+      - key: REQUIRE_HARDWARE_KEYS
+        value: "false"
+      - key: ANDROID_APP_CERT_SHA256
+        sync: false
       - key: EMAIL_API_KEY
         sync: false
       - key: SMTP_FROM

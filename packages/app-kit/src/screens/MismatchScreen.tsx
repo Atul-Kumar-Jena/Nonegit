@@ -50,10 +50,7 @@ export default function Mismatch() {
         </IconTile>
         <View style={{ flex: 1 }}>
           <Text variant="bodyStrong">{pendingDevice.boundDevice.model}</Text>
-          <Text variant="monoSmall">
-            HWID {pendingDevice.boundDevice.fingerprint}
-            {pendingDevice.boundDevice.boundAt ? ` · since ${dateLong(pendingDevice.boundDevice.boundAt)}` : ''}
-          </Text>
+          {pendingDevice.boundDevice.boundAt ? <Text variant="small">{`Your phone since ${dateLong(pendingDevice.boundDevice.boundAt)}`}</Text> : null}
         </View>
         <Badge label="Bound" tone="green" />
       </Card>

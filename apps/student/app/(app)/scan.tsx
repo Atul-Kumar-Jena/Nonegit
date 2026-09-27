@@ -6,11 +6,11 @@ import * as Haptics from 'expo-haptics';
 import { useQueryClient } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, Camera, MapPin } from 'lucide-react-native';
-import { parseQrToken, type MarkBody } from '@attendly/protocol';
+import { GOOD_FIX_M, fuseSamples, parseQrToken, samplesForScan, type MarkBody } from '@attendly/protocol';
 import { Button, Card, IconButton, IconTile, Text } from '@kit/components/ui';
 import { ApiRequestError, verifyReceipt } from '@kit/lib/api-core';
 import { confirmWithBiometrics } from '@kit/lib/biometrics';
-import { LocationError, getFreshFix, type LocationFix } from '@kit/lib/location';
+import { LocationError, getFreshFix, startLocationStream, toWireSamples, type LocationStream } from '@kit/lib/location';
 import { loadPrefs } from '@kit/lib/prefs';
 import { outbox } from '@kit/lib/outbox';
 import { pinnedKey } from '@kit/lib/server-config';
@@ -20,8 +20,8 @@ import { setScanOutcome } from '@/state/scan-result';
 import { useApi, useSession } from '@kit/state/session';
 import { colors, radius } from '@kit/theme';
 
-/** A warm fix younger than this is reused, so a scan doesn't wait on GPS. */
-const WARM_FIX_MAX_AGE_MS = 10_000;
+/** Fixes already this good at the moment of scanning are used at once, without waiting. */
+const READY_FIX_M = 20;
 
 type Stage = 'scanning' | 'locating' | 'confirming' | 'submitting';
 
@@ -36,7 +36,7 @@ export default function Scan() {
   const [hint, setHint] = useState<string | null>(null);
   const [locProblem, setLocProblem] = useState<LocationError | null>(null);
   const busy = useRef(false);
-  const warm = useRef<LocationFix | null>(null);
+  const gps = useRef<LocationStream | null>(null);
   const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const line = useRef(new Animated.Value(0)).current;
 
@@ -51,12 +51,14 @@ export default function Scan() {
     return () => anim.stop();
   }, [line]);
 
-  // Warm up GPS while the camera opens.
+  // GPS streams while the scanner is open, so the fixes of the last seconds are ready at scan time.
   const warmUp = useCallback(() => {
     setLocProblem(null);
-    getFreshFix(20_000)
-      .then((fix) => {
-        warm.current = fix;
+    gps.current?.stop();
+    gps.current = null;
+    startLocationStream()
+      .then((stream) => {
+        gps.current = stream;
       })
       .catch((err) => {
         if (err instanceof LocationError && (err.problem === 'permission-denied' || err.problem === 'services-off')) setLocProblem(err);
@@ -66,9 +68,36 @@ export default function Scan() {
   useEffect(() => {
     warmUp();
     return () => {
+      gps.current?.stop();
+      gps.current = null;
       if (hintTimer.current) clearTimeout(hintTimer.current);
     };
   }, [warmUp]);
+
+  /** The scan's location: the fixes of the last seconds (waiting briefly only if none is good yet). */
+  async function locate(scannedAt: number): Promise<MarkBody['location']> {
+    const offset = api.serverNow() - Date.now();
+    const stream = gps.current;
+    let fixes = stream ? samplesForScan(toWireSamples(stream.samples(), offset), scannedAt) : [];
+    const ready = fixes.length >= 2 && Math.min(...fixes.map((f) => f.accuracyM)) <= READY_FIX_M;
+    if (!ready) {
+      setStage('locating');
+      if (stream) {
+        await stream.settle({ minSamples: 3, goodM: GOOD_FIX_M, maxWaitMs: 5_000, timeoutMs: 15_000 });
+        fixes = samplesForScan(toWireSamples(stream.samples(), offset), Math.round(api.serverNow()));
+      } else fixes = toWireSamples([await getFreshFix(15_000)], offset);
+    }
+    const fused = fuseSamples(fixes);
+    const best = fused ?? fixes[fixes.length - 1]!;
+    return {
+      lat: best.lat,
+      lng: best.lng,
+      accuracyM: Math.max(0, best.accuracyM),
+      mocked: fixes.some((f) => f.mocked),
+      capturedAt: fused ? fused.t : fixes[fixes.length - 1]!.t,
+      samples: fixes,
+    };
+  }
 
   function flash(msg: string) {
     setHint(msg);
@@ -96,14 +125,9 @@ export default function Scan() {
             return;
           }
         }
-        let fix = warm.current;
-        if (!fix || Date.now() - fix.timestamp > WARM_FIX_MAX_AGE_MS) {
-          setStage('locating');
-          fix = await getFreshFix(15_000);
-        }
+        const location = await locate(scannedAt);
         setStage('submitting');
-        const capturedAt = Math.round(fix.timestamp + (api.serverNow() - Date.now()));
-        body = { qr: data, location: { lat: fix.lat, lng: fix.lng, accuracyM: Math.max(0, fix.accuracyM), mocked: fix.mocked, capturedAt } };
+        body = { qr: data, location };
         const res = await api.mark(body);
         const receiptVerified = server ? verifyReceipt(res, pinnedKey(server)) : false;
         setScanOutcome({ kind: 'success', res, receiptVerified });

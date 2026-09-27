@@ -4,7 +4,6 @@ import { Redirect, router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Fingerprint, KeyRound, Smartphone } from 'lucide-react-native';
-import { keyFingerprint } from '@attendly/protocol';
 import { Screen } from '../components/Screen';
 import { Badge, Button, Card, IconTile, Notice, Text } from '../components/ui';
 import { biometricSupport, confirmWithBiometrics } from '../lib/biometrics';
@@ -16,15 +15,17 @@ import { colors } from '../theme';
 /** 03 · Device binding — one person, one phone (step 2 of 2). */
 export default function Bind() {
   const { pendingDevice, bindDevice } = useSession();
-  const [device, setDevice] = useState<{ model: string; os: string; fingerprint: string; rooted: boolean } | null>(null);
+  const [device, setDevice] = useState<{ model: string; os: string; rooted: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
     (async () => {
-      const [info, pk] = await Promise.all([collectDeviceInfo(), deviceKeys.publicKey()]);
-      if (alive) setDevice({ model: info.model, os: info.osVersion, fingerprint: keyFingerprint(pk), rooted: info.integrity.rooted });
+      // Creating the key now surfaces a broken key store before the person taps "Bind".
+      const [info] = await Promise.all([collectDeviceInfo(), deviceKeys.publicKey()]);
+      const os = `${info.platform === 'android' ? 'Android' : info.platform === 'ios' ? 'iOS' : 'Web'} ${info.osVersion}`.trim();
+      if (alive) setDevice({ model: info.model, os, rooted: info.integrity.rooted });
     })().catch(() => alive && setError('Could not read this device’s secure key store.'));
     return () => {
       alive = false;
@@ -72,7 +73,7 @@ export default function Bind() {
         One person, one device.
       </Text>
       <Text variant="body" style={{ marginTop: 8 }}>
-        We’ll bind {pendingDevice.user.rollNo ? `roll number ${pendingDevice.user.rollNo}` : 'your account'} to this phone’s cryptographic key. Switching devices later requires admin approval.
+        We’ll lock {pendingDevice.user.rollNo ? `roll number ${pendingDevice.user.rollNo}` : 'your account'} to this phone. Switching phones later needs your admin’s approval.
       </Text>
 
       <View style={{ gap: 10, marginTop: 20 }}>
@@ -81,20 +82,19 @@ export default function Bind() {
             <Smartphone color={colors.green} size={18} />
           </IconTile>
           <View style={{ flex: 1 }}>
-            <Text variant="bodyStrong">{device ? `${device.model} · ${device.os}` : 'Reading device…'}</Text>
-            <Text variant="monoSmall">HWID {device?.fingerprint ?? '····-····-····'}</Text>
+            <Text variant="bodyStrong">{device ? device.model : 'Reading this phone…'}</Text>
+            <Text variant="small">{device ? device.os : ' '}</Text>
           </View>
-          {device ? device.rooted ? <Badge label="Rooted" tone="red" /> : <Badge label="Integrity OK" tone="green" /> : null}
+          {device?.rooted ? <Badge label="Rooted" tone="red" /> : null}
         </Card>
         <Card style={styles.row}>
           <IconTile tone="violet">
             <KeyRound color="#d4d4d4" size={18} />
           </IconTile>
           <View style={{ flex: 1 }}>
-            <Text variant="bodyStrong">Ed25519 device key</Text>
-            <Text variant="monoSmall">Generated on this phone · never leaves it</Text>
+            <Text variant="bodyStrong">Locked to this phone</Text>
+            <Text variant="small">Your key is made inside this phone’s security chip and can’t be copied to another phone.</Text>
           </View>
-          <Badge label="Sealed" tone="violet" />
         </Card>
       </View>
 

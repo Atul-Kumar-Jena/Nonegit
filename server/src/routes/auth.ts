@@ -27,6 +27,8 @@ import type { PoolClient } from 'pg';
 import type { Deps } from '../deps';
 import { isUniqueViolation, withTx } from '../db';
 import { appendAudit } from '../lib/audit';
+import { insertNotifications } from '../lib/notify';
+import type { Queryable } from '../db';
 import { issueTokens, requireDevice, rotateRefreshToken } from '../lib/auth';
 import { isDemoEmail } from '../lib/demo';
 import { switchOn } from '../lib/flags';
@@ -43,6 +45,23 @@ export const OTP_TTL_MS = 5 * 60_000;
 export const OTP_MAX_ATTEMPTS = 5;
 export const OTP_RESEND_AFTER_MS = 30_000;
 export const OTP_MAX_PER_HOUR = 6;
+/**
+ * Wrong codes per account per 24 hours, across all its codes. Without it, 6 codes an hour × 5 tries
+ * would allow 720 guesses a day; with it a 6-digit code can't realistically be guessed (10 in 10⁶).
+ */
+export const OTP_MAX_FAILURES_PER_DAY = 10;
+/** The account owner is alerted at these counts of wrong codes. */
+const OTP_ALERT_AT = [5, OTP_MAX_FAILURES_PER_DAY];
+
+async function failuresToday(db: Queryable, identifier: string, now: number): Promise<number> {
+  const { rows } = await db.query<{ n: number }>(`select coalesce(sum(attempts), 0)::int as n from otp_challenges where identifier = $1 and created_at > $2`, [
+    identifier,
+    new Date(now - 24 * 3_600_000),
+  ]);
+  return rows[0]!.n;
+}
+const lockedOut = () =>
+  new ApiError(429, 'OTP_LOCKED', 'Too many wrong codes for this account today. For your safety, sign-in is locked for 24 hours — or ask your institution’s admin.');
 export const TICKET_TTL_MS = 10 * 60_000;
 
 /**
@@ -86,6 +105,25 @@ async function consumeTicket(tx: PoolClient, deps: Deps, ticket: string, kind: '
   if (!verifyB64(proof, bindProofString({ ticket, publicKeyB64, purpose: kind }), t.public_key)) throw new ApiError(401, 'BAD_SIGNATURE');
   await tx.query('update auth_tickets set consumed_at = $2 where id = $1', [t.id, new Date(deps.clock())]);
   return t;
+}
+
+/** Tells the account owner (on their phone) and the audit trail that someone is guessing their sign-in code. */
+async function alertWrongCodes(tx: PoolClient, userId: string, count: number) {
+  const u = (await tx.query<{ tenant_id: string }>('select tenant_id from users where id = $1', [userId])).rows[0];
+  if (!u) return;
+  const locked = count >= OTP_MAX_FAILURES_PER_DAY;
+  await insertNotifications(tx, u.tenant_id, [
+    {
+      userId,
+      kind: 'security',
+      title: locked ? 'Sign-in locked for 24 hours' : 'Wrong sign-in codes for your account',
+      body: locked
+        ? `Someone entered ${count} wrong sign-in codes for your account, so sign-in is locked for a day. If it wasn’t you, tell your institution’s admin.`
+        : `Someone entered ${count} wrong sign-in codes for your account today. If it wasn’t you, don’t share your codes and tell your institution’s admin.`,
+      data: { count },
+    },
+  ]);
+  await appendAudit(tx, { tenantId: u.tenant_id, actorType: 'system', actorId: null, action: locked ? 'auth.locked' : 'auth.wrong_codes', subject: `user:${userId}`, data: { count } });
 }
 
 /** Did this user's last phone prove a hardware key? Then the next one must too (no downgrade to a software key). */
@@ -165,6 +203,7 @@ export async function authRoutes(app: FastifyInstance, deps: Deps) {
       [body.identifier, new Date(now - 3_600_000)],
     );
     const r = recent.rows[0]!;
+    if (!instant && (await failuresToday(deps.db, body.identifier, now)) >= OTP_MAX_FAILURES_PER_DAY) throw lockedOut();
     if (!instant && r.n >= OTP_MAX_PER_HOUR) throw new ApiError(429, 'RATE_LIMITED', 'Too many codes requested. Try again in an hour.');
     if (!instant && r.last && now - r.last.getTime() < OTP_RESEND_AFTER_MS)
       throw new ApiError(429, 'RATE_LIMITED', 'Please wait a few seconds before requesting another code.', {
@@ -218,6 +257,10 @@ export async function authRoutes(app: FastifyInstance, deps: Deps) {
       if (!c) return { error: new ApiError(400, 'OTP_EXPIRED') };
       if (c.consumed_at || c.expires_at.getTime() <= deps.clock()) return { error: new ApiError(400, 'OTP_EXPIRED') };
       if (c.attempts >= OTP_MAX_ATTEMPTS) return { error: new ApiError(429, 'OTP_LOCKED') };
+      // Serialise guesses per account so parallel codes can't exceed the daily budget.
+      await tx.query(`select pg_advisory_xact_lock(hashtext('otp-guess:' || $1))`, [c.identifier]);
+      const failed = await failuresToday(tx, c.identifier, deps.clock());
+      if (failed >= OTP_MAX_FAILURES_PER_DAY) return { error: lockedOut() };
       let ok = false;
       if (c.method === 'authenticator' && c.user_id) {
         const u = (await tx.query<{ totp_secret_enc: Buffer | null; totp_last_step: string | null }>('select totp_secret_enc, totp_last_step from users where id = $1 for update', [c.user_id])).rows[0];
@@ -229,6 +272,8 @@ export async function authRoutes(app: FastifyInstance, deps: Deps) {
       } else ok = timingSafeEqual(deps.hash('otp', `${c.identifier}:${body.code}`), c.code_hash) && c.user_id !== null;
       if (!ok) {
         await tx.query('update otp_challenges set attempts = attempts + 1 where id = $1', [c.id]);
+        if (c.user_id && OTP_ALERT_AT.includes(failed + 1)) await alertWrongCodes(tx, c.user_id, failed + 1);
+        if (failed + 1 >= OTP_MAX_FAILURES_PER_DAY) return { error: lockedOut() };
         const left = OTP_MAX_ATTEMPTS - c.attempts - 1;
         return { error: left > 0 ? new ApiError(400, 'OTP_INVALID', `That code is incorrect. ${left} attempt${left === 1 ? '' : 's'} left.`) : new ApiError(429, 'OTP_LOCKED') };
       }

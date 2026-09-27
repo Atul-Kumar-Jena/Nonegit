@@ -9,7 +9,15 @@ const WAIT_AND_RETRY = new Set(['E-NOT-STARTED', 'E-PAUSED']);
 const mark: OutboxHandler = async (api, item) => {
   const body = MarkBody.parse(item.payload);
   try {
-    const res = await api.mark(body);
+    let res;
+    try {
+      res = await api.mark(body);
+    } catch (err) {
+      // Back online before this phone's one-time move to its security chip ran: do it now, then retry.
+      if (!(err instanceof ApiRequestError && err.rejection?.code === 'E-DEVICE' && /isn’t secured yet/.test(err.rejection.detail ?? ''))) throw err;
+      await api.secureWithChip();
+      res = await api.mark(body);
+    }
     return { ok: true, message: `marked present${res.alreadyMarked ? ' (already recorded)' : ''}${res.record.offline ? ' · offline scan accepted' : ''}` };
   } catch (err) {
     if (err instanceof ApiRequestError && err.rejection) {

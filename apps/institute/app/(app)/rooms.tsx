@@ -5,7 +5,7 @@ import { ChevronRight, LocateFixed, MapPin, Plus } from 'lucide-react-native';
 import { RoomBody, type Room } from '@attendly/protocol';
 import { Screen } from '@kit/components/Screen';
 import { Badge, Button, Card, ErrorState, Input, Loading, Notice, Text } from '@kit/components/ui';
-import { getFreshFix } from '@kit/lib/location';
+import { getPreciseFix } from '@kit/lib/location';
 import { useApi } from '@kit/state/session';
 import { colors } from '@kit/theme';
 import { staffApi } from '@/api';
@@ -44,7 +44,7 @@ export default function Rooms() {
                 <MapPin color={r.lat !== null ? colors.green : colors.amber} size={18} />
                 <View style={{ flex: 1 }}>
                   <Text variant="bodyStrong">{r.name}</Text>
-                  <Text variant="monoSmall">{r.lat !== null ? `${r.lat.toFixed(5)}, ${r.lng!.toFixed(5)} · ${r.radiusM} m` : 'Location not saved'}</Text>
+                  <Text variant="small">{r.lat !== null ? [`Location saved`, r.centerAccuracyM !== null ? `±${Math.round(r.centerAccuracyM)} m` : null, `${r.radiusM} m radius`].filter(Boolean).join(' · ') : 'Location not saved'}</Text>
                 </View>
                 {!r.active ? <Badge label="Hidden" tone="muted" dot={false} /> : null}
                 {admin ? <ChevronRight color={colors.textDim} size={16} /> : null}
@@ -64,7 +64,7 @@ function RoomSheet({ room, onClose }: { room: Room | null; onClose: () => void }
   const [name, setName] = useState(room?.name ?? '');
   const [lat, setLat] = useState<number | null>(room?.lat ?? null);
   const [lng, setLng] = useState<number | null>(room?.lng ?? null);
-  const [accuracy, setAccuracy] = useState<number | null>(null);
+  const [accuracy, setAccuracy] = useState<number | null>(room?.centerAccuracyM ?? null);
   const [radiusM, setRadius] = useState(room?.radiusM ?? 50);
   const [active, setActive] = useState(room?.active ?? true);
   const [busy, setBusy] = useState<null | 'gps' | 'save'>(null);
@@ -74,11 +74,12 @@ function RoomSheet({ room, onClose }: { room: Room | null; onClose: () => void }
     setBusy('gps');
     setError(null);
     try {
-      const fix = await getFreshFix(25_000);
+      // Averaged over several seconds: stand in the middle of the room and keep still.
+      const fix = await getPreciseFix({ maxWaitMs: 10_000, timeoutMs: 25_000 });
       if (fix.mocked) throw new Error('This phone reports a mock location. Turn off mock-location apps and try again.');
       setLat(Math.round(fix.lat * 1e6) / 1e6);
       setLng(Math.round(fix.lng * 1e6) / 1e6);
-      setAccuracy(Math.round(fix.accuracyM));
+      setAccuracy(Math.round(fix.accuracyM * 10) / 10);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Couldn’t get a location.');
     } finally {
@@ -88,7 +89,7 @@ function RoomSheet({ room, onClose }: { room: Room | null; onClose: () => void }
 
   async function save() {
     setError(null);
-    const parsed = RoomBody.safeParse({ name, lat, lng, radiusM, active });
+    const parsed = RoomBody.safeParse({ name, lat, lng, radiusM, active, centerAccuracyM: lat === null ? null : accuracy });
     if (!parsed.success) return setError(firstIssue(parsed.error));
     setBusy('save');
     try {
@@ -107,13 +108,12 @@ function RoomSheet({ room, onClose }: { room: Room | null; onClose: () => void }
       <Field label="Name" hint="Unique, e.g. “LH-204” or “Physics Lab 2”.">
         <Input value={name} onChangeText={setName} placeholder="LH-204" maxLength={60} />
       </Field>
-      <Field label="Location">
+      <Field label="Location" hint="Stand in the middle of the room and keep still for a few seconds.">
         <Button title={lat !== null ? 'Update to my location' : 'Use my location'} kind="secondary" onPress={() => void locate()} loading={busy === 'gps'} icon={<LocateFixed color={colors.text} size={16} />} />
       </Field>
       {lat !== null ? (
-        <Text variant="monoSmall" style={{ marginTop: 8 }}>
-          {lat.toFixed(6)}, {lng?.toFixed(6)}
-          {accuracy !== null ? ` · ±${accuracy} m` : ''}
+        <Text variant="small" style={{ marginTop: 8 }}>
+          {accuracy !== null ? `Centre saved · measured to ±${accuracy} m` : 'Centre saved'}
         </Text>
       ) : null}
       {accuracy !== null && accuracy > 40 ? <Text variant="small" color={colors.amber} style={{ marginTop: 4 }}>Weak GPS (±{accuracy} m). Move near a window and try again for a better fix.</Text> : null}

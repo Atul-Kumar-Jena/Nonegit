@@ -74,6 +74,7 @@ interface PersonRow {
   device_model: string | null;
   device_fingerprint: string | null;
   device_bound_at: Date | null;
+  device_attest_level: 'tee' | 'strongbox' | null;
   course_ids: string[] | null;
   totp: boolean;
   permissions: string[];
@@ -81,7 +82,7 @@ interface PersonRow {
 
 const PERSON_SELECT = `
   select u.id, u.role, u.full_name, u.email, u.phone, u.roll_no, u.department, u.semester, u.status, u.totp_enabled_at is not null as totp, u.permissions,
-         d.model as device_model, d.fingerprint as device_fingerprint, d.bound_at as device_bound_at,
+         d.model as device_model, d.fingerprint as device_fingerprint, d.bound_at as device_bound_at, case when d.hw_key_spki is not null then d.attest_level end as device_attest_level,
          (select array_agg(e.course_id) from enrollments e where e.user_id = u.id) as course_ids
     from users u left join devices d on d.user_id = u.id and d.status = 'active'`;
 
@@ -96,7 +97,7 @@ function toPerson(r: PersonRow): Person {
     department: r.department,
     semester: r.semester,
     status: r.status,
-    device: r.device_model && r.device_fingerprint ? { model: r.device_model, fingerprint: r.device_fingerprint, boundAt: r.device_bound_at?.toISOString() ?? null } : null,
+    device: r.device_model && r.device_fingerprint ? { model: r.device_model, fingerprint: r.device_fingerprint, boundAt: r.device_bound_at?.toISOString() ?? null, hardware: r.device_attest_level ?? 'none' } : null,
     courseIds: r.course_ids ?? [],
     authenticator: r.totp,
     permissions: r.role === 'teacher' ? (r.permissions as Person['permissions']) : [],

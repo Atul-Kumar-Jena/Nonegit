@@ -20,6 +20,7 @@ import {
   type NoticeDetail,
   type NoticeSummary,
   type NoticesResponse,
+  type NoticeReaders,
 } from '@attendly/protocol';
 import type { Deps } from '../deps';
 import { withTx, type Queryable } from '../db';
@@ -190,6 +191,26 @@ export async function noticeRoutes(app: FastifyInstance, deps: Deps) {
       r.read = true;
     }
     return toDetail(deps.db, auth, r);
+  });
+
+  /** The people a notice reached, split into who has opened it (latest first) and who hasn't. */
+  app.get('/v1/notices/:id/readers', async (req): Promise<NoticeReaders> => {
+    const auth = await requireDevice(req, deps, EVERYONE);
+    const { id } = IdParam.parse(req.params);
+    const r = await loadNotice(deps.db, auth, id);
+    if (!mayEdit(auth, r)) throw new ApiError(403, 'FORBIDDEN', 'Only the author and admins can see who has read a notice.');
+    const { rows } = await deps.db.query<{ id: string; full_name: string; role: 'student' | 'teacher' | 'admin'; roll_no: string | null; read_at: Date | null }>(
+      `select u.id, u.full_name, u.role, u.roll_no, rd.read_at
+         from (select user_id from notifications where kind = 'notice' and data->>'noticeId' = $3
+               union select user_id from notice_reads where notice_id = $1) x
+         join users u on u.id = x.user_id
+         left join notice_reads rd on rd.notice_id = $1 and rd.user_id = u.id
+        where u.id is distinct from $2 and u.role in ('student', 'teacher', 'admin')
+        order by rd.read_at desc nulls last, u.full_name`,
+      [id, r.author_id, id],
+    );
+    const out = rows.map((x) => ({ id: x.id, name: x.full_name, role: x.role, rollNo: x.roll_no, readAt: x.read_at?.toISOString() ?? null }));
+    return { seen: out.filter((x) => x.readAt), notSeen: out.filter((x) => !x.readAt) };
   });
 
   app.post('/v1/notices/read-all', async (req) => {

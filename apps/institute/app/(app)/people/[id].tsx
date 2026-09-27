@@ -109,9 +109,8 @@ export default function PersonDetail() {
               <Smartphone color={colors.green} size={18} />
               <View style={{ flex: 1 }}>
                 <Text variant="bodyStrong">{p.device.model}</Text>
-                <Text variant="monoSmall">
-                  HWID {p.device.fingerprint}
-                  {p.device.boundAt ? ` · since ${dateLong(p.device.boundAt)}` : ''}
+                <Text variant="small">
+                  {[p.device.hardware !== 'none' ? 'Security chip ✓' : 'Standard key', p.device.boundAt ? `since ${dateLong(p.device.boundAt)}` : null].filter(Boolean).join(' · ')}
                 </Text>
               </View>
             </View>

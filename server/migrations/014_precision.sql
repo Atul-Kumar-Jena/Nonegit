@@ -33,3 +33,6 @@ create index attendance_records_user_time_idx on attendance_records(user_id, mar
 -- Institutions may require secure-hardware phones.
 alter table tenant_flags drop constraint if exists tenant_flags_key_check;
 alter table tenant_flags add constraint tenant_flags_key_check check (key in ('strict_geo', 'student_requests', 'manual_registers', 'hardware_binding'));
+
+-- "Who has seen this notice": its recipients are the people it notified.
+create index notifications_notice_idx on notifications ((data->>'noticeId')) where kind = 'notice';

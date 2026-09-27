@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { AppState, Platform, StyleSheet, View } from 'react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { loadScreenshotSetting } from '../lib/screenshots';
+import { loadPrefs } from '../lib/prefs';
 import { Lock, ShieldAlert } from 'lucide-react-native';
 import { LogoMark } from './Logo';
 import { Backdrop } from './Screen';
@@ -20,7 +21,7 @@ type LockState = 'checking' | 'locked' | 'no-screen-lock' | 'open';
  *  • asks for fingerprint / face / device PIN on launch and after 30 s away,
  *  • can block screenshots and hide its content in the app switcher (a setting, off by default).
  */
-export function AppLock({ children }: { children: ReactNode }) {
+export function AppLock({ children, optional = false }: { children: ReactNode; /** Lock only when the person turned it on (Profile → Lock Attendly). */ optional?: boolean }) {
   const { phase, signOut, audience } = useSession();
   const web = Platform.OS === 'web';
   const [state, setState] = useState<LockState>(web ? 'open' : 'checking');
@@ -42,9 +43,14 @@ export function AppLock({ children }: { children: ReactNode }) {
     prompting.current = true;
     setError(null);
     try {
+      if (optional && !(await loadPrefs()).appLock) {
+        setState('open');
+        return;
+      }
       const level = await LocalAuthentication.getEnrolledLevelAsync().catch(() => LocalAuthentication.SecurityLevel.NONE);
       if (level === LocalAuthentication.SecurityLevel.NONE) {
-        setState('no-screen-lock');
+        // Optional lock and the phone's screen lock was removed since: nothing to check against.
+        setState(optional ? 'open' : 'no-screen-lock');
         return;
       }
       if (freshLogin.current) {
@@ -61,7 +67,7 @@ export function AppLock({ children }: { children: ReactNode }) {
     } finally {
       prompting.current = false;
     }
-  }, [web]);
+  }, [web, optional, audience.appName]);
 
   // Lock on launch (once signed in); start over after a sign-out.
   useEffect(() => {

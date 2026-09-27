@@ -116,7 +116,9 @@ export const Person = z.object({
   department: z.string().nullable(),
   semester: z.number().int().nullable(),
   status: z.enum(['active', 'suspended']),
-  device: z.object({ model: z.string(), fingerprint: z.string(), boundAt: IsoDate.nullable() }).nullable(),
+  device: z
+    .object({ model: z.string(), fingerprint: z.string(), boundAt: IsoDate.nullable(), hardware: z.enum(['none', 'tee', 'strongbox']).default('none') })
+    .nullable(),
   courseIds: z.array(uuid),
   /** Signs in with an authenticator app (Google Authenticator) instead of emailed codes. */
   authenticator: z.boolean().default(false),

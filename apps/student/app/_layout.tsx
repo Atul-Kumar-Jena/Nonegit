@@ -1,5 +1,6 @@
 import type { NotificationTarget } from '@kit/state/session';
 import { Stack, type ErrorBoundaryProps } from 'expo-router';
+import { AppLock } from '@kit/components/AppLock';
 import { OutboxRunner } from '@kit/components/OutboxRunner';
 import { NotificationRunner } from '@kit/lib/notifications';
 import { CrashScreen, RootShell } from '@kit/components/RootShell';
@@ -19,12 +20,15 @@ export default function RootLayout() {
     <RootShell audience={AUDIENCE}>
       <NotificationRunner />
       <OutboxRunner handlers={studentOutboxHandlers} />
-      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg }, animation: 'fade' }}>
-        <Stack.Screen name="index" />
-        <Stack.Screen name="(auth)" />
-        <Stack.Screen name="(app)" />
-        <Stack.Screen name="identity" />
-      </Stack>
+      {/* Fingerprint / phone lock to open the app, when the student turns it on in Profile. */}
+      <AppLock optional>
+        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg }, animation: 'fade' }}>
+          <Stack.Screen name="index" />
+          <Stack.Screen name="(auth)" />
+          <Stack.Screen name="(app)" />
+          <Stack.Screen name="identity" />
+        </Stack>
+      </AppLock>
     </RootShell>
   );
 }

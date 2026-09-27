@@ -93,7 +93,11 @@ const requestCode = async (page, to) => {
     }
     await page.getByText(text).first().waitFor({ timeout: 5000 });
   };
-  const back = (page) => page.getByRole('button', { name: 'Back' }).first().click();
+  // Navigation ignores a second push within 350 ms (double-tap guard): pause after going back.
+  const back = async (page) => {
+    await page.getByRole('button', { name: 'Back' }).first().click();
+    await sleep(900);
+  };
   const tab = (page, name) => page.getByRole('tab', { name }).click();
 
   // ───────────── 1. Admin onboards the institution ─────────────
@@ -107,23 +111,27 @@ const requestCode = async (page, to) => {
   await admin.getByText('Set up your institution').waitFor();
   await admin.shot('02-setup');
   await admin.getByText('1. Check institution settings').click();
+  await sleep(900);
   await admin.getByRole('button', { name: 'Save settings' }).click();
   await admin.getByText(/Saved\. Every app/).waitFor();
   await back(admin);
   step('Institution settings saved');
 
   await admin.getByText('2. Add classrooms').click();
+  await sleep(900);
   await admin.getByRole('button', { name: 'Add a room' }).click();
   await admin.getByPlaceholder('LH-204').fill('LH-101');
   await admin.getByRole('button', { name: 'Use my location' }).click();
-  await admin.getByText(/28\.61390/).waitFor({ timeout: 20000 });
+  await admin.getByText(/Centre saved · measured to ±8 m/).waitFor({ timeout: 30000 });
   await admin.shot('03-room');
   await admin.getByRole('button', { name: 'Save room' }).click();
   await admin.getByText('LH-101').waitFor();
+  await admin.getByText(/Location saved · ±8 m · 50 m radius/).waitFor();
   await back(admin);
   step('Room LH-101 saved with this phone’s GPS location');
 
   await admin.getByText('3. Add teachers').click();
+  await sleep(900);
   await admin.getByRole('button', { name: 'Add', exact: true }).click();
   await admin.getByPlaceholder('As on the ID card').fill('Ravi Kumar');
   await admin.getByPlaceholder('name@college.edu').fill('ravi@greenvalley.edu');
@@ -151,6 +159,7 @@ const requestCode = async (page, to) => {
   await wrong.ctx.close();
 
   await admin.getByText('4. Create courses').click();
+  await sleep(900);
   await admin.getByPlaceholder('CS-301').fill('cs-101');
   await admin.getByPlaceholder('Operating Systems').fill('Intro to Programming');
   await admin.getByRole('button', { name: 'Teacher' }).click();
@@ -163,6 +172,7 @@ const requestCode = async (page, to) => {
 
   // Uniqueness: the same course code twice is refused with a clear message.
   await admin.getByText('4. Create courses').click();
+  await sleep(900);
   await admin.getByPlaceholder('CS-301').fill('CS-101');
   await admin.getByPlaceholder('Operating Systems').fill('Duplicate');
   await admin.getByRole('button', { name: 'Create course' }).click();

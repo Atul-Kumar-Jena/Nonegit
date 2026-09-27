@@ -30,6 +30,7 @@ import {
   SubjectsResponse,
   NoticesResponse,
   NoticeDetail,
+  NoticeReaders,
   AudienceCountResponse,
   type NoticeAudience,
   type NoticeBody,
@@ -408,6 +409,10 @@ export class ApiClient {
   }
   notice(id: string) {
     return this.authed('GET', `/v1/notices/${encodeURIComponent(id)}`, NoticeDetail);
+  }
+  /** Author / admin: who has opened a notice, and who hasn't yet. */
+  noticeReaders(id: string) {
+    return this.authed('GET', `/v1/notices/${encodeURIComponent(id)}/readers`, NoticeReaders);
   }
   reactToNotice(id: string, emoji: string) {
     return this.authed('POST', `/v1/notices/${encodeURIComponent(id)}/react`, NoticeDetail.shape.reactions, { emoji });
