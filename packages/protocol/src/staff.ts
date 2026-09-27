@@ -429,6 +429,13 @@ export type SubjectDetailResponse = z.infer<typeof SubjectDetailResponse>;
 
 /** Unambiguous alphabet for codes typed by hand (no 0/O, 1/I/L). */
 export const PRESENT_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+/** What the big screen's pairing QR encodes, e.g. "ATTENDLY-TV:KXF7M2QD". */
+export const PRESENT_PAIR_PREFIX = 'ATTENDLY-TV:';
+/** A scanned pairing QR → its code (null if it isn't one). */
+export function presentCodeFromScan(data: string): string | null {
+  const t = data.trim();
+  return t.toUpperCase().startsWith(PRESENT_PAIR_PREFIX) ? normalizePresentCode(t.slice(PRESENT_PAIR_PREFIX.length)) : null;
+}
 /** "KXF7-M2QD", "kxf7m2qd", "KXF7 M2QD" → "KXF7M2QD" (or null if it can't be a code). */
 export function normalizePresentCode(input: unknown): string | null {
   if (typeof input !== 'string') return null;

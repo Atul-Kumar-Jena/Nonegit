@@ -16,13 +16,13 @@ export interface DemoAccount {
 
 const ROLE_ORDER = { admin: 0, teacher: 1, developer: 2, student: 3 } as const;
 
-let cache: { at: number; value: { institution: string | null; accounts: DemoAccount[] } } | null = null;
+let cache: { at: number; value: { institution: string | null; institutionCode: string | null; accounts: DemoAccount[] } } | null = null;
 
 /** The demo institute's sign-in list (for the "tap to sign in" buttons). Cached for a minute. */
-export async function listDemoAccounts(db: Db, now: number): Promise<{ institution: string | null; accounts: DemoAccount[] }> {
+export async function listDemoAccounts(db: Db, now: number): Promise<{ institution: string | null; institutionCode: string | null; accounts: DemoAccount[] }> {
   if (cache && now - cache.at < 60_000) return cache.value;
-  const { rows } = await db.query<{ role: DemoAccount['role']; full_name: string; email: string; roll_no: string | null; tenant: string; courses: string[] | null }>(
-    `select u.role, u.full_name, u.email, u.roll_no, t.name as tenant,
+  const { rows } = await db.query<{ role: DemoAccount['role']; full_name: string; email: string; roll_no: string | null; tenant: string; code: string; courses: string[] | null }>(
+    `select u.role, u.full_name, u.email, u.roll_no, t.name as tenant, t.code,
             (select array_agg(c.code order by c.code) from courses c where c.instructor_id = u.id and c.active) as courses
        from users u join tenants t on t.id = u.tenant_id
       where u.email like $1 and u.status = 'active' and t.status = 'active'
@@ -47,7 +47,7 @@ export async function listDemoAccounts(db: Db, now: number): Promise<{ instituti
     }))
     .sort((a, b) => ROLE_ORDER[a.role] - ROLE_ORDER[b.role])
     .slice(0, 40);
-  const value = { institution: rows[0]?.tenant ?? null, accounts };
+  const value = { institution: rows[0]?.tenant ?? null, institutionCode: rows[0]?.code ?? null, accounts };
   cache = { at: now, value };
   return value;
 }

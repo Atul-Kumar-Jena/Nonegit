@@ -49,7 +49,7 @@ export default function NewTenant() {
       <Card style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
         <Building2 color="#a78bfa" size={20} />
         <Text variant="small" style={{ flex: 1 }}>
-          It starts empty with one admin. They sign in to Attendly Institute with this email and follow the setup checklist: rooms, teachers, courses, students, timetable.
+          It starts empty with one admin, pending verification. Verify it on the next screen, then share its institution code: the admin enters it in Attendly Institute, signs in with this email and follows the setup checklist.
         </Text>
       </Card>
       {[

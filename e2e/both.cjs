@@ -56,9 +56,26 @@ const requestCode = async (page, to) => {
   };
   const signIn = async (page, port, email, landing) => {
     await page.goto(`http://localhost:${port}/`);
-    await page.getByLabel('Server address').waitFor({ timeout: 30000 });
-    await page.getByLabel('Server address').fill(API);
-    await page.getByRole('button', { name: 'Connect' }).click();
+    // Builds with a built-in server connect by themselves; older ones ask for the address.
+    const addr = page.getByLabel('Server address');
+    await Promise.race([
+      addr.waitFor({ timeout: 60000 }),
+      page.getByLabel('Institution code').waitFor({ timeout: 60000 }),
+      page.getByText('Sign in', { exact: true }).waitFor({ timeout: 60000 }),
+    ]).catch(() => {});
+    if (await addr.isVisible().catch(() => false)) {
+      await addr.fill(API);
+      await page.getByRole('button', { name: 'Connect' }).click();
+    }
+    if (port === 8082) {
+      // Institute app: the institution's code first (read here from the /dev tools page).
+      await page.getByLabel('Institution code').waitFor({ timeout: 30000 });
+      const inst = (await dev('/dev/api/institutions')).find((t) => t.name === 'Green Valley College');
+      await page.getByLabel('Institution code').fill(`${inst.code.slice(0, 4)}-${inst.code.slice(4)}`.toLowerCase());
+      await page.getByRole('button', { name: 'Find institution' }).click();
+      await page.getByText('Verified by Attendly').waitFor({ timeout: 15000 });
+      await page.getByRole('button', { name: /^Continue to Green Valley College/ }).click();
+    }
     await page.getByText('Sign in', { exact: true }).waitFor({ timeout: 30000 });
     await page.getByLabel('Institution email').fill(email);
     const code = await requestCode(page, email);
@@ -216,21 +233,25 @@ const requestCode = async (page, to) => {
   // Big screen: a classroom laptop opens /present and the teacher approves it from the app.
   const board = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   board.on('pageerror', (e) => errors.push('board pageerror: ' + e.message));
-  await board.goto(`${API}/present`);
+  await board.goto(`${API}/tv`); // the short address → /present
   await board.locator('#code').filter({ hasText: /^[A-Z0-9]{4}-[A-Z0-9]{4}$/ }).waitFor({ timeout: 15000 });
   const boardCode = (await board.locator('#code').textContent()).trim();
+  await board.locator('#pairqr svg').waitFor({ timeout: 15000 });
   await board.screenshot({ path: `${OUT}/board-1-code.png` });
+  // The pairing QR, read from the screen's pixels, is what the app's "Scan the screen" reads.
+  const pairing = await readQr(board.locator('#pairqr'));
+  if (pairing !== `ATTENDLY-TV:${boardCode.replace('-', '')}`) throw new Error(`pairing QR says ${pairing}, screen shows ${boardCode}`);
   await teacher.getByRole('button', { name: /Show on a big screen/ }).click();
   await teacher.getByLabel('Screen code').fill(boardCode.toLowerCase().replace('-', ''));
   await teacher.getByRole('button', { name: 'Find', exact: true }).click();
   await teacher.getByText(/Chrome on Linux/).first().waitFor({ timeout: 15000 });
   await teacher.shot('11b-approve-screen');
-  await teacher.getByRole('button', { name: 'Approve & show QR' }).click();
+  await teacher.getByRole('button', { name: /Approve & show QR/ }).click();
   await teacher.getByText(/now shows the CS-101 QR/).waitFor({ timeout: 15000 });
   await board.locator('#qr svg').waitFor({ timeout: 15000 });
   await board.screenshot({ path: `${OUT}/board-2-live.png` });
   await teacher.getByRole('button', { name: 'Close' }).last().click();
-  step(`Big screen: laptop shows ${boardCode} → teacher types it, sees "Chrome on Linux", approves → QR on the laptop`);
+  step(`Big screen: laptop opens /tv, shows ${boardCode} + a pairing QR that decodes to it → teacher pairs, sees "Chrome on Linux", approves → rotating QR on the laptop`);
   const boardToken = await readQr(board.locator('#qr'));
 
   await student.ctx.setGeolocation({ ...HERE, accuracy: 8 }); // a fresh GPS fix, as a phone would take

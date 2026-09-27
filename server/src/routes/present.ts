@@ -17,6 +17,7 @@ import QRCode from 'qrcode';
 import { z } from 'zod';
 import {
   PRESENT_CODE_ALPHABET,
+  PRESENT_PAIR_PREFIX,
   PresentCodeBody,
   currentQrSeq,
   encodeQrToken,
@@ -145,6 +146,8 @@ export async function presentRoutes(app: FastifyInstance, deps: Deps) {
       .header('cache-control', 'no-store')
       .send(PRESENT_PAGE),
   );
+  // Short address to type on a classroom PC.
+  app.get('/tv', async (_req, reply) => reply.redirect('/present', 302));
   app.get('/present.js', async (_req, reply) => reply.header('content-type', 'application/javascript; charset=utf-8').header('cache-control', 'no-store').send(PRESENT_JS));
 
   app.post('/v1/present/pair', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req) => {
@@ -158,7 +161,9 @@ export async function presentRoutes(app: FastifyInstance, deps: Deps) {
     );
     // Housekeeping: forget abandoned codes.
     await deps.db.query(`delete from present_pairings where approved_at is null and expires_at < $1`, [new Date(t - 60 * 60_000)]);
-    return { pairingId: rows[0]!.id, code: `${code.slice(0, 4)}-${code.slice(4)}`, secret, expiresAt: new Date(t + PAIRING_TTL_MS).toISOString() };
+    // The same code as a QR, so the teacher can pair by pointing the Institute app at the screen.
+    const pairQr = await QRCode.toString(`${PRESENT_PAIR_PREFIX}${code}`, { type: 'svg', errorCorrectionLevel: 'M', margin: 1, color: { dark: '#000000', light: '#ffffff' } });
+    return { pairingId: rows[0]!.id, code: `${code.slice(0, 4)}-${code.slice(4)}`, pairQr, secret, expiresAt: new Date(t + PAIRING_TTL_MS).toISOString() };
   });
 
   const presentKey = (req: FastifyRequest) => `present:${(req.params as { id?: string }).id ?? req.ip}`;
@@ -270,54 +275,71 @@ export const PRESENT_PAGE = `<!doctype html>
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; background: #050814; color: #e8ecf6; font: 16px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-  main { min-height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 3vh 4vw; gap: 2.2vh; text-align: center; }
-  .brand { position: fixed; top: 18px; left: 22px; font-weight: 700; letter-spacing: .02em; color: #22d3ee; }
-  .brand span { color: #8b93a7; font-weight: 500; }
-  h1 { margin: 0; font-size: clamp(22px, 3.2vw, 44px); font-weight: 700; }
-  p { margin: 0; color: #8b93a7; font-size: clamp(15px, 1.6vw, 22px); max-width: 60ch; }
-  .code { font: 700 clamp(48px, 11vw, 160px)/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: .08em; color: #fff; padding: 2vh 3vw; border: 2px solid rgba(34,211,238,.35); border-radius: 24px; background: rgba(34,211,238,.06); }
-  ol { text-align: left; color: #c5cbe0; font-size: clamp(15px, 1.6vw, 22px); margin: 0; padding-left: 1.4em; }
-  .qr { background: #fff; border-radius: 22px; padding: 1.2vh; width: min(84vh, 56vw); aspect-ratio: 1; flex: none; }
+  html, body { margin: 0; height: 100%; background: #000; color: #fafafa; font: 16px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  main { min-height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 4vh 4vw; gap: 2.4vh; text-align: center; }
+  .brand { position: fixed; top: 18px; left: 22px; display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: .01em; }
+  .brand i { display: grid; grid-template-columns: 7px 7px; gap: 2px; } .brand b { width: 7px; height: 7px; background: #fff; display: block; }
+  .brand span { color: #8a8a8a; font-weight: 500; }
+  .net { position: fixed; top: 18px; right: 22px; font-size: 14px; color: #8a8a8a; }
+  .net.bad { color: #fbbf24; }
+  h1 { margin: 0; font-size: clamp(24px, 3.4vw, 48px); font-weight: 700; letter-spacing: -.02em; }
+  p { margin: 0; color: #a3a3a3; font-size: clamp(15px, 1.6vw, 22px); max-width: 62ch; }
+  #pair { flex-direction: row; gap: 6vw; }
+  .pairqr { background: #fff; border-radius: 22px; padding: 1.4vh; width: min(46vh, 36vw); aspect-ratio: 1; flex: none; }
+  .pairqr svg { width: 100%; height: 100%; display: block; }
+  .steps { text-align: left; display: flex; flex-direction: column; gap: 2.2vh; max-width: 44vw; }
+  .steps ol { color: #d4d4d4; font-size: clamp(16px, 1.7vw, 24px); margin: 0; padding-left: 1.3em; display: flex; flex-direction: column; gap: 1.2vh; }
+  .code { font: 700 clamp(40px, 6vw, 96px)/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: .08em; color: #fff; }
+  .qr { background: #fff; border-radius: 26px; padding: 1.4vh; width: min(82vh, 56vw); aspect-ratio: 1; flex: none; position: relative; }
   .qr svg { width: 100%; height: 100%; display: block; }
   #live { flex-direction: row; gap: 4vw; text-align: left; padding-top: 7vh; }
-  .side { display: flex; flex-direction: column; gap: 2.4vh; max-width: 36vw; }
-  .side h1 { font-size: clamp(22px, 3vw, 46px); }
-  @media (max-aspect-ratio: 1/1) {
-    #live { flex-direction: column; text-align: center; }
-    .qr { width: min(62vh, 90vw); }
-    .side { max-width: 90vw; align-items: center; }
-  }
-  .row { display: flex; gap: 2vw; align-items: baseline; flex-wrap: wrap; }
+  .side { display: flex; flex-direction: column; gap: 2.6vh; max-width: 36vw; }
+  .side h1 { font-size: clamp(24px, 3vw, 50px); }
+  .count { font-weight: 800; font-size: clamp(40px, 6vw, 96px); line-height: 1; letter-spacing: -.03em; }
+  .count small { font-size: .38em; font-weight: 600; color: #a3a3a3; letter-spacing: 0; }
+  .ring { display: flex; align-items: center; gap: 14px; }
+  .ring svg { width: clamp(38px, 4vw, 60px); height: clamp(38px, 4vw, 60px); transform: rotate(-90deg); }
+  .ring circle { fill: none; stroke-width: 5; }
   .seq { font: 600 clamp(18px, 2vw, 28px) ui-monospace, Menlo, Consolas, monospace; }
-  .count { font-weight: 800; font-size: clamp(28px, 4vw, 64px); color: #34d399; line-height: 1; }
-  .muted { color: #8b93a7; }
-  .bar { width: 100%; height: 6px; border-radius: 3px; background: #1a2238; overflow: hidden; }
-  .bar i { display: block; height: 100%; background: #22d3ee; width: 100%; transition: width .25s linear; }
-  button { font: 600 16px system-ui, sans-serif; color: #04141c; background: #22d3ee; border: 0; border-radius: 12px; padding: 12px 20px; cursor: pointer; }
-  button.ghost { background: transparent; color: #8b93a7; border: 1px solid #28314a; }
-  .hidden { display: none !important; }
+  .muted { color: #8a8a8a; }
   .warn { color: #fbbf24; }
+  button { font: 600 16px system-ui, sans-serif; color: #000; background: #fff; border: 0; border-radius: 999px; padding: 12px 22px; cursor: pointer; }
+  button.ghost { background: transparent; color: #d4d4d4; border: 1px solid #333; }
+  .hidden { display: none !important; }
+  .stale::after { content: 'Reconnecting…'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.82); color: #fbbf24; font-size: clamp(18px, 2.4vw, 34px); border-radius: 26px; }
+  @media (max-aspect-ratio: 1/1) {
+    #live, #pair { flex-direction: column; text-align: center; }
+    .qr { width: min(62vh, 90vw); } .pairqr { width: min(40vh, 70vw); }
+    .side, .steps { max-width: 90vw; align-items: center; text-align: center; }
+  }
 </style>
 </head>
 <body>
-<div class="brand">Attendly <span>· class screen</span></div>
+<div class="brand"><i><b></b><b></b><b></b><b></b></i>Attendly <span>· class screen</span></div>
+<div class="net" id="net"></div>
 <main id="pair">
-  <h1>Show attendance on this screen</h1>
-  <p>In the <b>Attendly Institute</b> app, open your live class, tap <b>Big screen</b> and enter this code:</p>
-  <div class="code" id="code">····-····</div>
-  <p id="expiry" class="muted"></p>
-  <p class="muted">Only the teacher’s approved phone can connect this screen. The code works once.</p>
+  <div class="pairqr" id="pairqr" aria-label="Pairing QR code"></div>
+  <div class="steps">
+    <h1>Show attendance on this screen</h1>
+    <ol>
+      <li>Open <b>Attendly Institute</b> → your class → <b>Big screen</b></li>
+      <li>Tap <b>Scan the screen</b> and point the phone here</li>
+      <li>Check it’s this screen → <b>Approve</b></li>
+    </ol>
+    <p>Or type the code:</p>
+    <div class="code" id="code">····-····</div>
+    <p id="expiry" class="muted"></p>
+  </div>
 </main>
 <main id="live" class="hidden">
   <div class="qr" id="qr" aria-label="Attendance QR code"></div>
   <div class="side">
     <h1 id="title"></h1>
+    <p id="room" class="muted"></p>
     <div class="count" id="count"></div>
-    <div class="bar"><i id="bar"></i></div>
-    <div class="row"><span class="seq" id="seq"></span><span class="muted" id="left"></span></div>
-    <p>Open the <b>Attendly</b> app and scan. The code changes every few seconds — photos of it stop working.</p>
-    <div class="row"><button class="ghost" id="fs">Full screen</button></div>
+    <div class="ring"><svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="16" stroke="#262626"></circle><circle id="arc" cx="20" cy="20" r="16" stroke="#fff" stroke-dasharray="100.5" stroke-dashoffset="0" stroke-linecap="round"></circle></svg><span class="seq" id="seq"></span><span class="muted" id="left"></span></div>
+    <p>Students: open <b>Attendly</b> and tap <b>Scan</b>. The code changes every few seconds, so photos of it don’t work.</p>
+    <div><button class="ghost" id="fs">Full screen (F)</button></div>
   </div>
 </main>
 <main id="done" class="hidden">
@@ -333,19 +355,24 @@ export const PRESENT_JS = `(function () {
   'use strict';
   var KEY = 'attendly.present.v1';
   var $ = function (id) { return document.getElementById(id); };
-  var state = null, timer = null, failures = 0;
+  var state = null, timer = null, failures = 0, lock = null;
   function show(id) { ['pair', 'live', 'done'].forEach(function (x) { $(x).classList.toggle('hidden', x !== id); }); }
   function save() { try { sessionStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
   function load() { try { return JSON.parse(sessionStorage.getItem(KEY) || 'null'); } catch (e) { return null; } }
   function schedule(ms) { clearTimeout(timer); timer = setTimeout(poll, ms); }
-  function done(title, text) { clearTimeout(timer); state = null; save(); $('doneTitle').textContent = title; $('doneText').textContent = text; show('done'); }
+  function net(ok) { $('net').textContent = ok ? '' : 'Connection lost — retrying…'; $('net').className = ok ? 'net' : 'net bad'; $('qr').classList.toggle('stale', !ok && failures > 2); }
+  function done(title, text) { clearTimeout(timer); state = null; save(); release(); $('doneTitle').textContent = title; $('doneText').textContent = text; show('done'); }
+  // Keep the projector from going to sleep while a class is on screen.
+  function awake() { try { if (!lock && navigator.wakeLock) navigator.wakeLock.request('screen').then(function (l) { lock = l; l.addEventListener('release', function () { lock = null; }); }).catch(function () {}); } catch (e) {} }
+  function release() { try { if (lock) lock.release(); } catch (e) {} lock = null; }
+  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible' && state && state.approved) awake(); });
 
   function pair() {
-    show('pair'); $('code').textContent = '····-····'; $('expiry').textContent = '';
+    show('pair'); $('code').textContent = '····-····'; $('expiry').textContent = ''; $('pairqr').innerHTML = '';
     fetch('/v1/present/pair', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })
       .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-      .then(function (j) { state = { id: j.pairingId, secret: j.secret, code: j.code, expiresAt: j.expiresAt }; save(); $('code').textContent = j.code; poll(); })
-      .catch(function () { $('expiry').innerHTML = '<span class="warn">Can’t reach the server. Retrying…</span>'; setTimeout(pair, 5000); });
+      .then(function (j) { net(true); state = { id: j.pairingId, secret: j.secret, code: j.code, pairSvg: j.pairQr, expiresAt: j.expiresAt }; save(); $('code').textContent = j.code; $('pairqr').innerHTML = j.pairQr || ''; poll(); })
+      .catch(function () { net(false); $('expiry').innerHTML = '<span class="warn">Waking the server / no internet. Retrying…</span>'; setTimeout(pair, 5000); });
   }
 
   function poll() {
@@ -353,23 +380,26 @@ export const PRESENT_JS = `(function () {
     fetch('/v1/present/' + encodeURIComponent(state.id), { headers: { 'x-present-secret': state.secret }, cache: 'no-store' })
       .then(function (r) { if (r.status === 404) return { status: 'gone' }; if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
       .then(function (j) {
-        failures = 0;
+        failures = 0; net(true);
         if (j.status === 'waiting') {
           show('pair'); $('code').textContent = state.code;
+          if (state.pairSvg && !$('pairqr').innerHTML) $('pairqr').innerHTML = state.pairSvg;
           var left = Math.max(0, Math.round((Date.parse(j.expiresAt) - Date.now()) / 1000));
-          $('expiry').textContent = 'Code expires in ' + Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0');
+          $('expiry').textContent = 'A new code appears in ' + Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0');
           return schedule(1500);
         }
         if (j.status === 'live') {
           if (!state.approved) { state.approved = true; save(); }
+          awake();
           show('live');
-          $('title').textContent = j.class.courseCode + ' · ' + j.class.courseTitle + (j.class.lectureNo ? ' · Lecture ' + j.class.lectureNo : '');
+          $('title').textContent = j.class.courseCode + (j.class.courseTitle && j.class.courseTitle !== j.class.courseCode ? ' · ' + j.class.courseTitle : '');
+          $('room').textContent = [j.class.room, j.class.lectureNo ? 'Lecture ' + j.class.lectureNo : null].filter(Boolean).join(' · ');
           $('qr').innerHTML = j.qr.svg;
           $('seq').textContent = j.qr.seq;
-          $('count').textContent = j.counts.marked + ' / ' + j.counts.enrolled + ' present';
+          $('count').innerHTML = j.counts.marked + '<small> / ' + j.counts.enrolled + ' present</small>';
           document.title = j.class.courseCode + ' · Attendly';
-          $('bar').style.width = Math.round((j.qr.msLeft / (j.qr.rotationS * 1000)) * 100) + '%';
-          $('left').textContent = 'changes in ' + Math.ceil(j.qr.msLeft / 1000) + ' s';
+          $('arc').setAttribute('stroke-dashoffset', String(100.5 * (1 - j.qr.msLeft / (j.qr.rotationS * 1000))));
+          $('left').textContent = 'new code in ' + Math.ceil(j.qr.msLeft / 1000) + ' s';
           return schedule(Math.min(1000, j.qr.msLeft + 60));
         }
         if (j.status === 'expired') return state && !state.approved ? pair() : done('Session expired', 'Connect again from the app to keep showing the code.');
@@ -379,13 +409,15 @@ export const PRESENT_JS = `(function () {
       })
       .catch(function () {
         failures++;
-        $('qr').innerHTML = failures > 3 ? '<p class="warn" style="padding:2em">Connection lost — reconnecting…</p>' : $('qr').innerHTML;
+        net(false);
         schedule(Math.min(10000, 1000 * failures));
       });
   }
 
+  function fullscreen() { var d = document.documentElement; if (document.fullscreenElement) { if (document.exitFullscreen) document.exitFullscreen().catch(function () {}); } else if (d.requestFullscreen) d.requestFullscreen().catch(function () {}); }
+  document.addEventListener('keydown', function (e) { if ((e.key === 'f' || e.key === 'F') && !e.ctrlKey && !e.metaKey) fullscreen(); });
   $('again').addEventListener('click', function () { state = null; save(); pair(); });
-  $('fs').addEventListener('click', function () { var d = document.documentElement; if (d.requestFullscreen) d.requestFullscreen().catch(function () {}); });
+  $('fs').addEventListener('click', fullscreen);
   state = load();
   if (state) poll(); else pair();
 })();`;

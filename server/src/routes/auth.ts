@@ -1,5 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import {
+  InstitutionLookupQuery,
+  type InstitutionLookup,
   BindBody,
   DeviceInfo,
   OtpRequestBody,
@@ -83,6 +85,18 @@ async function consumeTicket(tx: PoolClient, deps: Deps, ticket: string, kind: '
 export async function authRoutes(app: FastifyInstance, deps: Deps) {
   const box = makeSecretBox(deps.config.tokenPepper);
   // ── Step 1: request a one-time code ──────────────────────────────────────
+  /** Institute app: "which institution is this code?" — public, but slow to enumerate. */
+  app.get('/v1/institutions/lookup', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req): Promise<InstitutionLookup> => {
+    const { code } = InstitutionLookupQuery.parse(req.query);
+    const { rows } = await deps.db.query<{ name: string; verified: boolean; status: string }>(
+      'select name, verified_at is not null as verified, status from tenants where code = $1',
+      [code],
+    );
+    const t = rows[0];
+    if (!t) throw new ApiError(404, 'NOT_FOUND', 'No institution has that code. Check it with your institution’s admin.');
+    return { code, name: t.name, verified: t.verified, active: t.status === 'active' };
+  });
+
   app.post('/v1/auth/otp/request', { config: strictLimit }, async (req): Promise<OtpRequestResponse> => {
     const body = OtpRequestBody.parse(req.body);
     const now = deps.clock();
@@ -91,18 +105,22 @@ export async function authRoutes(app: FastifyInstance, deps: Deps) {
     // Only people an admin has registered can receive a code — whatever their email domain.
     // The response is identical either way, so it never reveals who is registered.
     const col = body.channel === 'email' ? 'email' : 'phone';
-    const u = await deps.db.query<{ id: string; role: string; status: string; tenant_status: string; tenant_name: string; totp: boolean }>(
-      `select u.id, u.role, u.status, t.status as tenant_status, t.name as tenant_name, u.totp_enabled_at is not null as totp
+    const u = await deps.db.query<{ id: string; role: string; status: string; tenant_status: string; tenant_name: string; tenant_code: string; verified: boolean; totp: boolean }>(
+      `select u.id, u.role, u.status, t.status as tenant_status, t.name as tenant_name, t.code as tenant_code,
+              t.verified_at is not null as verified, u.totp_enabled_at is not null as totp
          from users u join tenants t on t.id = u.tenant_id where u.${col} = $1`,
       [body.identifier],
     );
     const user = u.rows[0];
+    // Institute app: the account must belong to the institution whose code was entered.
+    const rightInstitution = !body.institutionCode || user?.tenant_code === body.institutionCode;
     const institution = user?.tenant_name ?? 'your institution';
     // Platform maintenance switch (developers can still get in to turn it off).
     if (user?.role !== 'developer' && (await switchOn(deps.db, 'sign_ins_paused'))) throw new ApiError(403, 'FORBIDDEN', 'Sign-ins are paused for maintenance. Please try again a little later.');
     // Demo mode skips the code only for the seeded demo accounts; real accounts always get one.
     const instant = deps.config.demoInstantLogin && body.channel === 'email' && isDemoEmail(body.identifier) && !(await switchOn(deps.db, 'demo_login_off'));
     if (instant && !user) throw new ApiError(404, 'NOT_FOUND', 'That demo account does not exist on this server. Tap one of the listed demo accounts.');
+    if (instant && !rightInstitution) throw new ApiError(404, 'NOT_FOUND', `That demo account belongs to ${user!.tenant_name}. Enter its code (Change institution).`);
 
     // Throttle per identifier (in addition to the per-IP limiter).
     const recent = await deps.db.query<{ n: number; last: Date | null }>(
@@ -117,7 +135,9 @@ export async function authRoutes(app: FastifyInstance, deps: Deps) {
       });
 
     // Unknown or suspended users get an indistinguishable response, but no code is ever sent.
-    const eligible = user && user.status === 'active' && user.tenant_status === 'active';
+    // Nor do accounts of an institution not yet verified by Attendly (developers aside), or of
+    // another institution than the code entered in the Institute app.
+    const eligible = user && user.status === 'active' && user.tenant_status === 'active' && (user.verified || user.role === 'developer') && rightInstitution;
     // People with an authenticator app type its code: nothing is sent.
     const method = eligible && user.totp && !instant ? ('authenticator' as const) : ('email' as const);
     const code = generateOtpCode();

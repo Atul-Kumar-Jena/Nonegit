@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import type { Channel, OtpVerifyResponse, Role, UserSummary } from '@attendly/protocol';
+import { InstitutionLookup, normalizeInstitutionCode, type Channel, type OtpVerifyResponse, type Role, type UserSummary } from '@attendly/protocol';
 import { ApiClient, ApiRequestError, normalizeBaseUrl } from '../lib/api-core';
 import { collectDeviceInfo } from '../lib/device-info';
 import { destroyDeviceKey, deviceKeys } from '../lib/device-key';
@@ -45,6 +45,12 @@ interface SessionValue {
   pendingOtp: PendingOtp | null;
   pendingDevice: PendingDevice | null;
   suggestedServerUrl: string;
+  /** The institution chosen by code (Institute app), remembered on this phone. */
+  institution: InstitutionLookup | null;
+  /** True when this app needs an institution code before anyone can sign in. */
+  needsInstitution: boolean;
+  lookupInstitution(code: string): Promise<InstitutionLookup>;
+  setInstitution(i: InstitutionLookup | null): Promise<void>;
   connect(url: string): Promise<void>;
   requestOtp(channel: Channel, identifier: string): Promise<PendingOtp>;
   verifyOtp(code: string, otp?: PendingOtp): Promise<'signed-in' | 'bind' | 'mismatch'>;
@@ -67,6 +73,8 @@ export interface AppAudience {
   wrongRoleMessage: string;
   /** Where a "request" notification opens (cover requests / questions to teachers). */
   requestsRoute?: string;
+  /** Institute app: sign-in starts with the institution's code (and only its accounts can sign in). */
+  institutionGate?: boolean;
   /** Where tapping a notification about a class goes (the class itself). */
   routeFor?: (d: NotificationTarget) => string | null;
 }
@@ -79,6 +87,7 @@ export interface NotificationTarget {
 }
 
 const CLOCK_KEY = 'clock.offset.v1';
+const INSTITUTION_KEY = 'institution.v1';
 let lastClockSave = 0;
 function persistClockOffset(offsetMs: number) {
   const t = Date.now();
@@ -125,6 +134,8 @@ export function SessionProvider({ children, audience }: { children: ReactNode; a
   const [identityError, setIdentityError] = useState<string | null>(null);
   const [pendingOtp, setPendingOtp] = useState<PendingOtp | null>(null);
   const [pendingDevice, setPendingDevice] = useState<PendingDevice | null>(null);
+  const [institution, setInstitutionState] = useState<InstitutionLookup | null>(null);
+  const institutionRef = useRef<InstitutionLookup | null>(null);
   const apiRef = useRef<ApiClient | null>(null);
   const [api, setApi] = useState<ApiClient | null>(null);
 
@@ -190,6 +201,11 @@ export function SessionProvider({ children, audience }: { children: ReactNode; a
     let cancelled = false;
     (async () => {
       try {
+        if (audience.institutionGate) {
+          const saved = await vault.get<InstitutionLookup>(INSTITUTION_KEY, (v) => InstitutionLookup.parse(v)).catch(() => null);
+          institutionRef.current = saved;
+          if (!cancelled) setInstitutionState(saved);
+        }
         let cfg = await loadServerConfig();
         if (cancelled) return;
         if (!cfg) {
@@ -253,7 +269,8 @@ export function SessionProvider({ children, audience }: { children: ReactNode; a
   const requestOtp = useCallback(async (channel: Channel, identifier: string) => {
     const client = apiRef.current;
     if (!client) throw new Error('Choose a server first.');
-    const r = await client.requestOtp(channel === 'email' ? { channel, identifier } : { channel, identifier });
+    const institutionCode = audience.institutionGate ? institutionRef.current?.code : undefined;
+    const r = await client.requestOtp(channel === 'email' ? { channel, identifier, institutionCode } : { channel, identifier, institutionCode });
     const p: PendingOtp = {
       channel,
       identifier,
@@ -267,6 +284,22 @@ export function SessionProvider({ children, audience }: { children: ReactNode; a
     setPendingOtp(p);
     setNotice(null);
     return p;
+  }, [audience.institutionGate]);
+
+  const lookupInstitution = useCallback(async (code: string) => {
+    const client = apiRef.current;
+    if (!client) throw new Error('Not connected to the server yet.');
+    const norm = normalizeInstitutionCode(code);
+    if (!norm) throw new Error('An institution code has 8 letters and digits, e.g. 7F3A-91C2.');
+    return client.lookupInstitution(norm);
+  }, []);
+
+  const setInstitution = useCallback(async (i: InstitutionLookup | null) => {
+    institutionRef.current = i;
+    setInstitutionState(i);
+    setPendingOtp(null);
+    if (i) await vault.set(INSTITUTION_KEY, i).catch(() => undefined);
+    else await vault.remove(INSTITUTION_KEY).catch(() => undefined);
   }, []);
 
   const verifyOtp = useCallback(
@@ -364,6 +397,10 @@ export function SessionProvider({ children, audience }: { children: ReactNode; a
       pendingOtp,
       pendingDevice,
       suggestedServerUrl: server?.url ?? DEFAULT_SERVER_URL,
+      institution,
+      needsInstitution: !!audience.institutionGate && !institution,
+      lookupInstitution,
+      setInstitution,
       connect,
       requestOtp,
       verifyOtp,
@@ -374,7 +411,7 @@ export function SessionProvider({ children, audience }: { children: ReactNode; a
       audience,
       clearNotice: () => setNotice(null),
     }),
-    [audience, phase, server, api, notice, identityError, pendingOtp, pendingDevice, connect, requestOtp, verifyOtp, bindDevice, requestRebind, signOut, resetPhone],
+    [audience, phase, server, api, notice, identityError, pendingOtp, pendingDevice, institution, lookupInstitution, setInstitution, connect, requestOtp, verifyOtp, bindDevice, requestRebind, signOut, resetPhone],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

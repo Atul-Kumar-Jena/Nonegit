@@ -14,6 +14,7 @@ const AUDIENCE = {
   allowedRoles: ['teacher', 'admin'] as const,
   wrongRoleMessage: 'This app is for teachers and administrators. Students use the Attendly app.',
   requestsRoute: '/inbox',
+  institutionGate: true,
   routeFor: (d: NotificationTarget) => (d.kind === 'request' ? '/inbox' : d.sessionId ? `/session/${d.sessionId}` : '/timetable'),
 };
 

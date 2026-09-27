@@ -86,8 +86,8 @@ export async function seedDemo(pool: Db, config: Config, opts: { reset?: boolean
     if (testerEmail) domains.push(testerEmail.split('@')[1]!);
     const termStart = istDate(-84, 0);
     const t = await tx.query<{ id: string }>(
-      `insert into tenants(slug, name, email_domains, timezone, min_attendance, term_name, term_start)
-         values ('demo', 'Demo Institute of Technology', $1, $2, 75, 'Spring Term', ($3::timestamptz at time zone $2)::date) returning id`,
+      `insert into tenants(slug, name, email_domains, timezone, min_attendance, term_name, term_start, code)
+         values ('demo', 'Demo Institute of Technology', $1, $2, 75, 'Spring Term', ($3::timestamptz at time zone $2)::date, 'DEMO2026') returning id`,
       [Array.from(new Set(domains)), TZ, termStart],
     );
     const tenantId = t.rows[0]!.id;

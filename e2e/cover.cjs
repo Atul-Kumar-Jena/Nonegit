@@ -35,6 +35,14 @@ async function demoSignIn(browser, url, name) {
   lastPage = page;
   page.on('pageerror', (e) => ERRORS.push(`${name} page error: ${e.message}`));
   await page.goto(url);
+  // Institute app: the first time, the institution code (the demo institute has a one-tap button).
+  const demoInst = page.getByRole('button', { name: /Try the demo/ });
+  await Promise.race([demoInst.waitFor({ timeout: 60_000 }), page.getByText('Demo accounts', { exact: false }).first().waitFor({ timeout: 60_000 })]).catch(() => {});
+  if (await demoInst.isVisible().catch(() => false)) {
+    await demoInst.click();
+    await page.getByText('Verified by Attendly').waitFor({ timeout: 20_000 });
+    await page.getByRole('button', { name: /^Continue to / }).click();
+  }
   await page.getByText('Demo accounts', { exact: false }).first().waitFor({ timeout: 60_000 });
   await page.getByRole('button', { name: new RegExp(`Sign in as ${name}`) }).click();
   // First time on this phone: the one-tap "Bind this device" step.

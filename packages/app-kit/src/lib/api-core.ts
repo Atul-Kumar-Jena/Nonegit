@@ -24,6 +24,7 @@ import {
   OtpVerifyResponse,
   ProfileResponse,
   SubjectsResponse,
+  InstitutionLookup,
   StudentReport,
   bindProofString,
   isRejectionCode,
@@ -294,6 +295,11 @@ export class ApiClient {
   /** `timeoutMs` lets the first connect wait for a sleeping free-tier server to wake up. */
   meta(timeoutMs?: number) {
     return this.publicCall('GET', '/v1/meta', MetaResponse, undefined, timeoutMs);
+  }
+
+  /** Institute app: the institution behind a code (name + verified). */
+  lookupInstitution(code: string) {
+    return this.publicCall('GET', `/v1/institutions/lookup?code=${encodeURIComponent(code)}`, InstitutionLookup);
   }
 
   requestOtp(body: OtpRequestBody) {

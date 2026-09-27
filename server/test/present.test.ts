@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { currentQrSeq, normalizePresentCode, seqLabel, toB64url } from '@attendly/protocol';
+import QRCode from 'qrcode';
+import { PRESENT_PAIR_PREFIX, currentQrSeq, normalizePresentCode, presentCodeFromScan, seqLabel, toB64url } from '@attendly/protocol';
 import { createTestApp, seedBasic, startLiveSession, TestDevice, type Seeded, type TestCtx } from './harness';
 import { verifyAuditChain } from '../src/lib/audit';
 import { describeDevice } from '../src/routes/present';
@@ -15,7 +16,7 @@ const CHROME_WIN = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
 async function pair(ua = CHROME_WIN) {
   const r = await ctx.app.inject({ method: 'POST', url: '/v1/present/pair', payload: {}, headers: { 'user-agent': ua } });
   expect(r.statusCode).toBe(200);
-  return r.json() as { pairingId: string; code: string; secret: string; expiresAt: string };
+  return r.json() as { pairingId: string; code: string; pairQr: string; secret: string; expiresAt: string };
 }
 const poll = async (p: { pairingId: string; secret: string }, secret = p.secret) =>
   ctx.app.inject({ method: 'GET', url: `/v1/present/${p.pairingId}`, headers: { 'x-present-secret': secret } });
@@ -38,6 +39,18 @@ beforeAll(async () => {
 afterAll(async () => ctx?.close());
 
 describe('big-screen pairing', () => {
+  it('shows the pairing code as a QR the Institute app can scan, and /tv is a short address', async () => {
+    const p = await pair();
+    const code = normalizePresentCode(p.code)!;
+    expect(p.pairQr).toBe(await QRCode.toString(`${PRESENT_PAIR_PREFIX}${code}`, { type: 'svg', errorCorrectionLevel: 'M', margin: 1, color: { dark: '#000000', light: '#ffffff' } }));
+    expect(presentCodeFromScan(`attendly-tv:${code.toLowerCase()}`)).toBe(code);
+    expect(presentCodeFromScan(code)).toBeNull(); // a bare code or a class QR is not a pairing QR
+    expect(presentCodeFromScan('ATTENDLY-TV:not-a-code')).toBeNull();
+    const tv = await ctx.app.inject({ method: 'GET', url: '/tv' });
+    expect(tv.statusCode).toBe(302);
+    expect(tv.headers.location).toBe('/present');
+  });
+
   it('serves a locked-down page', async () => {
     const r = await ctx.app.inject({ method: 'GET', url: '/present' });
     expect(r.statusCode).toBe(200);

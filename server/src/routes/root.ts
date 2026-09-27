@@ -15,6 +15,8 @@ import {
   SetFlagBody,
   SwitchBody,
   TenantStatusBody,
+  TenantVerifyBody,
+  PRESENT_CODE_ALPHABET,
   auditCategoryOf,
   keyFingerprint,
   fromB64url,
@@ -50,6 +52,15 @@ async function requireRoot(req: FastifyRequest, deps: Deps): Promise<RootAuth> {
   const { rows } = await deps.db.query<{ email: string | null; full_name: string }>('select email, full_name from users where id = $1', [auth.userId]);
   const sandbox = isDemoEmail(rows[0]?.email);
   return { ...auth, sandbox, tenants: sandbox ? [auth.tenantId] : null, email: rows[0]?.email ?? null, name: rows[0]?.full_name ?? 'Developer' };
+}
+
+/** 8 characters from an alphabet without look-alikes (no 0/O, 1/I/L), unique among institutions. */
+async function freshCode(db: Queryable): Promise<string> {
+  for (;;) {
+    const code = Array.from(randomBytes(8), (b) => PRESENT_CODE_ALPHABET[b % PRESENT_CODE_ALPHABET.length]).join('');
+    const taken = await db.query('select 1 from tenants where code = $1', [code]);
+    if (!taken.rowCount) return code;
+  }
 }
 
 function noSandbox(r: RootAuth, what: string) {
@@ -113,8 +124,10 @@ async function tenantSummaries(db: Queryable, tenants: string[] | null, q: strin
     admins: number;
     live: number;
     scans: number;
+    code: string;
+    verified_at: Date | null;
   }>(
-    `select t.id, t.slug, t.name, t.status, t.status_reason, t.timezone, t.created_at,
+    `select t.id, t.slug, t.name, t.status, t.status_reason, t.timezone, t.created_at, t.code, t.verified_at,
             (select count(*)::int from users u where u.tenant_id = t.id and u.role = 'student') as students,
             (select count(*)::int from users u where u.tenant_id = t.id and u.role = 'teacher') as teachers,
             (select count(*)::int from users u where u.tenant_id = t.id and u.role = 'admin') as admins,
@@ -132,6 +145,9 @@ async function tenantSummaries(db: Queryable, tenants: string[] | null, q: strin
     name: r.name,
     status: r.status,
     statusReason: r.status_reason,
+    code: r.code,
+    verified: r.verified_at !== null,
+    verifiedAt: r.verified_at?.toISOString() ?? null,
     timezone: r.timezone,
     createdAt: r.created_at.toISOString(),
     students: r.students,
@@ -291,9 +307,9 @@ export async function rootRoutes(app: FastifyInstance, deps: Deps) {
         const taken = await tx.query('select 1 from tenants where slug = $1', [base]);
         const slug = taken.rowCount ? `${base}-${Array.from(randomBytes(2), (x) => x.toString(16).padStart(2, '0')).join('')}` : base;
         const t = await tx.query<{ id: string }>(
-          `insert into tenants(slug, name, email_domains, timezone, min_attendance, term_name, term_start)
-           values ($1, $2, $3, $4, $5, 'Current term', (now() at time zone $4)::date) returning id`,
-          [slug, b.name, [b.adminEmail.split('@')[1]!], b.timezone, b.minAttendance],
+          `insert into tenants(slug, name, email_domains, timezone, min_attendance, term_name, term_start, code, verified_at)
+           values ($1, $2, $3, $4, $5, 'Current term', (now() at time zone $4)::date, $6, null) returning id`,
+          [slug, b.name, [b.adminEmail.split('@')[1]!], b.timezone, b.minAttendance, await freshCode(tx)],
         );
         const tenantId = t.rows[0]!.id;
         const admin = await tx.query<{ id: string }>(`insert into users(tenant_id, role, full_name, email, created_by) values ($1, 'admin', $2, $3, $4) returning id`, [
@@ -331,6 +347,37 @@ export async function rootRoutes(app: FastifyInstance, deps: Deps) {
         );
       await appendAudit(tx, { tenantId: id, actorType: 'user', actorId: r.userId, action: `institution.${b.status === 'suspended' ? 'suspend' : 'resume'}`, subject: `tenant:${id}`, data: { reason: b.reason } });
       await appendAudit(tx, { tenantId: null, actorType: 'user', actorId: r.userId, action: 'root.tenant_status', subject: `tenant:${id}`, data: { status: b.status, reason: b.reason } });
+    });
+    return (await tenantSummaries(deps.db, [id], null))[0]!;
+  });
+
+  /** The verified mark: until it is set nobody can sign in to the institution (developers aside). */
+  app.post('/v1/root/tenants/:id/verify', write, async (req): Promise<TenantSummary> => {
+    const r = await requireRoot(req, deps);
+    const { id } = z.object({ id: z.uuid() }).parse(req.params);
+    const b = TenantVerifyBody.parse(req.body);
+    if (r.tenants && !r.tenants.includes(id)) throw new ApiError(404, 'NOT_FOUND', 'Institution not found.');
+    if (!b.verified) noSandbox(r, 'removing a verification');
+    await withTx(deps.db, async (tx) => {
+      const t = await tx.query('select 1 from tenants where id = $1 for update', [id]);
+      if (!t.rowCount) throw new ApiError(404, 'NOT_FOUND', 'Institution not found.');
+      await tx.query('update tenants set verified_at = $2, verified_by = $3 where id = $1', [id, b.verified ? new Date(deps.clock()) : null, b.verified ? r.userId : null]);
+      await appendAudit(tx, { tenantId: id, actorType: 'user', actorId: r.userId, action: b.verified ? 'institution.verify' : 'institution.unverify', subject: `tenant:${id}` });
+      await appendAudit(tx, { tenantId: null, actorType: 'user', actorId: r.userId, action: 'root.tenant_verify', subject: `tenant:${id}`, data: { verified: b.verified } });
+    });
+    return (await tenantSummaries(deps.db, [id], null))[0]!;
+  });
+
+  /** A new institution code (e.g. the old one was shared too widely). Signed-in people are unaffected. */
+  app.post('/v1/root/tenants/:id/code', write, async (req): Promise<TenantSummary> => {
+    const r = await requireRoot(req, deps);
+    noSandbox(r, 'changing an institution code');
+    const { id } = z.object({ id: z.uuid() }).parse(req.params);
+    if (r.tenants && !r.tenants.includes(id)) throw new ApiError(404, 'NOT_FOUND', 'Institution not found.');
+    await withTx(deps.db, async (tx) => {
+      const res = await tx.query('update tenants set code = $2 where id = $1', [id, await freshCode(tx)]);
+      if (!res.rowCount) throw new ApiError(404, 'NOT_FOUND', 'Institution not found.');
+      await appendAudit(tx, { tenantId: null, actorType: 'user', actorId: r.userId, action: 'root.tenant_code', subject: `tenant:${id}` });
     });
     return (await tenantSummaries(deps.db, [id], null))[0]!;
   });

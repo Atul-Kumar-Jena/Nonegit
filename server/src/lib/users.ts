@@ -15,13 +15,14 @@ export interface UserRow {
   status: 'active' | 'suspended';
   tenant_slug: string;
   tenant_name: string;
+  tenant_code: string;
   tenant_status: 'active' | 'suspended';
 }
 
 export async function loadUser(db: Queryable, userId: string): Promise<UserRow | undefined> {
   const { rows } = await db.query<UserRow>(
     `select u.id, u.tenant_id, u.role, u.full_name, u.email, u.phone, u.roll_no, u.department, u.semester, u.status,
-            t.slug as tenant_slug, t.name as tenant_name, t.status as tenant_status
+            t.slug as tenant_slug, t.name as tenant_name, t.code as tenant_code, t.status as tenant_status
        from users u join tenants t on t.id = u.tenant_id where u.id = $1`,
     [userId],
   );
@@ -38,7 +39,7 @@ export function toUserSummary(u: UserRow): UserSummary {
     rollNo: u.roll_no,
     department: u.department,
     semester: u.semester,
-    institution: { slug: u.tenant_slug, name: u.tenant_name },
+    institution: { slug: u.tenant_slug, name: u.tenant_name, code: u.tenant_code },
   };
 }
 

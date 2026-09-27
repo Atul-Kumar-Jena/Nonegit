@@ -91,9 +91,30 @@ describe('developer console', () => {
     expect(t).toMatchObject({ name: 'Green Valley College', slug: 'green-valley-college', status: 'active', admins: 1 });
     expect((await root.call('POST', '/v1/root/tenants', { name: 'Dup', adminName: 'A', adminEmail: 'anita@greenvalley.edu' })).statusCode).toBe(409);
     expect((await root.call('POST', '/v1/root/tenants', { name: 'Bad TZ', adminName: 'A', adminEmail: 'a@b.edu', timezone: 'Mars/Base' })).statusCode).toBe(400);
+    expect(t.verified).toBe(false);
+    expect(t.code).toMatch(/^[A-HJ-NP-Z2-9]{8}$/);
     const anita = new TestDevice(ctx);
-    await anita.signIn('anita@greenvalley.edu');
+    // Not verified yet: the Institute app shows the institution as pending, and no code is sent.
+    expect(ok(await ctx.app.inject({ method: 'GET', url: `/v1/institutions/lookup?code=${t.code.slice(0, 4)}-${t.code.slice(4).toLowerCase()}` }))).toEqual({
+      code: t.code,
+      name: 'Green Valley College',
+      verified: false,
+      active: true,
+    });
+    await expect(anita.signIn('anita@greenvalley.edu', t.code)).rejects.toThrow(/no OTP sent/);
+    // A sandbox developer can't verify institutions it can't see; the real developer verifies it.
+    expect((await sandbox.call('POST', `/v1/root/tenants/${t.id}/verify`, { verified: true })).statusCode).toBe(404);
+    expect(ok(await root.call('POST', `/v1/root/tenants/${t.id}/verify`, { verified: true })).verified).toBe(true);
+    // The code must be this institution's: another institution's code sends nothing.
+    ctx.clock.now += 31_000;
+    await expect(anita.signIn('anita@greenvalley.edu', 'DEMO2026')).rejects.toThrow(/no OTP sent/);
+    ctx.clock.now += 31_000;
+    await anita.signIn('anita@greenvalley.edu', t.code);
     expect(ok(await anita.call('GET', '/v1/staff/me')).user.role).toBe('admin');
+    expect((await ctx.app.inject({ method: 'GET', url: '/v1/institutions/lookup?code=ZZZZZZZZ' })).statusCode).toBe(404);
+    // A new code replaces the old one.
+    const renewed = ok(await root.call('POST', `/v1/root/tenants/${t.id}/code`, {}));
+    expect(renewed.code).not.toBe(t.code);
 
     // Suspend (typed slug) → everyone there is signed out; resume brings it back.
     expect((await root.call('POST', `/v1/root/tenants/${t.id}/status`, { status: 'suspended', reason: 'unpaid invoice', confirm: 'nope' })).statusCode).toBe(400);

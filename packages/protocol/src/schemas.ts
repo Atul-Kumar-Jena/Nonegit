@@ -44,6 +44,8 @@ export const MetaResponse = z.object({
     .object({
       instantLogin: z.boolean(),
       institution: z.string().nullable(),
+      /** The demo institute's code, for the Institute app's "Try the demo" button. */
+      institutionCode: z.string().nullable().default(null),
       accounts: z.array(z.object({ role: Role, name: z.string(), email: z.string(), title: z.string() })).max(40),
     })
     .nullable()
@@ -57,10 +59,31 @@ export const EmailIdentifier = z.string().trim().toLowerCase().pipe(z.email().ma
 /** E.164 phone number, e.g. +919876543210 */
 export const PhoneIdentifier = z.string().trim().regex(/^\+[1-9][0-9]{7,14}$/, 'Phone must be in +<country><number> format');
 
+/** "7f3a-91c2", "7F3A91C2", "7F3A 91C2" → "7F3A91C2" (null if it can't be a code). */
+export function normalizeInstitutionCode(input: unknown): string | null {
+  if (typeof input !== 'string') return null;
+  const c = input.toUpperCase().replace(/[\s-]/g, '');
+  return /^[A-Z0-9]{8}$/.test(c) ? c : null;
+}
+/** "7F3A91C2" → "7F3A-91C2" */
+export const formatInstitutionCode = (c: string) => (c.length === 8 ? `${c.slice(0, 4)}-${c.slice(4)}` : c);
+const InstitutionCode = z.string().max(20).transform((v, ctx) => normalizeInstitutionCode(v) ?? (ctx.addIssue({ code: 'custom', message: 'An institution code has 8 letters and digits, e.g. 7F3A-91C2' }), z.NEVER));
+
 export const OtpRequestBody = z.discriminatedUnion('channel', [
-  z.object({ channel: z.literal('email'), identifier: EmailIdentifier }),
-  z.object({ channel: z.literal('phone'), identifier: PhoneIdentifier }),
+  /** institutionCode (Institute app): only accounts of that institution can get a code. */
+  z.object({ channel: z.literal('email'), identifier: EmailIdentifier, institutionCode: InstitutionCode.optional() }),
+  z.object({ channel: z.literal('phone'), identifier: PhoneIdentifier, institutionCode: InstitutionCode.optional() }),
 ]);
+
+export const InstitutionLookup = z.object({
+  code: z.string(),
+  name: z.string(),
+  verified: z.boolean(),
+  /** Suspended institutions can't be used. */
+  active: z.boolean(),
+});
+export type InstitutionLookup = z.infer<typeof InstitutionLookup>;
+export const InstitutionLookupQuery = z.object({ code: InstitutionCode });
 export type OtpRequestBody = z.infer<typeof OtpRequestBody>;
 
 export const OtpRequestResponse = z.object({
@@ -112,7 +135,7 @@ export const UserSummary = z.object({
   rollNo: z.string().nullable(),
   department: z.string().nullable(),
   semester: z.number().int().nullable(),
-  institution: z.object({ slug: z.string(), name: z.string() }),
+  institution: z.object({ slug: z.string(), name: z.string(), code: z.string().default('') }),
 });
 export type UserSummary = z.infer<typeof UserSummary>;
 

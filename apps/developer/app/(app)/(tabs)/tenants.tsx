@@ -55,6 +55,7 @@ function TenantCard({ t }: { t: TenantSummary }) {
             <Text variant="monoSmall">tenant:{t.slug}</Text>
           </View>
           {t.demo ? <Badge label="Demo" tone="amber" dot={false} /> : null}
+          {t.verified ? <Badge label="Verified" tone="green" dot={false} /> : <Badge label="Pending verification" tone="amber" dot={false} />}
           <Badge label={t.status === 'active' ? 'Active' : 'Suspended'} tone={t.status === 'active' ? 'green' : 'red'} />
         </View>
         <View style={styles.row}>

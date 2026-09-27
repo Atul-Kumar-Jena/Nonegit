@@ -38,6 +38,7 @@ describe('demo mode', () => {
     const meta = (await ctx.app.inject({ method: 'GET', url: '/v1/meta' })).json();
     expect(meta.demo.instantLogin).toBe(true);
     expect(meta.demo.institution).toBe('Demo Institute of Technology');
+    expect(meta.demo.institutionCode).toBe('DEMO2026');
     const emails = meta.demo.accounts.map((a: { email: string }) => a.email);
     expect(emails).toContain('iyer@demo.attendly.app');
     expect(emails).toContain('aarav@demo.attendly.app');

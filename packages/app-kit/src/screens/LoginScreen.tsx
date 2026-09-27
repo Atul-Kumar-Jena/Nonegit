@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, View } from 'react-native';
 import { Redirect, router } from 'expo-router';
-import { ArrowRight, Mail, Phone } from 'lucide-react-native';
-import { EmailIdentifier, PhoneIdentifier, type Channel } from '@attendly/protocol';
+import { ArrowRight, BadgeCheck, Building2, Mail, Phone } from 'lucide-react-native';
+import { EmailIdentifier, PhoneIdentifier, formatInstitutionCode, type Channel } from '@attendly/protocol';
 import { LogoMark } from '../components/Logo';
 import { Screen } from '../components/Screen';
-import { Badge, Button, Input, Notice, Segmented, Text } from '../components/ui';
+import { Badge, Button, Card, Input, Notice, Segmented, Text } from '../components/ui';
 import { ApiRequestError } from '../lib/api-core';
 import { displayHost } from '../lib/server-config';
 import { useSession } from '../state/session';
@@ -18,7 +18,7 @@ const CHANNELS = [
 
 /** 02 · Login · OTP — institution-issued ID. */
 export default function Login() {
-  const { server, requestOtp, verifyOtp, notice, clearNotice, pendingOtp, audience } = useSession();
+  const { server, requestOtp, verifyOtp, notice, clearNotice, pendingOtp, audience, institution, needsInstitution, setInstitution } = useSession();
   const [demoBusy, setDemoBusy] = useState<string | null>(null);
   const [channel, setChannel] = useState<Channel>(pendingOtp?.channel === 'phone' && server?.channels.includes('phone') ? 'phone' : 'email');
   const [value, setValue] = useState(pendingOtp?.identifier ?? '');
@@ -26,6 +26,7 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null);
 
   if (!server) return <Redirect href="/server" />;
+  if (needsInstitution) return <Redirect href="/institution-code" />;
 
   async function submit() {
     setError(null);
@@ -79,7 +80,10 @@ export default function Login() {
     }
   }
 
-  const demoAccounts = (server.demo?.accounts ?? []).filter((a) => audience.allowedRoles.includes(a.role));
+  // With an institution chosen, only that institution's demo accounts make sense.
+  const demoAccounts = (server.demo?.accounts ?? []).filter(
+    (a) => audience.allowedRoles.includes(a.role) && (!audience.institutionGate || institution?.code === server.demo?.institutionCode),
+  );
 
   return (
     <Screen keyboard contentStyle={{ paddingTop: 28 }}>
@@ -90,6 +94,25 @@ export default function Login() {
           {audience.allowedRoles.includes('student') ? 'Use your institution-issued ID.' : `${audience.appName} — for teachers and administrators. Use the email your institution registered.`}
         </Text>
       </View>
+      {audience.institutionGate && institution ? (
+        <Card style={{ marginTop: 18, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <Building2 color={colors.text} size={20} />
+          <View style={{ flex: 1 }}>
+            <Text variant="bodyStrong" numberOfLines={2}>
+              {institution.name}
+            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 }}>
+              <BadgeCheck color={colors.green} size={14} />
+              <Text variant="small">{`Verified · ${formatInstitutionCode(institution.code)}`}</Text>
+            </View>
+          </View>
+          <Pressable onPress={() => void setInstitution(null).then(() => router.replace('/institution-code'))} accessibilityRole="button" hitSlop={8}>
+            <Text variant="small" color={colors.text}>
+              Change
+            </Text>
+          </Pressable>
+        </Card>
+      ) : null}
       {notice ? (
         <View style={{ marginTop: 16 }}>
           <Notice message={notice} onDismiss={clearNotice} />

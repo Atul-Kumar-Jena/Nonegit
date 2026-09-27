@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { StyleSheet, View, Share } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Monitor, MonitorX, ShieldCheck } from 'lucide-react-native';
+import { Monitor, MonitorX, ScanLine, ShieldCheck } from 'lucide-react-native';
 import { normalizePresentCode, type PresentScreen } from '@attendly/protocol';
 import { Button, Card, Input, Notice, Text } from '@kit/components/ui';
 import { timeAgo } from '@kit/lib/format';
@@ -10,6 +10,7 @@ import { useApi, useSession } from '@kit/state/session';
 import { colors, fonts } from '@kit/theme';
 import { staffApi } from '@/api';
 import { Sheet, confirmAction } from './forms';
+import { ScreenScanner } from './ScreenScanner';
 
 /** "KXF7M2" → "KXF7-M2" while typing. */
 function format(raw: string): string {
@@ -37,6 +38,7 @@ export function BigScreenSheet({ sessionId, courseLabel, open, onClose }: { sess
   const [busy, setBusy] = useState<null | 'find' | 'approve' | string>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
 
   useEffect(() => {
     if (!open) {
@@ -50,13 +52,13 @@ export function BigScreenSheet({ sessionId, courseLabel, open, onClose }: { sess
   const host = server ? displayHost(server.url) : 'your Attendly server';
   const normalized = normalizePresentCode(code);
 
-  async function find() {
-    if (!normalized) return;
+  async function find(c = normalized) {
+    if (!c) return;
     setBusy('find');
     setError(null);
     setDone(null);
     try {
-      setFound(await staffApi.presentLookup(api, normalized));
+      setFound(await staffApi.presentLookup(api, c));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Couldn’t find that screen.');
     } finally {
@@ -65,7 +67,7 @@ export function BigScreenSheet({ sessionId, courseLabel, open, onClose }: { sess
   }
 
   async function approve() {
-    if (!normalized || !found) return;
+    if (!normalized || !found || busy) return;
     setBusy('approve');
     setError(null);
     try {
@@ -95,28 +97,34 @@ export function BigScreenSheet({ sessionId, courseLabel, open, onClose }: { sess
   }
 
   return (
-    <Sheet open={open} onClose={onClose} title="Show on a big screen">
-      <Text variant="small">
-        On the laptop, projector PC or smartboard, open this address in a browser:
+    <Sheet open={open} onClose={onClose} title="Show on a big screen" scroll>
+      <Text variant="label">1 · On the classroom computer</Text>
+      <Text variant="small" style={{ marginTop: 4 }}>
+        Open this address in any browser (projector PC, laptop, smartboard):
       </Text>
-      <Card style={{ marginTop: 10, paddingVertical: 12, gap: 10 }}>
+      <Card style={{ marginTop: 8, paddingVertical: 12, gap: 10 }}>
         <Text style={styles.url} selectable>
-          {host}/present
+          {host}/tv
         </Text>
         <Button
-          title="Share link (WhatsApp, email…)"
+          title="Send the link (WhatsApp, email…)"
           kind="secondary"
           compact
-          onPress={() => void Share.share({ message: `${server?.url ?? `https://${host}`}/present` }).catch(() => undefined)}
+          onPress={() => void Share.share({ message: `${server?.url ?? `https://${host}`}/tv` }).catch(() => undefined)}
         />
       </Card>
       <Text variant="small" style={{ marginTop: 6 }}>
-        On a free server the page can take up to a minute to open the first time.
+        It shows a pairing QR and an 8-character code. (On a free server the first load can take up to a minute.)
       </Text>
+
+      <Text variant="label" style={{ marginTop: 16 }}>
+        2 · Pair this phone
+      </Text>
+      <Button title="Scan the screen" onPress={() => setScanning(true)} icon={<ScanLine color={colors.bg} size={18} />} style={{ marginTop: 8 }} />
       <Text variant="small" style={{ marginTop: 10 }}>
-        It shows an 8-character code. Type it here:
+        or type the code:
       </Text>
-      <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+      <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
         <View style={{ flex: 1 }}>
           <Input
             value={code}
@@ -151,7 +159,7 @@ export function BigScreenSheet({ sessionId, courseLabel, open, onClose }: { sess
           <Text variant="small" color={colors.text}>
             Only approve if this is the screen in front of you. It will show the {courseLabel} QR until the class ends or you disconnect it.
           </Text>
-          <Button title="Approve & show QR" onPress={() => void approve()} loading={busy === 'approve'} icon={<ShieldCheck color="#0a0a0a" size={16} />} />
+          <Button title="3 · Approve & show QR" onPress={() => void approve()} loading={busy === 'approve'} icon={<ShieldCheck color={colors.bg} size={16} />} />
         </Card>
       ) : null}
       {done ? (
@@ -187,12 +195,21 @@ export function BigScreenSheet({ sessionId, courseLabel, open, onClose }: { sess
           Connecting a screen needs internet on this phone. Without it, show the QR from this phone instead.
         </Text>
       ) : null}
+      <ScreenScanner
+        open={scanning}
+        onClose={() => setScanning(false)}
+        onCode={(c) => {
+          setScanning(false);
+          setCode(format(c));
+          void find(c);
+        }}
+      />
     </Sheet>
   );
 }
 
 const styles = StyleSheet.create({
-  url: { fontFamily: fonts.monoMedium, fontSize: 15, color: colors.cyan },
+  url: { fontFamily: fonts.monoMedium, fontSize: 16, color: colors.text },
   codeInput: { fontFamily: fonts.monoMedium, fontSize: 20, letterSpacing: 3 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   screen: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },

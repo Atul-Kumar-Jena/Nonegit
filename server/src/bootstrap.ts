@@ -1,4 +1,4 @@
-import { randomBytes } from '@attendly/protocol';
+import { formatInstitutionCode, randomBytes } from '@attendly/protocol';
 import type { Config } from './config';
 import { withTx, type Db } from './db';
 import { appendAudit } from './lib/audit';
@@ -61,5 +61,8 @@ export async function bootstrapInstitution(db: Db, config: Config, log: (m: stri
         log(`created demo student ${b.demoStudentEmail}`);
       }
     }
+    // Staff type this code once in Attendly Institute; print it on every start so it's always at hand.
+    const t = await tx.query<{ name: string; code: string }>('select name, code from tenants where id = $1', [tenantId]);
+    if (t.rows[0]) log(`institution code for "${t.rows[0].name}": ${formatInstitutionCode(t.rows[0].code)} (enter it in Attendly Institute)`);
   });
 }

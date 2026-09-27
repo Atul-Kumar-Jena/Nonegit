@@ -104,6 +104,11 @@ export const TenantSummary = z.object({
   liveSessions: z.number().int(),
   scansToday: z.number().int(),
   demo: z.boolean(),
+  /** Typed once in the Institute app, e.g. "7F3A91C2" (shown as 7F3A-91C2). */
+  code: z.string().default(''),
+  /** Set by an Attendly developer; until then nobody can sign in. */
+  verified: z.boolean().default(true),
+  verifiedAt: IsoDate.nullable().default(null),
 });
 export type TenantSummary = z.infer<typeof TenantSummary>;
 
@@ -138,6 +143,9 @@ export const TenantStatusBody = z.object({
   confirm: z.string(),
 });
 export type TenantStatusBody = z.infer<typeof TenantStatusBody>;
+
+export const TenantVerifyBody = z.object({ verified: z.boolean() });
+export type TenantVerifyBody = z.infer<typeof TenantVerifyBody>;
 
 export const FlagsResponse = z.object({
   definitions: z.array(FlagDefinition),

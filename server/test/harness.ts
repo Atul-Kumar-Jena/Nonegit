@@ -178,8 +178,8 @@ export class TestDevice {
     };
   }
 
-  async requestOtp(identifier: string, channel: 'email' | 'phone' = 'email') {
-    return this.ctx.app.inject({ method: 'POST', url: '/v1/auth/otp/request', payload: { channel, identifier } });
+  async requestOtp(identifier: string, channel: 'email' | 'phone' = 'email', institutionCode?: string) {
+    return this.ctx.app.inject({ method: 'POST', url: '/v1/auth/otp/request', payload: { channel, identifier, ...(institutionCode ? { institutionCode } : {}) } });
   }
 
   lastCode(to: string): string {
@@ -206,8 +206,8 @@ export class TestDevice {
   }
 
   /** Full sign-in: request OTP → verify → bind. */
-  async signIn(email: string) {
-    const r = await this.requestOtp(email);
+  async signIn(email: string, institutionCode?: string) {
+    const r = await this.requestOtp(email, 'email', institutionCode);
     if (r.statusCode !== 200) throw new Error(`otp request failed: ${r.body}`);
     const v = await this.verifyOtp(r.json().challengeId, this.lastCode(email));
     const body = v.json();

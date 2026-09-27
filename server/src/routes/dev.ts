@@ -56,6 +56,12 @@ export async function devRoutes(app: FastifyInstance, deps: Deps) {
     return deps.config.otpDelivery === 'console' || deps.config.smsDelivery === 'console' ? (deps.sender.recentCodes?.() ?? []) : [];
   });
 
+  app.get('/dev/api/institutions', async (req) => {
+    guard(req);
+    const { rows } = await deps.db.query(`select name, code, verified_at is not null as verified from tenants where status = 'active' order by name`);
+    return rows;
+  });
+
   app.get('/dev/api/courses', async (req) => {
     guard(req);
     const { rows } = await deps.db.query(
@@ -236,6 +242,10 @@ export const DEV_PAGE = /* html */ `<!doctype html>
     </div>
     <div>
     <div class="card" style="margin-bottom:16px">
+      <b>Institution codes</b> <span class="muted" style="font-size:12px">(typed once in Attendly Institute)</span>
+      <div class="list" id="insts"></div>
+    </div>
+    <div class="card" style="margin-bottom:16px">
       <b>Sign-in codes</b> <span class="muted" style="font-size:12px">(testing: codes appear here instead of email)</span>
       <div class="list" id="codes"><div class="muted" style="padding-top:8px;font-size:13px">No codes yet. Tap “Send OTP” in the app.</div></div>
     </div>
@@ -335,6 +345,7 @@ async function loadCodes() {
     esc(new Date(c.at).toLocaleTimeString()) + '</span></span><span class="big" style="font-size:28px;letter-spacing:.12em">' + esc(c.code) + '</span></div>').join('');
 }
 setInterval(() => loadCodes().catch(() => {}), 3000);
+api('/dev/api/institutions').then((ts) => { $('insts').innerHTML = ts.map((t) => '<div class="item"><div>' + esc(t.name) + (t.verified ? '' : ' <span class="muted">· pending verification</span>') + '</div><b style="font-family:ui-monospace,monospace;letter-spacing:2px">' + esc(t.code.slice(0, 4) + '-' + t.code.slice(4)) + '</b></div>').join(''); }).catch(() => {});
 loadCodes().catch(() => {});
 loadCourses().then(loadScheduled).then(loadSessions).catch((e) => ($('err').textContent = e.message));
 setInterval(() => loadSessions().catch(() => {}), 5000);

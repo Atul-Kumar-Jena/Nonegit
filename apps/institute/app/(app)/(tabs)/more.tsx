@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
-import { Pressable, StyleSheet, Switch, View } from 'react-native';
+import { Pressable, Share, StyleSheet, Switch, View } from 'react-native';
 import { router, type Href } from 'expo-router';
-import { AlarmClock, Bell, Building2, CalendarDays, CalendarRange, ChevronRight, Clock4, Inbox, KeyRound, Library, Lock, LogOut, MapPin, Play, Plus, ShieldAlert, Smartphone, Trash2, UserPlus, Users, UsersRound, Wand2, FileBarChart } from 'lucide-react-native';
+import { Share2, AlarmClock, Bell, Building2, CalendarDays, CalendarRange, ChevronRight, Clock4, Inbox, KeyRound, Library, Lock, LogOut, MapPin, Play, Plus, ShieldAlert, Smartphone, Trash2, UserPlus, Users, UsersRound, Wand2, FileBarChart } from 'lucide-react-native';
+import { formatInstitutionCode } from '@attendly/protocol';
 import { Screen } from '@kit/components/Screen';
 import { SyncBanner } from '@kit/components/SyncBanner';
 import { Avatar, Badge, Button, Card, Divider, InfoRow, SectionLabel, Text } from '@kit/components/ui';
@@ -50,6 +51,22 @@ export default function More() {
           <Text variant="bodyStrong">{u?.fullName ?? '…'}</Text>
           <Text variant="small">{u?.email ?? u?.phone ?? ''}</Text>
           <Text variant="small">{u?.institution.name ?? ''}</Text>
+          {u?.institution.code ? (
+            <Pressable
+              onPress={() =>
+                void Share.share({
+                  message: `${u.institution.name} on Attendly\nInstitution code: ${formatInstitutionCode(u.institution.code)}\nInstall Attendly Institute, enter this code, then sign in with the email the institution registered for you.`,
+                }).catch(() => undefined)
+              }
+              accessibilityRole="button"
+              accessibilityLabel="Share the institution code"
+              hitSlop={6}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}
+            >
+              <Text variant="monoSmall" color={colors.text}>{`Code ${formatInstitutionCode(u.institution.code)}`}</Text>
+              <Share2 color={colors.textDim} size={13} />
+            </Pressable>
+          ) : null}
         </View>
         {u ? <Badge label={admin ? 'Admin' : 'Teacher'} tone={admin ? 'violet' : 'cyan'} dot={false} /> : null}
       </Card>

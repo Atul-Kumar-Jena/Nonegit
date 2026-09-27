@@ -1,13 +1,14 @@
 import { useState } from 'react';
-import { View } from 'react-native';
+import { Share, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
-import { Pause, Play, ShieldCheck } from 'lucide-react-native';
+import { BadgeCheck, Pause, Play, RefreshCw, Share2, ShieldCheck } from 'lucide-react-native';
+import { formatInstitutionCode } from '@attendly/protocol';
 import { Screen } from '@kit/components/Screen';
-import { Badge, Button, Card, ErrorState, InfoRow, Loading, SectionLabel, Text } from '@kit/components/ui';
+import { Badge, Button, Card, ErrorState, InfoRow, Loading, Notice, SectionLabel, Text } from '@kit/components/ui';
 import { timeAgo } from '@kit/lib/format';
 import { useApi } from '@kit/state/session';
-import { colors } from '@kit/theme';
+import { colors, fonts } from '@kit/theme';
 import { rootApi } from '@/api';
 import { useConsole, useTenant } from '@/queries';
 import { ConfirmSheet, Header, fmtNum } from '@/ui';
@@ -20,6 +21,21 @@ export default function TenantScreen() {
   const q = useTenant(String(id));
   const me = useConsole();
   const [confirm, setConfirm] = useState(false);
+  const [busy, setBusy] = useState<'verify' | 'code' | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  async function run(kind: 'verify' | 'code', f: () => Promise<unknown>) {
+    if (busy) return;
+    setBusy(kind);
+    setErr(null);
+    try {
+      await f();
+      await qc.invalidateQueries({ queryKey: ['root'] });
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Failed.');
+    } finally {
+      setBusy(null);
+    }
+  }
   if (q.isPending)
     return (
       <Screen scroll={false}>
@@ -44,6 +60,42 @@ export default function TenantScreen() {
           <Text variant="small">Suspended: {t.statusReason}</Text>
         </Card>
       ) : null}
+      <Card tone={t.verified ? 'green' : 'amber'} style={{ marginTop: 10, gap: 12 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <BadgeCheck color={t.verified ? colors.green : colors.amber} size={18} />
+          <Text variant="bodyStrong" style={{ flex: 1 }}>
+            {t.verified ? `Verified${t.verifiedAt ? ` · ${new Date(t.verifiedAt).toDateString()}` : ''}` : 'Pending verification — nobody can sign in yet'}
+          </Text>
+        </View>
+        <View>
+          <Text variant="label">Institution code</Text>
+          <Text style={{ fontFamily: fonts.monoMedium, fontSize: 28, letterSpacing: 3, color: colors.text, marginTop: 4 }} selectable>
+            {formatInstitutionCode(t.code)}
+          </Text>
+          <Text variant="small">Staff type this once in Attendly Institute, then sign in with their registered email.</Text>
+        </View>
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <Button
+            title={t.verified ? 'Remove verification' : 'Verify institution'}
+            kind={t.verified ? 'secondary' : 'primary'}
+            compact
+            loading={busy === 'verify'}
+            onPress={() => void run('verify', () => rootApi.verifyTenant(api, t.id, !t.verified))}
+            style={{ flex: 1 }}
+          />
+          <Button
+            title="Share"
+            kind="secondary"
+            compact
+            onPress={() =>
+              void Share.share({ message: `${t.name} on Attendly\nInstitution code: ${formatInstitutionCode(t.code)}\nInstall Attendly Institute, enter this code, then sign in with your registered email.` }).catch(() => undefined)
+            }
+            icon={<Share2 color={colors.text} size={15} />}
+          />
+          <Button title="New" kind="ghost" compact loading={busy === 'code'} onPress={() => void run('code', () => rootApi.newTenantCode(api, t.id))} icon={<RefreshCw color={colors.text} size={14} />} />
+        </View>
+        {err ? <Notice tone="red" message={err} /> : null}
+      </Card>
       <Card style={{ marginTop: 10 }}>
         <InfoRow label="STUDENTS" value={fmtNum(t.students)} />
         <InfoRow label="TEACHERS" value={fmtNum(t.teachers)} />

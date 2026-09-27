@@ -16,7 +16,8 @@
       },
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Attendly Institute uses your location only when you start a class or save a room, to set the classroom geofence.",
-        "NSFaceIDUsageDescription": "Attendly Institute uses Face ID to unlock the app."
+        "NSFaceIDUsageDescription": "Attendly Institute uses Face ID to unlock the app.",
+        "NSCameraUsageDescription": "Attendly Institute uses the camera only to scan the classroom screen's pairing code."
       }
     },
     "android": {
@@ -31,15 +32,15 @@
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.USE_BIOMETRIC",
         "android.permission.USE_FINGERPRINT",
-        "android.permission.POST_NOTIFICATIONS"
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.CAMERA"
       ],
       "blockedPermissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.ACCESS_BACKGROUND_LOCATION",
         "android.permission.SYSTEM_ALERT_WINDOW",
         "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.WRITE_EXTERNAL_STORAGE",
-        "android.permission.CAMERA"
+        "android.permission.WRITE_EXTERNAL_STORAGE"
       ]
     },
     "web": {
@@ -85,7 +86,15 @@
           "color": "#ffffff"
         }
       ],
-      "expo-background-task"
+      "expo-background-task",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Attendly Institute uses the camera only to scan the classroom screen's pairing code.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": false
