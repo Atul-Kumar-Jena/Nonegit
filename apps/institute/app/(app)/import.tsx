@@ -10,7 +10,7 @@ import { colors, fonts, radius } from '@kit/theme';
 import { staffApi } from '@/api';
 import { Checkbox, Chips, Field, Header, Select } from '@/components/forms';
 import { parseRows } from '@/import-parse';
-import { useBatches, useCourses } from '@/queries';
+import { useBatches, useCourses, useIsAdmin } from '@/queries';
 
 const EXAMPLE = 'Aarav Sharma, 21CS1001, aarav@college.edu\nDiya Patel, 21CS1002, diya@college.edu, +919876543210';
 
@@ -19,6 +19,7 @@ export default function Import() {
   const params = useLocalSearchParams<{ role?: string; batchId?: string }>();
   const api = useApi();
   const qc = useQueryClient();
+  const admin = useIsAdmin();
   const courses = useCourses();
   const [role, setRole] = useState<'student' | 'teacher'>(params.role === 'teacher' ? 'teacher' : 'student');
   const [text, setText] = useState('');
@@ -36,16 +37,17 @@ export default function Import() {
     setError(null);
     setResult(null);
     try {
-      const all: BulkImportResponse = { created: 0, skipped: [] };
+      const all: BulkImportResponse = { created: 0, addedExisting: 0, skipped: [] };
       // The server takes up to 500 rows per request.
       for (let i = 0; i < parsed.rows.length; i += 500) {
         const chunk = parsed.rows.slice(i, i + 500);
         const r = await staffApi.importPeople(api, chunk, role === 'student' ? [...courseIds] : [], role === 'student' ? batchId : null);
         all.created += r.created;
+        all.addedExisting += r.addedExisting;
         all.skipped.push(...r.skipped.map((s) => ({ ...s, row: s.row + i })));
       }
       setResult(all);
-      if (all.created) setText('');
+      if (all.created || all.addedExisting) setText('');
       void qc.invalidateQueries({ queryKey: ['staff'] });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Import failed.');
@@ -56,8 +58,8 @@ export default function Import() {
 
   return (
     <Screen keyboard>
-      <Header title="Add many people" />
-      <Chips value={role} options={[{ value: 'student', label: 'Students' }, { value: 'teacher', label: 'Teachers' }]} onChange={setRole} />
+      <Header title={admin ? 'Add many people' : 'Add students to a batch'} />
+      {admin ? <Chips value={role} options={[{ value: 'student', label: 'Students' }, { value: 'teacher', label: 'Teachers' }]} onChange={setRole} /> : null}
       <Text variant="small" style={{ marginTop: 12 }}>
         Copy rows from a spreadsheet and paste them here — one person per line. A header row (Name, Roll, Email, Phone, Department, Semester) is used if present; otherwise columns are recognised by their shape. Phone numbers need the country code, e.g. +91….
       </Text>
@@ -93,17 +95,17 @@ export default function Import() {
       ) : null}
 
       {role === 'student' ? (
-        <Field label="Batch (optional)" hint="They’re enrolled in every course the batch takes.">
+        <Field label={admin ? 'Batch (optional)' : 'Batch'} hint="They join the batch (and its semester) and are enrolled in every subject it takes. Students already registered are simply added.">
           <Select
             title="Batch"
             value={batchId}
             onChange={setBatchId}
-            allowNone="No batch"
+            allowNone={admin ? 'No batch' : undefined}
             options={(batches.data ?? []).filter((b) => b.active).map((b) => ({ value: b.id, label: b.name, sub: `${b.size} students · ${b.courseIds.length} courses` }))}
           />
         </Field>
       ) : null}
-      {role === 'student' && (courses.data ?? []).some((c) => c.active) ? (
+      {admin && role === 'student' && (courses.data ?? []).some((c) => c.active) ? (
         <>
           <SectionLabel>Also enrol them in</SectionLabel>
           <Card style={{ gap: 2 }}>
@@ -145,7 +147,8 @@ export default function Import() {
       {result ? (
         <Card tone={result.skipped.length ? 'amber' : 'green'} style={{ marginTop: 12, gap: 6 }}>
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Badge label={`${result.created} added`} tone="green" dot={false} />
+            <Badge label={`${result.created} new`} tone="green" dot={false} />
+            {result.addedExisting ? <Badge label={`${result.addedExisting} already registered — added`} tone="green" dot={false} /> : null}
             {result.skipped.length ? <Badge label={`${result.skipped.length} skipped`} tone="amber" dot={false} /> : null}
           </View>
           {result.skipped.slice(0, 10).map((s) => (
@@ -156,7 +159,7 @@ export default function Import() {
           {result.created ? <Text variant="small">They can sign in now with their email or phone.</Text> : null}
         </Card>
       ) : null}
-      <Button title={`Add ${parsed.rows.length || ''} ${role === 'student' ? 'students' : 'teachers'}`.replace('  ', ' ')} onPress={() => void submit()} loading={busy} disabled={!parsed.rows.length} style={{ marginTop: 18 }} />
+      <Button title={`Add ${parsed.rows.length || ''} ${role === 'student' ? 'students' : 'teachers'}`.replace('  ', ' ')} onPress={() => void submit()} loading={busy} disabled={!parsed.rows.length || (!admin && !batchId)} style={{ marginTop: 18 }} />
     </Screen>
   );
 }

@@ -56,7 +56,21 @@ export const HELP: Record<string, { title: string; text: string[] }> = {
   },
   batches: {
     title: 'Batches',
-    text: ['A batch is a section, e.g. “CSE · Sem 6 · A”.', 'Add students and pick its courses: everyone in the batch is enrolled in those courses automatically, and leaves them when removed.'],
+    text: [
+      'Everything is organised by batch: Semester → batch (e.g. CSE-5A) → its students → its subjects.',
+      'Any teacher can create a batch, add students (pick registered ones or paste a whole list) and add subjects (existing ones, or a new one they will teach).',
+      'Students in a batch get its semester and are enrolled in all its subjects automatically — new students too.',
+      'Removing students or subjects, renaming, archiving or moving to the next semester: an admin or the teacher who created the batch.',
+    ],
+  },
+  batch: {
+    title: 'A batch',
+    text: [
+      'Students: tap anyone to see their attendance in every subject. “Add students” finds registered students; “Paste a list” adds a class from a spreadsheet (already-registered students are just added).',
+      'Subjects: every student of the batch takes these. Add an existing subject or create a new one (you become its teacher). Then give it weekly slots in Timetable.',
+      'Settings: semester (moving the batch up moves all its students), name, department, archive.',
+      'Attendance: the whole batch’s report — per subject or cumulative — as PDF or Excel.',
+    ],
   },
   rooms: {
     title: 'Rooms',

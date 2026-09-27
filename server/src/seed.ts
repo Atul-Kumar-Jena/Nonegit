@@ -75,6 +75,7 @@ export async function seedDemo(pool: Db, config: Config, opts: { reset?: boolean
     const existing = await tx.query<{ id: string }>(`select id from tenants where slug = 'demo'`);
     if (existing.rows[0]) {
       if (!reset) {
+        if (await ensureDemoBatches(tx, existing.rows[0].id)) log('Added the demo batches (CSE-6A, CSE-6B).');
         log('Demo institution already exists. Run "npm run seed -- --reset" to recreate it.');
         return false;
       }
@@ -186,12 +187,39 @@ export async function seedDemo(pool: Db, config: Config, opts: { reset?: boolean
           [tenantId, courseId, weekday, c.hour, room.rows[0]!.id, facultyIds[c.instructor]!],
         );
     }
+    await ensureDemoBatches(tx, tenantId);
     await appendAudit(tx, { tenantId, actorType: 'system', action: 'seed.demo', data: { students: studentIds.length, records } });
     log(`Seeded "Demo Institute of Technology": ${studentIds.length} students, ${COURSES.length} courses, ${records} historic attendance records.`);
     log('Sign in to the Student app as  aarav@demo.attendly.app  (or +919000000001).');
     if (testerId) log(`Also created your test account: ${testerEmail ?? ''} ${testerPhone ?? ''}`.trim());
     return true;
   });
+}
+
+/** Two Semester-6 CSE sections holding the demo students and taking every demo subject (idempotent). */
+async function ensureDemoBatches(tx: PoolClient, tenantId: string): Promise<boolean> {
+  const has = await tx.query('select 1 from batches where tenant_id = $1 limit 1', [tenantId]);
+  if (has.rowCount) return false;
+  const hod = await tx.query<{ id: string }>(`select id from users where tenant_id = $1 and email = 'iyer@demo.attendly.app'`, [tenantId]);
+  const sections: [string, string[]][] = [
+    ['CSE-6A', STUDENTS.slice(0, 8).map((s) => s[1])],
+    ['CSE-6B', [...STUDENTS.slice(8).map((s) => s[1]), '21CS1199']],
+  ];
+  for (const [name, rolls] of sections) {
+    const b = await tx.query<{ id: string }>(
+      `insert into batches(tenant_id, name, department, semester, created_by) values ($1, $2, 'CSE', 6, $3) returning id`,
+      [tenantId, name, hod.rows[0]?.id ?? null],
+    );
+    const batchId = b.rows[0]!.id;
+    await tx.query(`insert into batch_members(batch_id, user_id) select $1, id from users where tenant_id = $2 and role = 'student' and roll_no = any($3::text[])`, [batchId, tenantId, rolls]);
+    await tx.query('insert into course_batches(course_id, batch_id) select id, $1 from courses where tenant_id = $2', [batchId, tenantId]);
+    await tx.query(
+      `update enrollments e set batch_id = $1 from batch_members m, courses c
+        where m.batch_id = $1 and e.user_id = m.user_id and c.id = e.course_id and c.tenant_id = $2 and e.batch_id is null`,
+      [batchId, tenantId],
+    );
+  }
+  return true;
 }
 
 async function insertHistoricRecord(tx: PoolClient, signer: ReturnType<typeof createServerSigner>, sessionId: string, userId: string, markedAt: Date) {

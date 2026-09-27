@@ -321,37 +321,69 @@ export async function staffAdminRoutes(app: FastifyInstance, deps: Deps) {
 
   app.post('/v1/staff/people/import', async (req): Promise<BulkImportResponse> => {
     const auth = await requireDevice(req, deps, STAFF);
-    requireAdmin(auth);
     const b = BulkImportBody.parse(req.body);
+    // Teachers may add students into a batch (batch-wise); everything else is for admins.
+    if (!isAdmin(auth) && !b.batchId) requireAdmin(auth);
     if (b.batchId) {
-      const ok = await deps.db.query('select 1 from batches where id = $1 and tenant_id = $2', [b.batchId, auth.tenantId]);
+      const ok = await deps.db.query<{ active: boolean }>('select active from batches where id = $1 and tenant_id = $2', [b.batchId, auth.tenantId]);
       if (ok.rowCount !== 1) throw new ApiError(400, 'BAD_REQUEST', 'Unknown batch.');
     }
     const skipped: BulkImportResponse['skipped'] = [];
-    const createdIds: string[] = [];
+    const batchIds: string[] = [];
     let created = 0;
+    let addedExisting = 0;
     for (let i = 0; i < b.rows.length; i++) {
       const raw = (b.rows[i] && typeof b.rows[i] === 'object' ? b.rows[i] : {}) as Record<string, unknown>;
-      // Bulk import creates students (or teachers); admins are only ever added one at a time.
-      const parsed = PersonBody.safeParse({ ...raw, role: raw.role === 'teacher' ? 'teacher' : 'student', courseIds: raw.role === 'teacher' ? [] : b.courseIds });
+      // Bulk import creates students (or teachers, admins only); admins are only ever added one at a time.
+      // Pasting a class list into a batch: students already registered (same roll no., email or
+      // phone) are simply added to it.
+      if (b.batchId) {
+        const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+        const [email, rollNo, phone] = [str(raw.email)?.toLowerCase() ?? null, str(raw.rollNo), str(raw.phone)];
+        if (email || rollNo || phone) {
+          const found = await deps.db.query<{ id: string }>(
+            `select id from users where tenant_id = $1 and role = 'student'
+                and ((lower(email) = $2) or (roll_no = $3) or (phone = $4))
+              limit 2`,
+            [auth.tenantId, email, rollNo, phone],
+          );
+          if (found.rows.length === 1) {
+            batchIds.push(found.rows[0]!.id);
+            addedExisting++;
+            continue;
+          }
+          if (found.rows.length > 1) {
+            skipped.push({ row: i + 1, reason: 'Matches more than one registered student — add them one by one.' });
+            continue;
+          }
+        }
+      }
+      const role = raw.role === 'teacher' && isAdmin(auth) && !b.batchId ? 'teacher' : 'student';
+      const parsed = PersonBody.safeParse({ ...raw, role, courseIds: role === 'teacher' || !isAdmin(auth) ? [] : b.courseIds });
       if (!parsed.success) {
         skipped.push({ row: i + 1, reason: parsed.error.issues[0]?.message ?? 'invalid row' });
         continue;
       }
       try {
         const person = await withTx(deps.db, (tx) => createPerson(tx, auth, parsed.data));
-        if (parsed.data.role === 'student') createdIds.push(person);
+        if (parsed.data.role === 'student') batchIds.push(person);
         created++;
       } catch (err) {
         skipped.push({ row: i + 1, reason: conflictMessage(err) ?? 'could not be saved' });
       }
     }
-    if (b.batchId && createdIds.length)
+    if (b.batchId && batchIds.length)
       await withTx(deps.db, async (tx) => {
-        await tx.query('insert into batch_members(batch_id, user_id) select $1, unnest($2::uuid[]) on conflict do nothing', [b.batchId, createdIds]);
+        await tx.query('insert into batch_members(batch_id, user_id) select $1, unnest($2::uuid[]) on conflict do nothing', [b.batchId, batchIds]);
+        await tx.query(
+          `update users u set semester = coalesce(bt.semester, u.semester), department = coalesce(bt.department, u.department)
+             from batches bt where bt.id = $1 and u.id = any($2::uuid[])`,
+          [b.batchId, batchIds],
+        );
         await reconcileBatchEnrollments(tx, auth.tenantId);
+        await audit(tx, auth, 'batch.import', `batch:${b.batchId}`, { created, addedExisting });
       });
-    return { created, skipped };
+    return { created, addedExisting, skipped };
   });
 
   app.post('/v1/staff/people/:id', async (req): Promise<Person> => {

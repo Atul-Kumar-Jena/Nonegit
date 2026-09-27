@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { Alert, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Switch, View } from 'react-native';
+import { Alert, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { router } from 'expo-router';
 import { ArrowLeft, Check, ChevronDown, Minus, Plus, Search, X } from 'lucide-react-native';
 import { IconButton, Input, Text } from '@kit/components/ui';
@@ -123,7 +123,7 @@ export function confirmAction(title: string, message: string, action: string, ru
   ]);
 }
 
-export function Sheet({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: ReactNode }) {
+export function Sheet({ open, onClose, title, children, scroll = false }: { open: boolean; onClose: () => void; title: string; children: ReactNode; scroll?: boolean }) {
   return (
     <Modal visible={open} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
@@ -138,7 +138,13 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
               <X color={colors.textMuted} size={20} />
             </Pressable>
           </View>
-          {children}
+          {scroll ? (
+            <ScrollView style={{ flexShrink: 1 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+              {children}
+            </ScrollView>
+          ) : (
+            children
+          )}
         </View>
       </KeyboardAvoidingView>
     </Modal>

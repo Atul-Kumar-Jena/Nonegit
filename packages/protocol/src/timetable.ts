@@ -5,35 +5,87 @@
 import { z } from 'zod';
 import { IsoDate } from './schemas';
 import { DraftOp, DraftOps, OpError, PlannerConflict } from './planner';
-import { RosterEntry, YMD } from './staff';
+import { CourseKind, RosterEntry, YMD } from './staff';
 
 const uuid = z.uuid();
 const text = (max: number) => z.string().trim().min(1).max(max);
 
 // ───────────────────────────── batches ─────────────────────────────
 
-/** A group of students (section / class / year) that can be attached to any course. */
+/**
+ * A batch (section / class) — the top of the hierarchy: department + semester → students → subjects.
+ * Everyone on staff can read batches, create them, and add students and subjects to them; only an
+ * admin or the teacher who created a batch can remove things from it, rename, archive or promote it.
+ */
 export const Batch = z.object({
   id: uuid,
   name: z.string(),
   active: z.boolean(),
   size: z.number().int(),
   courseIds: z.array(uuid),
+  department: z.string().nullable().default(null),
+  semester: z.number().int().nullable().default(null),
+  createdBy: uuid.nullable().default(null),
+  /** The caller may remove students/subjects, rename, archive or change the semester. */
+  canManage: z.boolean().default(false),
 });
 export type Batch = z.infer<typeof Batch>;
 
-export const BatchBody = z.object({ name: text(60), active: z.boolean().default(true) });
+const Semester = z.number().int().min(1).max(20);
+const Dept = z.string().trim().max(60).transform((s) => s || null);
+
+export const BatchBody = z.object({
+  name: text(60),
+  active: z.boolean().default(true),
+  department: Dept.nullable().optional(),
+  semester: Semester.nullable().optional(),
+});
+export type BatchBody = z.infer<typeof BatchBody>;
 export const BatchUpdateBody = z.object({
   name: text(60).optional(),
   active: z.boolean().optional(),
+  department: Dept.nullable().optional(),
+  /** Changing it moves every student of the batch to that semester. */
+  semester: Semester.nullable().optional(),
   addMembers: z.array(uuid).max(2000).default([]),
   removeMembers: z.array(uuid).max(2000).default([]),
   /** The full set of courses this batch takes (students are enrolled / un-enrolled to match). */
   courseIds: z.array(uuid).max(100).optional(),
 });
 export type BatchUpdateBody = z.infer<typeof BatchUpdateBody>;
-export const BatchDetail = Batch.extend({ members: z.array(RosterEntry) });
+
+export const BatchCourse = z.object({
+  id: uuid,
+  code: z.string(),
+  title: z.string(),
+  kind: CourseKind,
+  instructor: z.object({ id: uuid, name: z.string() }).nullable(),
+  /** The caller teaches it (or is an admin) and can open its course page. */
+  canOpen: z.boolean(),
+});
+export type BatchCourse = z.infer<typeof BatchCourse>;
+export const BatchDetail = Batch.extend({ members: z.array(RosterEntry), courses: z.array(BatchCourse).default([]) });
 export type BatchDetail = z.infer<typeof BatchDetail>;
+
+/** Finding any student of the institution to add to a batch (names only — no contact details). */
+export const StudentHit = z.object({
+  userId: uuid,
+  fullName: z.string(),
+  rollNo: z.string().nullable(),
+  department: z.string().nullable(),
+  semester: z.number().int().nullable(),
+  batches: z.array(z.string()),
+});
+export type StudentHit = z.infer<typeof StudentHit>;
+
+/** A new subject created inside a batch (teachers become its instructor). */
+export const BatchSubjectBody = z.object({
+  code: text(20).transform((s) => s.toUpperCase()),
+  title: text(120),
+  kind: CourseKind.default('theory'),
+  instructorId: uuid.nullable().optional(),
+});
+export type BatchSubjectBody = z.infer<typeof BatchSubjectBody>;
 
 // ───────────────────────────── drafts ─────────────────────────────
 

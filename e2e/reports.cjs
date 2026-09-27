@@ -98,8 +98,7 @@ async function pdf(page, button, expect) {
   });
 
   await step('Picks one subject, downloads the PDF', async () => {
-    const subjectChips = t.page.getByRole('radio').filter({ hasText: /^[A-Z]{2,}-\d+/ });
-    await subjectChips.first().click();
+    await t.page.getByRole('radio', { name: 'CS-301', exact: true }).click();
     await t.page.waitForTimeout(800);
     await pdf(t.page, t.page.getByRole('button', { name: 'PDF' }).first(), ['— attendance', 'Attended']);
     await shot(t.page, 'reports-subject');

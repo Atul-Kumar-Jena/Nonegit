@@ -7,8 +7,6 @@ import { z } from 'zod';
 import {
   type DraftOp,
   AdjustBody,
-  BatchBody,
-  BatchUpdateBody,
   CreateDraftBody,
   DraftOps,
   PublishBody,
@@ -17,8 +15,6 @@ import {
   YMD,
   opCounts,
   type Availability,
-  type Batch,
-  type BatchDetail,
   type BusyBlock,
   type Draft,
   type DraftSummary,
@@ -31,7 +27,6 @@ import type { Deps } from '../deps';
 import { withTx, type Queryable } from '../db';
 import { STAFF, loadSessionFor, requireAdmin } from '../lib/access';
 import { requireDevice, requireDeviceKeyOnly, type AuthContext } from '../lib/auth';
-import { reconcileBatchEnrollments } from '../lib/batches';
 import { ApiError } from '../lib/errors';
 import { loadPlannerWeek, localNow, publishOps } from '../lib/planner-server';
 import { createCoverRequest, needsApproval } from '../lib/requests';
@@ -41,19 +36,6 @@ import { parseServiceAccount } from '../lib/push';
 import { loadInstitution, staffAudit } from './staff-admin';
 
 const IdParam = z.object({ id: z.uuid() });
-
-async function loadBatch(db: Queryable, auth: AuthContext, id: string): Promise<Batch> {
-  const { rows } = await db.query<{ id: string; name: string; active: boolean; size: number; course_ids: string[] }>(
-    `select b.id, b.name, b.active,
-            (select count(*)::int from batch_members m where m.batch_id = b.id) as size,
-            coalesce((select array_agg(cb.course_id) from course_batches cb where cb.batch_id = b.id), '{}') as course_ids
-       from batches b where b.id = $1 and b.tenant_id = $2`,
-    [id, auth.tenantId],
-  );
-  const b = rows[0];
-  if (!b) throw new ApiError(404, 'NOT_FOUND', 'Batch not found.');
-  return { id: b.id, name: b.name, active: b.active, size: b.size, courseIds: b.course_ids };
-}
 
 interface DraftRow {
   id: string;
@@ -137,83 +119,6 @@ export async function staffPlannerRoutes(app: FastifyInstance, deps: Deps) {
   }
 
   const now = () => new Date(deps.clock());
-
-  // ───────────── batches ─────────────
-
-  app.get('/v1/staff/batches', async (req): Promise<Batch[]> => {
-    const auth = await requireDevice(req, deps, STAFF);
-    const { rows } = await deps.db.query<{ id: string }>('select id from batches where tenant_id = $1 order by active desc, name', [auth.tenantId]);
-    return Promise.all(rows.map((r) => loadBatch(deps.db, auth, r.id)));
-  });
-
-  app.get('/v1/staff/batches/:id', async (req): Promise<BatchDetail> => {
-    const auth = await requireDevice(req, deps, STAFF);
-    const b = await loadBatch(deps.db, auth, IdParam.parse(req.params).id);
-    const { rows } = await deps.db.query<{ id: string; full_name: string; roll_no: string | null }>(
-      `select u.id, u.full_name, u.roll_no from batch_members m join users u on u.id = m.user_id where m.batch_id = $1 order by u.roll_no nulls last, u.full_name`,
-      [b.id],
-    );
-    return { ...b, members: rows.map((r) => ({ userId: r.id, fullName: r.full_name, rollNo: r.roll_no })) };
-  });
-
-  app.post('/v1/staff/batches', async (req): Promise<Batch> => {
-    const auth = await requireDevice(req, deps, STAFF);
-    requireAdmin(auth);
-    const b = BatchBody.parse(req.body);
-    try {
-      const id = await withTx(deps.db, async (tx) => {
-        const { rows } = await tx.query<{ id: string }>('insert into batches(tenant_id, name, active) values ($1, $2, $3) returning id', [auth.tenantId, b.name, b.active]);
-        await staffAudit(tx, auth, 'batch.create', `batch:${rows[0]!.id}`, { name: b.name });
-        return rows[0]!.id;
-      });
-      return loadBatch(deps.db, auth, id);
-    } catch (err) {
-      if ((err as { code?: string }).code === '23505') throw new ApiError(409, 'CONFLICT', `A batch called “${b.name}” already exists.`);
-      throw err;
-    }
-  });
-
-  app.post('/v1/staff/batches/:id', async (req): Promise<BatchDetail> => {
-    const auth = await requireDevice(req, deps, STAFF);
-    requireAdmin(auth);
-    const { id } = IdParam.parse(req.params);
-    const b = BatchUpdateBody.parse(req.body);
-    try {
-      await withTx(deps.db, async (tx) => {
-        await loadBatch(tx, auth, id);
-        await tx.query('select 1 from batches where id = $1 for update', [id]);
-        if (b.name !== undefined || b.active !== undefined)
-          await tx.query('update batches set name = coalesce($2, name), active = coalesce($3, active) where id = $1', [id, b.name ?? null, b.active ?? null]);
-        const add = [...new Set(b.addMembers)];
-        if (add.length) {
-          const ok = await tx.query(`select 1 from users where tenant_id = $1 and role = 'student' and id = any($2::uuid[])`, [auth.tenantId, add]);
-          if (ok.rowCount !== add.length) throw new ApiError(400, 'BAD_REQUEST', 'Only students of this institution can be in a batch.');
-          await tx.query('insert into batch_members(batch_id, user_id) select $1, unnest($2::uuid[]) on conflict do nothing', [id, add]);
-        }
-        if (b.removeMembers.length) await tx.query('delete from batch_members where batch_id = $1 and user_id = any($2::uuid[])', [id, b.removeMembers]);
-        if (b.courseIds) {
-          const courses = [...new Set(b.courseIds)];
-          if (courses.length) {
-            const ok = await tx.query('select 1 from courses where tenant_id = $1 and id = any($2::uuid[])', [auth.tenantId, courses]);
-            if (ok.rowCount !== courses.length) throw new ApiError(400, 'BAD_REQUEST', 'One or more courses do not exist.');
-          }
-          await tx.query('delete from course_batches where batch_id = $1 and not (course_id = any($2::uuid[]))', [id, courses]);
-          await tx.query('insert into course_batches(course_id, batch_id) select unnest($2::uuid[]), $1 on conflict do nothing', [id, courses]);
-        }
-        await reconcileBatchEnrollments(tx, auth.tenantId);
-        await staffAudit(tx, auth, 'batch.update', `batch:${id}`, { added: add.length, removed: b.removeMembers.length, courses: b.courseIds?.length ?? null, name: b.name ?? null });
-      });
-    } catch (err) {
-      if ((err as { code?: string }).code === '23505') throw new ApiError(409, 'CONFLICT', 'Another batch already has that name.');
-      throw err;
-    }
-    const detail = await loadBatch(deps.db, auth, id);
-    const { rows } = await deps.db.query<{ id: string; full_name: string; roll_no: string | null }>(
-      `select u.id, u.full_name, u.roll_no from batch_members m join users u on u.id = m.user_id where m.batch_id = $1 order by u.roll_no nulls last, u.full_name`,
-      [id],
-    );
-    return { ...detail, members: rows.map((r) => ({ userId: r.id, fullName: r.full_name, rollNo: r.roll_no })) };
-  });
 
   // ───────────── planner & drafts (admins) ─────────────
 

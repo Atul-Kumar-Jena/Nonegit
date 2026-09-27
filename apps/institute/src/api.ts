@@ -19,6 +19,9 @@ import {
   PlannerWeek,
   PublishResponse,
   type BatchUpdateBody,
+  type BatchBody,
+  type BatchSubjectBody,
+  StudentHit,
   type DraftOp,
   BulkImportResponse,
   CourseReport,
@@ -115,7 +118,12 @@ export const staffApi = {
 
   batches: (api: ApiClient) => api.authed('GET', '/v1/staff/batches', z.array(Batch)),
   batch: (api: ApiClient, id: string) => api.authed('GET', `/v1/staff/batches/${enc(id)}`, BatchDetail),
-  createBatch: (api: ApiClient, name: string) => api.authed('POST', '/v1/staff/batches', Batch, { name }),
+  createBatch: (api: ApiClient, b: BatchBody) => api.authed('POST', '/v1/staff/batches', Batch, b),
+  /** Creates a new subject inside a batch (a teacher becomes its instructor). */
+  batchSubject: (api: ApiClient, id: string, b: BatchSubjectBody) => api.authed('POST', `/v1/staff/batches/${enc(id)}/subjects`, BatchDetail, b),
+  searchStudents: (api: ApiClient, q: string, notInBatch?: string) => api.authed('GET', `/v1/staff/students/search${qs({ q, notInBatch })}`, z.array(StudentHit)),
+  /** Every subject of the institution (read-only list). */
+  allCourses: (api: ApiClient) => api.authed('GET', '/v1/staff/courses?scope=all', z.array(CourseSummary)),
   updateBatch: (api: ApiClient, id: string, b: Partial<BatchUpdateBody>) => api.authed('POST', `/v1/staff/batches/${enc(id)}`, BatchDetail, b),
 
   plannerWeek: (api: ApiClient, week: string) => api.authed('GET', `/v1/staff/planner${qs({ week })}`, PlannerWeek),

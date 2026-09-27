@@ -62,7 +62,7 @@ afterAll(async () => ctx?.close());
 
 describe('batches', () => {
   it('attaching a batch enrolls its members; detaching or leaving removes only batch enrollments', async () => {
-    expect((await t1.call('POST', '/v1/staff/batches', { name: 'CSE-A' })).statusCode).toBe(403);
+    // (Teachers may create batches too — see batches.test.ts.)
     const b = ok(await admin.call('POST', '/v1/staff/batches', { name: 'CSE-A' }));
     expect((await admin.call('POST', '/v1/staff/batches', { name: 'CSE-A' })).statusCode).toBe(409);
 

@@ -48,6 +48,8 @@ The server contains a ready-made **Demo Institute of Technology** with a timetab
 7. **B:** Timetable → **Ask** on any class → "Please move this class" + a message → Send. **A** (as the class's teacher) sees it in **Requests** and answers.
 8. Try dragging a teacher onto a class at a time they already teach: it's refused with the reason.
 9. Teachers can't hand classes out: the cover board and "Give to a teacher" are admin-only.
+10. **Batches:** sign in as *Dr. S. Banerjee* → **Classes** (opens on Batches, grouped by semester) → **New batch** → name `MATH-3A`, semester 3 → **Add students** (search "Aarav") → **Paste a list** → **Subjects → Add a subject → New subject** → **Settings → Move up to Semester 4**.
+11. **Reports:** More → **Attendance reports** → pick *CSE-6A* → a subject → **PDF** / **Excel**. Tap a student to see every subject and every class. On **B** (Aarav): Profile → **Download attendance**.
 
 ## 3 · Beta test (your own institution, new accounts)
 
@@ -67,9 +69,10 @@ Your real institution is the one you named in Render (`BOOTSTRAP_INSTITUTION_NAM
    5. **Students**: paste from Excel/Sheets;
    6. **Batches**, optional;
    7. **Timetable** slots.
-3. For each teacher/student: **More → People → the person → Authenticator → Set up authenticator**, then show them the QR. They scan it in Google Authenticator (**+ → Scan a QR code**) and from then on sign in with *email + the app's 6-digit code*.
-4. Anyone can also set it up themselves: *More / Profile → Sign-in security → Set up Google Authenticator → Open in Google Authenticator → type the first code*.
-5. Run a class (below) with 2–3 real students; check **Classes → course → CSV**.
+3. Build the hierarchy: **Classes → New batch** (e.g. `CSE-5A`, department, semester) → **Paste a list** of its students → **Subjects → Add a subject**. Professors can do this themselves for their own sections.
+4. For each teacher/student: **More → People → the person → Authenticator → Set up authenticator**, then show them the QR. They scan it in Google Authenticator (**+ → Scan a QR code**) and from then on sign in with *email + the app's 6-digit code*.
+5. Anyone can also set it up themselves: *More / Profile → Sign-in security → Set up Google Authenticator → Open in Google Authenticator → type the first code*.
+6. Run a class (below) with 2–3 real students; check **More → Attendance reports**.
 
 ## 4 · Everyday use
 
@@ -86,6 +89,21 @@ Your real institution is the one you named in Render (`BOOTSTRAP_INSTITUTION_NAM
 - **People · Batches · Rooms · Phone requests · Suspicious scans · Institution**.
 
 **Screenshots** are allowed by default so you can capture bugs. Turn on **More → This phone → Block screenshots** to block them and hide the app in the recent-apps view.
+
+### Batches (everyone on staff) — Institute app
+Everything is organised as **Semester → batch → its students → its subjects** (Classes tab → Batches).
+- **Any professor** can create a batch (name, department, semester), add students (search registered ones, or **Paste a list** from Excel — already-registered students are just added, new ones are created) and add subjects (an existing one, or a **new subject** they will teach).
+- Students in a batch get its **semester** and are enrolled in **all its subjects** automatically, including students added later.
+- **Removing** students/subjects, **renaming**, **archiving** and **Move up to Semester N** (moves every student) are for admins and the professor who created the batch.
+- Tap a student to see their attendance in every subject; **Attendance** opens the batch's report.
+
+### Attendance reports & downloads
+- **Staff:** More → **Attendance reports** → pick a batch (or all students) → a subject (or all subjects). Red = below the minimum. **PDF** or **Excel** downloads exactly that view: one subject (attended / held / % per student) or all subjects (each student's % per subject + cumulative). Tap any student → per-subject %, tap a subject → every class; download all subjects or one subject class by class. Every teacher can view any batch and any student.
+- **Students:** Profile → **Download attendance** (or Subjects → Download, or inside a subject): all subjects with the cumulative total, or one subject class by class.
+- Every file ends with "Attendly · Created by Atul Kumar Jena". Downloads work **offline** too: the file then uses the latest data saved on the phone and says how old it is.
+
+### Class reminders
+More / Profile → **Class reminders**: pick any of 5 / 10 / 15 / 30 min, 1 hour or a day before. They're set on the phone, so they ring on time even offline, include the room, follow every timetable change (and classes you're covering).
 
 ### Teacher — Institute app
 - Tap a class → **QR** (the code rotates every few seconds), **Show on a big screen**, or **Register**.

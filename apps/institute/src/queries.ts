@@ -12,6 +12,7 @@ export const qk = {
   people: (f: { role?: string; q?: string; courseId?: string }) => ['staff', 'people', f] as const,
   person: (id: string) => ['staff', 'person', id] as const,
   courses: ['staff', 'courses'] as const,
+  allCourses: ['staff', 'courses', 'all'] as const,
   roster: (id: string) => ['staff', 'roster', id] as const,
   report: (id: string) => ['staff', 'report', id] as const,
   courseSessions: (id: string) => ['staff', 'course-sessions', id] as const,
@@ -64,9 +65,9 @@ export function useRooms() {
   return useQuery({ queryKey: qk.rooms, queryFn: () => staffApi.rooms(api) });
 }
 
-export function usePeople(f: { role?: string; q?: string; courseId?: string }) {
+export function usePeople(f: { role?: string; q?: string; courseId?: string }, enabled = true) {
   const api = useApi();
-  return useQuery({ queryKey: qk.people(f), queryFn: () => staffApi.people(api, f), placeholderData: (prev) => prev });
+  return useQuery({ queryKey: qk.people(f), queryFn: () => staffApi.people(api, f), placeholderData: (prev) => prev, enabled });
 }
 
 export function usePerson(id: string) {
@@ -179,4 +180,16 @@ export function useStudentReport(id: string, courseId?: string, enabled = true) 
 export function useMatrix(batchId?: string, courseId?: string) {
   const api = useApi();
   return useQuery({ queryKey: qk.matrix(batchId, courseId), queryFn: () => staffApi.matrix(api, { batchId, courseId }), placeholderData: (prev) => prev });
+}
+
+/** Every subject in the institution, for picking one to add to a batch. */
+export function useAllCourses(enabled = true) {
+  const api = useApi();
+  return useQuery({ queryKey: qk.allCourses, queryFn: () => staffApi.allCourses(api), enabled });
+}
+
+/** Any student of the institution by name / roll no. (not already in `notInBatch`). */
+export function useStudentSearch(q: string, notInBatch?: string, enabled = true) {
+  const api = useApi();
+  return useQuery({ queryKey: ['staff', 'student-search', q, notInBatch ?? ''], queryFn: () => staffApi.searchStudents(api, q, notInBatch), enabled, placeholderData: (prev) => prev, staleTime: 30_000 });
 }

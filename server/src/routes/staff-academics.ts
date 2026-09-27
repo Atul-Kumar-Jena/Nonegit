@@ -99,9 +99,11 @@ export async function staffAcademicRoutes(app: FastifyInstance, deps: Deps) {
   // ── courses ──
   app.get('/v1/staff/courses', async (req): Promise<CourseSummary[]> => {
     const auth = await requireDevice(req, deps, STAFF);
+    // scope=all: every subject of the institution (read-only list, e.g. to add one to a batch).
+    const q = z.object({ scope: z.enum(['mine', 'all']).default('mine') }).parse(req.query);
     const { rows } = await deps.db.query<CourseRow>(
       `${COURSE_SELECT} where c.tenant_id = $1 and ($2::uuid is null or c.instructor_id = $2) order by c.active desc, c.code`,
-      [auth.tenantId, instructorFilter(auth)],
+      [auth.tenantId, q.scope === 'all' ? null : instructorFilter(auth)],
     );
     return rows.map(toCourseSummary);
   });

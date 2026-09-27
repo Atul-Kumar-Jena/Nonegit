@@ -45,3 +45,9 @@ NODE_PATH=$(npm root -g) OUT=/tmp/shots-cover node e2e/cover.cjs     # must end 
 
 `both.cjs` (the older 29-step run) types a server address and codes; with the built-in server and demo mode it needs
 `DEMO_INSTANT_LOGIN=false` on the server and web builds without `EXPO_PUBLIC_API_URL` pointing elsewhere.
+
+## `reports.cjs` (6 steps) and `batches.cjs` (7 steps)
+
+Same demo-mode server as `cover.cjs` (reset it between runs; needs `fflate` from the repo root: `NODE_PATH=$(npm root -g):$PWD/node_modules`).
+- **reports.cjs**: a non-admin teacher opens Attendance reports, filters by batch and subject, downloads Excel (checked as a real workbook ending with the credit line) and PDF (the printed HTML is captured), opens any student and a subject's class list; a student downloads their own report, then again **offline** from the copy on the phone.
+- **batches.cjs**: a professor creates a batch (department + semester), adds a registered student, pastes a list (one new, one already registered), creates a subject inside the batch, moves the batch up a semester; a second professor can open it but gets no remove/rename/semester controls.

@@ -12,6 +12,7 @@ import { colors, fonts, radius } from '@kit/theme';
 import { staffApi } from '@/api';
 import { Chips, Header } from '@/components/forms';
 import { qk, useBatches, useMatrix } from '@/queries';
+import { batchChip } from '@/batches';
 
 const PAGE = 150;
 
@@ -36,7 +37,7 @@ export default function Reports() {
 
   const courseOptions = useMemo(() => [{ value: '', label: 'All subjects' }, ...(base.data?.courses ?? []).map((c) => ({ value: c.courseId, label: c.code }))], [base.data]);
   const batchOptions = useMemo(
-    () => [{ value: '', label: 'All students' }, ...(batches.data ?? []).filter((b) => b.active || b.id === batch).map((b) => ({ value: b.id, label: b.name }))],
+    () => [{ value: '', label: 'All students' }, ...(batches.data ?? []).filter((b) => b.active || b.id === batch).map((b) => ({ value: b.id, label: batchChip(b) }))],
     [batches.data, batch],
   );
 

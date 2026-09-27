@@ -134,6 +134,8 @@ export type PersonUpdateBody = z.infer<typeof PersonUpdateBody>;
 export const BulkImportBody = z.object({ rows: z.array(z.unknown()).min(1).max(500), courseIds: z.array(uuid).max(50).default([]), batchId: uuid.optional() });
 export const BulkImportResponse = z.object({
   created: z.number().int(),
+  /** Already registered (same roll no. or email) — added to the batch instead. */
+  addedExisting: z.number().int().default(0),
   skipped: z.array(z.object({ row: z.number().int(), reason: z.string() })),
 });
 export type BulkImportResponse = z.infer<typeof BulkImportResponse>;
