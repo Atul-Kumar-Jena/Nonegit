@@ -346,8 +346,15 @@ export async function downloadDoc(d: ExportDoc, format: 'pdf' | 'xlsx'): Promise
   }
   const [Print, { File, Paths }] = await Promise.all([import('expo-print'), import('expo-file-system')]);
   const out = await Print.printToFileAsync({ html, width: d.wide ? 842 : 595, height: d.wide ? 595 : 842 });
-  const dest = new File(Paths.cache, name);
-  if (dest.exists) dest.delete();
-  new File(out.uri).move(dest);
-  return shareNative(dest.uri, 'application/pdf', name, 'com.adobe.pdf');
+  // Give the file a readable name (the printer picks a random one); fall back to it if renaming fails.
+  let uri = out.uri;
+  try {
+    const dest = new File(Paths.cache, name);
+    if (dest.exists) dest.delete();
+    await new File(out.uri).move(dest);
+    uri = dest.uri;
+  } catch {
+    // keep the printer's file
+  }
+  return shareNative(uri, 'application/pdf', name, 'com.adobe.pdf');
 }
