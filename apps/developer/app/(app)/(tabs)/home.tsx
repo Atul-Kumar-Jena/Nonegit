@@ -94,6 +94,11 @@ export default function ConsoleScreen() {
       ) : null}
 
       <SectionLabel>Kill switches</SectionLabel>
+      {c.sandbox ? (
+        <Text variant="small" style={{ marginBottom: 8 }}>
+          Read-only in the demo console. To use them, sign out and sign in with your own developer account (Developer app → First-time setup, with the setup code from your server log).
+        </Text>
+      ) : null}
       <Card padded={false}>
         {c.switches.map((s, i) => (
           <SwitchRow key={s.key} s={s} sandbox={c.sandbox} last={i === c.switches.length - 1} />

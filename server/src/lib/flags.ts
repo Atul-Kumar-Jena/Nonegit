@@ -25,8 +25,8 @@ export const TENANT_FLAGS = {
   student_requests: { label: 'Students can ask teachers', detail: 'The “Ask” button on the students’ timetable.', default: true },
   hardware_binding: {
     label: 'Secure-hardware phones only',
-    detail: 'Every Android phone must prove a key inside its security chip (Google key attestation) to be bound. On by default.',
-    default: true,
+    detail: 'Every Android phone must prove a key inside its security chip (Google key attestation) to be bound. Turn on once your phones pass (results are recorded either way).',
+    default: false,
   },
   offline_scans_off: {
     label: 'Refuse offline scans',

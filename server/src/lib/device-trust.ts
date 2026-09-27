@@ -119,7 +119,9 @@ export function checkAttestation(
   } catch (err) {
     if (!(err instanceof AttestationError)) throw err;
     audit(err.code, err.message);
-    if (!relaxed && (required || TAMPERED.has(err.code))) throw new ApiError(403, 'INTEGRITY', USER_MESSAGE[err.code]);
+    // Refused only where the institution requires the security chip (and checks aren't relaxed);
+    // elsewhere the result is recorded — for the developer console and the institution's admins.
+    if (!relaxed && required) throw new ApiError(403, 'INTEGRITY', `${USER_MESSAGE[err.code]} (security check: ${err.code})`);
     return null;
   }
   return { spki: r.keySpki, level: r.securityLevel, patch: r.osPatchLevel };

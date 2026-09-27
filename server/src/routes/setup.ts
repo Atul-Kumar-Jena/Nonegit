@@ -106,7 +106,7 @@ export async function setupRoutes(app: FastifyInstance, deps: Deps) {
       if (step === null) throw new ApiError(400, 'OTP_INVALID', 'That code doesn’t match. Use the newest code for “Attendly” in Google Authenticator, and check the phone’s time is set automatically.');
       await tx.query(
         `update users set totp_secret_enc = totp_pending_enc, totp_enabled_at = $2, totp_last_step = $3, totp_pending_enc = null, totp_pending_expires_at = null,
-                          setup_code_hash = null, setup_code_expires_at = null, setup_code_attempts = 0
+                          setup_code_hash = null, setup_code_expires_at = null, setup_code_attempts = 0, setup_code_enc = null
           where id = $1`,
         [u.id, new Date(now), step],
       );

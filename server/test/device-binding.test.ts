@@ -28,6 +28,9 @@ beforeEach(async () => {
   await ctx.db.query(`delete from system_flags where key = 'hardware_checks_relaxed'`);
 });
 
+/** The institution turns on "Secure-hardware phones only". */
+const requireChips = () => ctx.db.query(`insert into tenant_flags(tenant_id, key, enabled) values ($1, 'hardware_binding', true) on conflict (tenant_id, key) do update set enabled = true`, [tenantId]);
+
 /** A new enrolled student and their phone. */
 async function student(hardwareId = `hw-${++n}-${Math.random()}`) {
   const email = `s${++n}@iit.ac.in`;
@@ -79,13 +82,18 @@ describe('binding with the phone’s security chip', () => {
     expect((await s.phone.withChip(ca, { level: 2 }).signIn(s.email)).device.hardware).toBe('strongbox');
   });
 
-  it('a rooted / unlocked phone is refused even when chip keys are optional, and it is on record', async () => {
+  it('a rooted / unlocked phone is refused where chips are required, recorded (not refused) elsewhere', async () => {
+    const a = await student();
+    const { res: soft } = await bindResult(a.phone.withChip(ca, { locked: false, boot: 2 }), a.email);
+    expect(soft!.statusCode).toBe(200);
+    expect(soft!.json().device.hardware).toBe('none');
+    await new Promise((r) => setTimeout(r, 50));
+    expect((await audits('device.attest_failed')).some((x) => x.data.code === 'boot')).toBe(true);
+    await requireChips();
     const s = await student();
     const { res } = await bindResult(s.phone.withChip(ca, { locked: false, boot: 2 }), s.email);
     expect(res!.statusCode).toBe(403);
-    expect(res!.json().error.message).toMatch(/rooted/);
-    await new Promise((r) => setTimeout(r, 50));
-    expect((await audits('device.attest_failed')).some((a) => a.data.code === 'boot')).toBe(true);
+    expect(res!.json().error.message).toMatch(/rooted.*security check: boot/);
   });
 
   it('the developer is never locked out by the chip check (so they can reach the emergency switch), but it is on record', async () => {
@@ -99,7 +107,8 @@ describe('binding with the phone’s security chip', () => {
     expect((await audits('device.attest_failed')).some((a) => a.data.developer === true)).toBe(true);
   });
 
-  it('a clone of the app is refused', async () => {
+  it('a clone of the app is refused where chips are required', async () => {
+    await requireChips();
     const s = await student();
     const { res } = await bindResult(s.phone.withChip(ca, { pkg: 'com.evil.attendly' }), s.email);
     expect(res!.statusCode).toBe(403);
@@ -200,9 +209,10 @@ describe('phones bound before chip keys', () => {
     expect(swap.statusCode).toBe(409);
   });
 
-  it('a phone Google proves rooted is remembered, and its scans are refused', async () => {
+  it('a phone Google proves rooted is remembered, and its scans are refused (institution requires chips)', async () => {
     const s = await student();
     await s.phone.signIn(s.email);
+    await requireChips();
     const st = (await s.phone.call('GET', '/v1/devices/attest')).json();
     const res = await s.phone.call('POST', '/v1/devices/attest', { chain: ca.issue(Buffer.from(st.challenge, 'base64url'), { boot: 2, locked: false }).chain });
     expect(res.statusCode).toBe(403);

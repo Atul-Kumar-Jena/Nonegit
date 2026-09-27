@@ -49,8 +49,10 @@ A class never started in its time is logged as missed ("Not held").
   notification, signed "Attendly" or with your name; **Sent** shows reach and reads, and **Withdraw**
   takes it back everywhere.
 - **Phones**: one phone, one account for everyone (developers excepted). The security-chip check (Google
-  key attestation) is **on by default** for every institution (`HARDWARE_BINDING_DEFAULT=off` to change the
-  default; each institution's flag and the emergency switch still apply).
+  key attestation) runs on every Android phone and its result is recorded; it **refuses** phones only in
+  institutions where you turn on Flags → "Secure-hardware phones only" (do that once your phones pass;
+  `HARDWARE_BINDING_DEFAULT=on` makes it the default). A refusal shows its reason code, e.g.
+  "(security check: root)".
 
 ## 1 · Always-on server (Render)
 Render → your service (**attendly-api-bt9r**) → **Settings → Instance type → Starter** → Save.

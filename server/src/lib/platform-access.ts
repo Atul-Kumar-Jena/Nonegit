@@ -8,11 +8,13 @@ import type { Config } from '../config';
 import { withTx, type Db } from '../db';
 import { appendAudit } from './audit';
 import type { Hasher } from './secrets';
-import { issueSetupCode } from './setup-codes';
+import { formatSetupCode } from '@attendly/protocol';
+import { SETUP_CODE_MAX_ATTEMPTS, newSetupCode, setupDigest } from './setup-codes';
+import { makeSecretBox } from './totp';
 import { revokeActiveDevice } from '../routes/staff-admin';
 
-/** The developer's setup code is only good for a day (and replaced at every restart). */
-export const DEVELOPER_SETUP_TTL_MS = 24 * 3_600_000;
+/** The developer's setup code: the same one is printed at every restart until it's used or expires. */
+export const DEVELOPER_SETUP_TTL_MS = 7 * 24 * 3_600_000;
 
 export async function ensureOwners(db: Db): Promise<void> {
   await db.query(
@@ -54,8 +56,39 @@ export async function ensureDeveloperAccess(db: Db, config: Config, hash: Hasher
       dev.totp = false;
       log('DEVELOPER_AUTHENTICATOR_RESET: the developer authenticator and phone were cleared. Remove the setting after setting up again.');
     }
-    if (dev.totp) return;
-    const setup = await issueSetupCode(tx, hash, dev.id, now, DEVELOPER_SETUP_TTL_MS);
-    log(`Attendly Developer first-time setup → sign-in ID ${id} · setup code ${setup.code} (valid 24 h; open Attendly Developer → “First-time setup”)`);
+    if (dev.totp) {
+      log(`Attendly Developer sign-in ID: ${id} (sign in with your Google Authenticator code)`);
+      return;
+    }
+    // Reuse the code already printed (restarts don't invalidate it), or make a new one.
+    const box = makeSecretBox(config.tokenPepper);
+    const cur = (
+      await tx.query<{ enc: Buffer | null; expires: Date | null; attempts: number }>(
+        'select setup_code_enc as enc, setup_code_expires_at as expires, setup_code_attempts as attempts from users where id = $1',
+        [dev.id],
+      )
+    ).rows[0]!;
+    let code: string | null = null;
+    let expires = cur.expires;
+    if (cur.enc && cur.expires && cur.expires.getTime() > now && cur.attempts < SETUP_CODE_MAX_ATTEMPTS) {
+      try {
+        code = Buffer.from(box.open(cur.enc)).toString('utf8');
+      } catch {
+        code = null;
+      }
+    }
+    if (!code) {
+      code = newSetupCode();
+      expires = new Date(now + DEVELOPER_SETUP_TTL_MS);
+      await tx.query('update users set setup_code_hash = $2, setup_code_expires_at = $3, setup_code_attempts = 0, setup_code_enc = $4 where id = $1', [
+        dev.id,
+        setupDigest(hash, dev.id, code),
+        expires,
+        box.seal(new Uint8Array(Buffer.from(code, 'utf8'))),
+      ]);
+    }
+    log(
+      `Attendly Developer first-time setup → sign-in ID ${id} · setup code ${formatSetupCode(code)} (the same code until it's used; valid until ${expires!.toISOString().slice(0, 10)}; open Attendly Developer → “First-time setup”)`,
+    );
   });
 }

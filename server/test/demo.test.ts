@@ -84,10 +84,13 @@ describe('demo mode', () => {
     // The old phone's session is gone.
     expect((await phoneA.call('GET', '/v1/me/dashboard')).statusCode).toBe(401);
 
-    // …but phoneB can't become a second demo student's phone: one phone, one student, even in the demo.
+    // A tester trying another demo student on the same phone: the new one takes the phone over and the
+    // previous demo student is signed out (still one student per phone at any time).
     const other = await instantSignIn(phoneB, 'rohan@demo.attendly.app');
     expect(other.json().status).toBe('bind_required');
-    expect((await phoneB.bind(other.json().ticket)).statusCode).toBe(409);
+    expect((await phoneB.bind(other.json().ticket)).statusCode).toBe(200);
+    const active = await ctx.db.query(`select u.email from devices d join users u on u.id = d.user_id where d.status = 'active' and u.email in ('priya@demo.attendly.app', 'rohan@demo.attendly.app')`);
+    expect(active.rows.map((r: { email: string }) => r.email)).toEqual(['rohan@demo.attendly.app']);
     // Demo staff may still share a phone (the guided tour signs in as several teachers on one phone).
     const staffPhone = new TestDevice(ctx);
     for (const email of ['banerjee@demo.attendly.app', 'khanna@demo.attendly.app']) {

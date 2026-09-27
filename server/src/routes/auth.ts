@@ -361,19 +361,21 @@ export async function authRoutes(app: FastifyInstance, deps: Deps) {
         const user = await loadUser(tx, t.user_id);
         if (!user || user.status !== 'active' || user.tenant_status !== 'active') throw new ApiError(403, 'ACCOUNT_SUSPENDED');
         if (await loadActiveDevice(tx, user.id)) throw new ApiError(409, 'CONFLICT', 'Another device was bound to this account in the meantime.');
-        if (deps.config.demoInstantLogin && isDemoEmail(user.email)) {
-          // Demo: this phone may have been used for another demo account; free it.
-          // (Never between two students: one phone, one student holds in the demo too.)
-          const other = await tx.query<{ user_id: string; email: string | null; role: string }>(
-            `select d.user_id, u.email, u.role from devices d join users u on u.id = d.user_id where d.public_key = $1 and d.status = 'active'`,
-            [t.public_key],
-          );
-          const o = other.rows[0];
-          if (o && isDemoEmail(o.email) && !(o.role === 'student' && user.role === 'student'))
-            await revokeActiveDevice(tx, o.user_id, 'demo: phone used for another demo account', new Date(deps.clock()));
-        }
         const info = t.device_info;
-        const hw = hardwareHash(deps.hash, info);
+        const hwEarly = hardwareHash(deps.hash, info);
+        const demo = deps.config.demoInstantLogin && !(await switchOn(tx, 'demo_login_off'));
+        if (demo && isDemoEmail(user.email)) {
+          // Demo: testers try several demo accounts on one phone — the new one takes the phone over
+          // (the previous demo account is signed out). Real accounts are never affected.
+          const others = await tx.query<{ user_id: string; email: string | null }>(
+            `select d.user_id, u.email from devices d join users u on u.id = d.user_id
+              where d.status = 'active' and d.user_id <> $3 and (d.public_key = $1 or ($2::bytea is not null and d.hw_hash = $2))`,
+            [t.public_key, hwEarly, user.id],
+          );
+          for (const o of others.rows)
+            if (isDemoEmail(o.email)) await revokeActiveDevice(tx, o.user_id, 'demo: phone used for another demo account', new Date(deps.clock()));
+        }
+        const hw = hwEarly;
         await assertPhoneFree(tx, hw, user, deps.config.demoInstantLogin && !(await switchOn(tx, 'demo_login_off')));
         const chip = await attestForTicket(tx, deps, user, info.platform, body.ticket, body.attestation?.chain);
         const { rows } = await tx.query<DeviceRow>(
@@ -503,7 +505,7 @@ export async function authRoutes(app: FastifyInstance, deps: Deps) {
       const f = failures[0];
       if (f) {
         // Google proved this phone tampered with: remember it (its scans are refused) unless checks are relaxed.
-        if (isTamperEvidence(f.code) && !(await switchOn(deps.db, 'hardware_checks_relaxed')))
+        if (isTamperEvidence(f.code) && !(await switchOn(deps.db, 'hardware_checks_relaxed')) && (await hardwareRequired(deps.db, deps, auth.tenantId, auth.devicePlatform)))
           await deps.db.query('update devices set attest_failure = $2 where id = $1', [auth.deviceId, f.code]);
         await withTx(deps.db, (tx) =>
           appendAudit(tx, { tenantId: auth.tenantId, actorType: 'user', actorId: auth.userId, action: 'device.attest_failed', subject: `device:${auth.deviceId}`, data: f }),

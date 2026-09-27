@@ -22,13 +22,14 @@ export function newSetupCode(): string {
   return out;
 }
 
-const digest = (hash: Hasher, userId: string, code: string) => hash('setup', `${userId}:${code}`);
+export const setupDigest = (hash: Hasher, userId: string, code: string) => hash('setup', `${userId}:${code}`);
+const digest = setupDigest;
 
 /** A fresh code for this person (any earlier one stops working). Returns it formatted, once. */
 export async function issueSetupCode(db: Queryable, hash: Hasher, userId: string, now: number, ttlMs = SETUP_CODE_TTL_MS): Promise<{ code: string; expiresAt: Date }> {
   const code = newSetupCode();
   const expiresAt = new Date(now + ttlMs);
-  await db.query('update users set setup_code_hash = $2, setup_code_expires_at = $3, setup_code_attempts = 0 where id = $1', [userId, digest(hash, userId, code), expiresAt]);
+  await db.query('update users set setup_code_hash = $2, setup_code_expires_at = $3, setup_code_attempts = 0, setup_code_enc = null where id = $1', [userId, digest(hash, userId, code), expiresAt]);
   return { code: formatSetupCode(code), expiresAt };
 }
 

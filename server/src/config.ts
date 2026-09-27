@@ -236,7 +236,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     publicUrl: (e.PUBLIC_URL ?? e.RENDER_EXTERNAL_URL ?? '').replace(/\/+$/, '') || null,
     attestation: {
       requireHardware: e.REQUIRE_HARDWARE_KEYS,
-      strictByDefault: (e.HARDWARE_BINDING_DEFAULT ?? (e.NODE_ENV === 'test' ? 'off' : 'on')) === 'on',
+      // Off until the security-chip check has been confirmed on the institution's phones; an
+      // institution turns it on in the Developer app (Flags → Secure-hardware phones only).
+      strictByDefault: (e.HARDWARE_BINDING_DEFAULT ?? 'off') === 'on',
       appCertDigests: (e.ANDROID_APP_CERT_SHA256 ?? '')
         .split(',')
         .map((d) => d.toLowerCase().replace(/[^0-9a-f]/g, ''))

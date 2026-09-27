@@ -91,7 +91,7 @@ export default function SetupScreen() {
         <>
           <Text variant="body" style={{ marginTop: 8 }}>
             {audience.appName === 'Attendly Developer'
-              ? 'Use the setup code from the server log (Render → Logs, “Attendly Developer first-time setup”). You link Google Authenticator once; after that you sign in with its code.'
+              ? 'On render.com open your Attendly service → Logs and search “first-time setup”. That line shows your sign-in ID and your setup code (the same code at every restart until you use it). You link Google Authenticator once; after that you sign in with its code.'
               : `Enter the setup code you were given${institution ? ` by ${institution.name}` : ''}. You link Google Authenticator once; after that you sign in with its code — no email needed.`}
           </Text>
           <Text variant="label" style={{ marginTop: 22, marginBottom: 8 }}>
@@ -133,7 +133,9 @@ export default function SetupScreen() {
           ) : null}
           <Button title="Continue" onPress={() => void start()} loading={busy} disabled={!usable} style={{ marginTop: 22 }} />
           <Text variant="small" style={{ marginTop: 16 }}>
-            No setup code? Ask {audience.appName === 'Attendly Developer' ? 'your server log' : 'your institution’s admin'} for one. Each code works once and expires after a few days.
+            {audience.appName === 'Attendly Developer'
+              ? 'Use the sign-in ID exactly as the log line shows it (e.g. developer@attendly.app), not your personal email.'
+              : 'No setup code? Ask your institution’s admin for one. Each code works once and expires after a few days.'}
           </Text>
         </>
       ) : (

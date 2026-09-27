@@ -110,12 +110,14 @@ describe('Google’s revocation list', () => {
     expect(n).toBe(2);
     const deps = { config: { attestation: { requireHardware: false, appCertDigests: [], testRoots: [ca.rootPem] } } } as never;
     const codes: string[] = [];
-    expect(() => checkAttestation(deps, good.chain, challenge, false, false, (c) => codes.push(c))).toThrow(/revoked/);
+    expect(() => checkAttestation(deps, good.chain, challenge, true, false, (c) => codes.push(c))).toThrow(/revoked/);
     expect(codes).toEqual(['revoked']);
     await expect(refreshRevocations((async () => new Response('nope', { status: 503 })) as unknown as typeof fetch)).rejects.toThrow(/503/);
     // Older entries are decimal.
     setRevokedSerials([BigInt(`0x${ca.interSerial}`).toString(10)]);
-    expect(() => checkAttestation(deps, good.chain, challenge, false, false, () => {})).toThrow(/revoked/);
+    expect(() => checkAttestation(deps, good.chain, challenge, true, false, () => {})).toThrow(/revoked/);
+    // Where chips aren't required it's recorded, not refused.
+    expect(checkAttestation(deps, good.chain, challenge, false, false, () => {})).toBeNull();
     setRevokedSerials([]);
     expect(checkAttestation(deps, good.chain, challenge, false, false, () => {})?.level).toBe('tee');
   });

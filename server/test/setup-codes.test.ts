@@ -154,6 +154,10 @@ describe('the developer sets up Attendly Developer once', () => {
     await ensureDeveloperAccess(ctx.db, config, ctx.deps.hash, ctx.clock.now, (m) => lines.push(m));
     expect(lines.join('\n')).toContain('created the developer account owner@platform.test');
     const code = lines.join('\n').match(/setup code ([A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4})/)![1]!;
+    // A restart prints the same code (it stays valid until used).
+    const again: string[] = [];
+    await ensureDeveloperAccess(ctx.db, config, ctx.deps.hash, ctx.clock.now + 3_600_000, (m) => again.push(m));
+    expect(again.join('\n')).toContain(`setup code ${code}`);
     const dev = new TestDevice(ctx);
     await activate(dev, 'owner@platform.test', code);
     expect(ok(await dev.call('GET', '/v1/root/me')).sandbox).toBe(false);
@@ -162,7 +166,8 @@ describe('the developer sets up Attendly Developer once', () => {
 
     const later: string[] = [];
     await ensureDeveloperAccess(ctx.db, config, ctx.deps.hash, ctx.clock.now, (m) => later.push(m));
-    expect(later).toEqual([]);
+    expect(later.join()).toContain('sign-in ID: owner@platform.test');
+    expect(later.join()).not.toContain('setup code');
 
     const reset: string[] = [];
     await ensureDeveloperAccess(ctx.db, { ...config, developer: { ...config.developer, resetAuthenticator: true } }, ctx.deps.hash, ctx.clock.now, (m) => reset.push(m));
