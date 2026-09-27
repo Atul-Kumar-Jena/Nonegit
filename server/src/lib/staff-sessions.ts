@@ -31,6 +31,7 @@ export interface StaffSessionRow {
   original_start: Date | null;
   change_kind: 'rescheduled' | 'substitute' | 'extra' | 'cancelled' | null;
   change_note: string | null;
+  showing: boolean;
 }
 
 export const STAFF_SESSION_SELECT = `
@@ -41,7 +42,8 @@ export const STAFF_SESSION_SELECT = `
          (select count(*) from enrollments e join users u on u.id = e.user_id and u.status = 'active' where e.course_id = s.course_id) as enrolled,
          (select count(*) from scan_rejections x where x.session_id = s.id and x.suspicious and x.review_status = 'open') as flagged,
          c.instructor_id, iu.full_name as instructor_name, s.substitute_id, su.full_name as substitute_name,
-         s.original_start, s.change_kind, s.change_note
+         s.original_start, s.change_kind, s.change_note,
+         coalesce(s.status = 'live' and s.qr_shown_at > now() - interval '90 seconds', false) as showing
     from class_sessions s
     join courses c on c.id = s.course_id
     left join rooms r on r.id = s.room_id
@@ -85,6 +87,7 @@ export function toStaffSession(r: StaffSessionRow): StaffSession {
     teacher: r.instructor_id && r.instructor_name ? { id: r.instructor_id, name: r.instructor_name } : null,
     substitute: r.substitute_id && r.substitute_name ? { id: r.substitute_id, name: r.substitute_name } : null,
     change: sessionChange(r),
+    showingQr: !!r.showing,
   };
 }
 

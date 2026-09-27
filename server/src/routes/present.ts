@@ -31,6 +31,7 @@ import {
   type PresentScreen,
 } from '@attendly/protocol';
 import type { Deps } from '../deps';
+import { markShowing } from '../lib/class-clock';
 import { withTx, type Queryable } from '../db';
 import { STAFF, loadSessionFor } from '../lib/access';
 import { appendAudit } from '../lib/audit';
@@ -181,6 +182,8 @@ export async function presentRoutes(app: FastifyInstance, deps: Deps) {
     if (!p.approved_at || !p.session_id) return t > p.expires_at.getTime() ? { status: 'expired' as const } : { status: 'waiting' as const, expiresAt: p.expires_at.toISOString() };
     if (t - p.approved_at.getTime() > APPROVED_MAX_MS) return { status: 'expired' as const };
 
+    // The big screen is showing this class's QR: students see "attendance being taken".
+    await markShowing(deps.db, p.session_id, new Date(t)).catch(() => undefined);
     const s = await deps.db.query<{
       status: string;
       mode: string;

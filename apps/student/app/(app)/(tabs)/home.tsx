@@ -236,6 +236,12 @@ function SessionCard({ s, tz, now }: { s: TodaySession; tz: string; now: number 
           {s.room ? ` · ${s.room}` : ''}
         </Text>
         <ChangeNote change={s.change} tz={tz} />
+        {s.taking && !s.marked ? (
+          <View style={styles.taking}>
+            <View style={styles.takingDot} />
+            <Text style={styles.takingText}>Attendance being taken — scan now</Text>
+          </View>
+        ) : null}
       </View>
       <View style={{ paddingRight: 14 }}>
         {canScan ? (
@@ -263,6 +269,9 @@ function SessionCard({ s, tz, now }: { s: TodaySession; tz: string; now: number 
 }
 
 const styles = StyleSheet.create({
+  taking: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 999, alignSelf: 'flex-start', backgroundColor: 'rgba(74,222,128,0.14)', borderWidth: 1, borderColor: 'rgba(74,222,128,0.45)' },
+  takingDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.green },
+  takingText: { fontFamily: fonts.semibold, fontSize: 12.5, color: colors.green },
   upRow: { flexDirection: 'row', gap: 12, padding: 14, alignItems: 'center' },
   upDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4 },

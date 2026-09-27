@@ -99,7 +99,7 @@ export default function More() {
           { icon: <FileBarChart color={colors.text} size={18} />, label: 'Attendance reports', href: '/reports' },
           { icon: <Plus color={colors.text} size={18} />, label: 'Extra class', href: '/extra-class' },
           { icon: <Inbox color={colors.text} size={18} />, label: 'Requests', href: '/inbox' },
-          { icon: <Clock4 color={colors.text} size={18} />, label: 'Who’s busy', href: '/busy' },
+          { icon: <Clock4 color={colors.text} size={18} />, label: 'Who’s free', href: '/busy' },
           ...(may('planner')
             ? [
                 { icon: <UserPlus color={colors.text} size={18} />, label: 'Cover a class', href: '/cover' as Href },

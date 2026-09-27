@@ -17,7 +17,9 @@ const AUDIENCE = {
       ? `/notice/${d.noticeId}`
       : d.kind === 'request'
         ? '/requests'
-        : d.kind === 'device'
+        : d.kind === 'taking'
+          ? '/scan'
+          : d.kind === 'device'
           ? '/profile'
           : d.kind === 'security'
             ? '/security'

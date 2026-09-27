@@ -54,8 +54,9 @@ export async function studentRoutes(app: FastifyInstance, deps: Deps) {
         change_note: string | null;
         original_start: Date | null;
         substitute_name: string | null;
+        taking: boolean;
       }>(
-        `select s.id, c.code, c.title, coalesce(r.name, s.room) as room, s.status, s.mode, s.scheduled_start, s.scheduled_end,
+        `select s.id, c.code, c.title, coalesce(s.status = 'live' and s.qr_shown_at > now() - interval '90 seconds', false) as taking, coalesce(r.name, s.room) as room, s.status, s.mode, s.scheduled_start, s.scheduled_end,
                 exists(select 1 from attendance_records a where a.session_id = s.id and a.user_id = $1 and a.revoked_at is null) as marked, s.change_kind, s.change_note, s.original_start, su.full_name as substitute_name
            from class_sessions s
            join courses c on c.id = s.course_id
@@ -98,6 +99,7 @@ export async function studentRoutes(app: FastifyInstance, deps: Deps) {
         scheduledEnd: r.scheduled_end.toISOString(),
         marked: r.marked,
         change: sessionChange(r),
+        taking: r.taking,
       })),
       timezone: term.timezone,
       serverTime: deps.clock(),

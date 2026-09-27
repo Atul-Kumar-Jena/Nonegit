@@ -1,10 +1,12 @@
-import { useMemo, useState, type ReactNode } from 'react';
-import { Alert, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Alert, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
 import { ArrowLeft, Check, ChevronDown, Minus, Plus, Search, X } from 'lucide-react-native';
 import { IconButton, Input, Text } from '@kit/components/ui';
 import { InfoButton } from '@kit/components/Features';
 import { HELP } from '@/help';
+import { parseDate, parseTime } from '@/time-parse';
+export { parseDate, parseTime };
 import { colors, fonts, radius } from '@kit/theme';
 
 /** Top bar: back button, title, optional action on the right. */
@@ -139,7 +141,7 @@ export function Sheet({ open, onClose, title, children, scroll = false }: { open
             </Pressable>
           </View>
           {scroll ? (
-            <ScrollView style={{ flexShrink: 1 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            <ScrollView style={{ flexShrink: 1 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator persistentScrollbar indicatorStyle="white">
               {children}
             </ScrollView>
           ) : (
@@ -217,20 +219,6 @@ export function Select<T extends string>({
   );
 }
 
-function Stepper({ value, onDec, onInc, label }: { value: string; onDec: () => void; onInc: () => void; label: string }) {
-  return (
-    <View style={styles.stepper}>
-      <Pressable onPress={onDec} style={styles.stepBtn} accessibilityRole="button" accessibilityLabel={`Earlier ${label}`} hitSlop={4}>
-        <Minus color={colors.text} size={16} />
-      </Pressable>
-      <Text style={styles.stepVal}>{value}</Text>
-      <Pressable onPress={onInc} style={styles.stepBtn} accessibilityRole="button" accessibilityLabel={`Later ${label}`} hitSlop={4}>
-        <Plus color={colors.text} size={16} />
-      </Pressable>
-    </View>
-  );
-}
-
 const pad = (n: number) => String(n).padStart(2, '0');
 export function toMinutes(hhmm: string): number {
   const [h, m] = hhmm.split(':').map(Number);
@@ -247,18 +235,55 @@ export function hm12(hhmm: string): string {
   return `${h % 12 === 0 ? 12 : h % 12}:${pad(m)} ${h < 12 ? 'AM' : 'PM'}`;
 }
 
-/** Time picker in 12-hour form: hour and 5-minute steppers plus AM / PM (no invalid input possible). Value stays "HH:MM". */
+/**
+ * Time input: type it ("10:30", "1030", "2:05 pm"), pick AM / PM, or nudge by 5 minutes.
+ * Value stays "HH:MM" (24-hour).
+ */
 export function TimeField({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) {
   const min = toMinutes(value);
   const h24 = Math.floor(min / 60);
   const pm = h24 >= 12;
-  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+  const shown = `${h24 % 12 === 0 ? 12 : h24 % 12}:${value.slice(3)}`;
+  const [text, setText] = useState(shown);
+  const [bad, setBad] = useState(false);
+  const [focused, setFocused] = useState(false);
+  useEffect(() => {
+    if (!focused) setText(shown);
+  }, [shown, focused]);
+  const commit = (raw = text) => {
+    const v = parseTime(raw, pm);
+    setBad(!v);
+    if (v) {
+      setText(`${Math.floor(toMinutes(v) / 60) % 12 === 0 ? 12 : Math.floor(toMinutes(v) / 60) % 12}:${v.slice(3)}`);
+      if (v !== value) onChange(v);
+    }
+  };
   return (
-    <View style={{ gap: 8 }}>
+    <View style={{ gap: 6 }}>
       <View style={styles.timeRow}>
-        <Stepper label={`${label} hour`} value={String(h12)} onDec={() => onChange(fromMinutes(min - 60))} onInc={() => onChange(fromMinutes(min + 60))} />
-        <Text style={styles.colon}>:</Text>
-        <Stepper label={`${label} minutes`} value={value.slice(3)} onDec={() => onChange(fromMinutes(min % 5 ? min - (min % 5) : min - 5))} onInc={() => onChange(fromMinutes(min - (min % 5) + 5))} />
+        <View style={[styles.timeBox, focused && { borderColor: colors.text }, bad && { borderColor: colors.red }]}>
+          <TextInput
+            value={text}
+            onChangeText={(v) => {
+              setText(v);
+              setBad(false);
+            }}
+            onFocus={() => setFocused(true)}
+            onBlur={() => {
+              setFocused(false);
+              commit();
+            }}
+            onSubmitEditing={() => commit()}
+            keyboardType="numbers-and-punctuation"
+            returnKeyType="done"
+            selectTextOnFocus
+            maxLength={8}
+            accessibilityLabel={`${label}: type a time like 10:30`}
+            placeholder="10:30"
+            placeholderTextColor={colors.textDim}
+            style={styles.timeInput}
+          />
+        </View>
         <View style={styles.ampm} accessibilityRole="radiogroup" accessibilityLabel={`${label} AM or PM`}>
           {(['AM', 'PM'] as const).map((p) => {
             const on = (p === 'PM') === pm;
@@ -275,7 +300,20 @@ export function TimeField({ value, onChange, label }: { value: string; onChange:
             );
           })}
         </View>
+        <View style={{ flexDirection: 'row', gap: 6 }}>
+          <Pressable onPress={() => onChange(fromMinutes(min % 5 ? min - (min % 5) : min - 5))} style={styles.nudge} accessibilityRole="button" accessibilityLabel={`${label} 5 minutes earlier`} hitSlop={4}>
+            <Minus color={colors.text} size={15} />
+          </Pressable>
+          <Pressable onPress={() => onChange(fromMinutes(min - (min % 5) + 5))} style={styles.nudge} accessibilityRole="button" accessibilityLabel={`${label} 5 minutes later`} hitSlop={4}>
+            <Plus color={colors.text} size={15} />
+          </Pressable>
+        </View>
       </View>
+      {bad ? (
+        <Text variant="small" color={colors.red}>
+          Type a time like 10:30, 1030 or 2:05 pm.
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -295,25 +333,135 @@ export function prettyDate(ymdStr: string): string {
   return dt.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-/** Date picker: previous/next day and week, always a valid calendar date. */
+/** Date: tap it to type (e.g. 27/09/2026), or step a day / a week. Always a valid calendar date. */
 export function DateField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState('');
+  const [bad, setBad] = useState(false);
+  const [y, m, d] = value.split('-');
+  const start = () => {
+    setText(`${d}/${m}/${y}`);
+    setBad(false);
+    setEditing(true);
+  };
+  const commit = () => {
+    const v = parseDate(text, Number(y));
+    if (!v) return setBad(true);
+    setEditing(false);
+    if (v !== value) onChange(v);
+  };
   return (
-    <View style={styles.dateRow}>
-      <Pressable onPress={() => onChange(addDays(value, -7))} style={styles.dateBtn} accessibilityRole="button" accessibilityLabel="One week earlier">
-        <Text variant="monoSmall">−7</Text>
-      </Pressable>
-      <Pressable onPress={() => onChange(addDays(value, -1))} style={styles.dateBtn} accessibilityRole="button" accessibilityLabel="One day earlier">
-        <Minus color={colors.text} size={14} />
-      </Pressable>
-      <Text variant="bodyStrong" style={{ flex: 1, textAlign: 'center' }}>
-        {prettyDate(value)}
+    <View style={{ gap: 6 }}>
+      <View style={styles.dateRow}>
+        <Pressable onPress={() => onChange(addDays(value, -7))} style={styles.dateBtn} accessibilityRole="button" accessibilityLabel="One week earlier">
+          <Text variant="monoSmall">−7</Text>
+        </Pressable>
+        <Pressable onPress={() => onChange(addDays(value, -1))} style={styles.dateBtn} accessibilityRole="button" accessibilityLabel="One day earlier">
+          <Minus color={colors.text} size={14} />
+        </Pressable>
+        {editing ? (
+          <TextInput
+            value={text}
+            onChangeText={(v) => {
+              setText(v);
+              setBad(false);
+            }}
+            onBlur={commit}
+            onSubmitEditing={commit}
+            autoFocus
+            selectTextOnFocus
+            keyboardType="numbers-and-punctuation"
+            returnKeyType="done"
+            maxLength={10}
+            accessibilityLabel="Date, for example 27/09/2026"
+            style={[styles.dateInput, bad && { borderColor: colors.red }]}
+          />
+        ) : (
+          <Pressable onPress={start} style={{ flex: 1 }} accessibilityRole="button" accessibilityLabel={`${prettyDate(value)}. Tap to type a date`}>
+            <Text variant="bodyStrong" style={{ textAlign: 'center' }}>
+              {prettyDate(value)}
+            </Text>
+            <Text variant="small" style={{ textAlign: 'center', fontSize: 11 }}>
+              tap to type
+            </Text>
+          </Pressable>
+        )}
+        <Pressable onPress={() => onChange(addDays(value, 1))} style={styles.dateBtn} accessibilityRole="button" accessibilityLabel="One day later">
+          <Plus color={colors.text} size={14} />
+        </Pressable>
+        <Pressable onPress={() => onChange(addDays(value, 7))} style={styles.dateBtn} accessibilityRole="button" accessibilityLabel="One week later">
+          <Text variant="monoSmall">+7</Text>
+        </Pressable>
+      </View>
+      {bad ? (
+        <Text variant="small" color={colors.red}>
+          Type a date like 27/09/2026.
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+/** Quick picks for the geofence; any value from 10 to 1000 m can be typed. */
+export const RADIUS_PICKS = [15, 20, 30, 50, 75, 100] as const;
+
+/** Allowed distance from the classroom centre: quick picks or a typed value (e.g. 20 m). */
+export function RadiusField({ value, onChange }: { value: number; onChange: (m: number) => void }) {
+  const custom = !(RADIUS_PICKS as readonly number[]).includes(value);
+  const [text, setText] = useState(custom ? String(value) : '');
+  const [bad, setBad] = useState(false);
+  const commit = () => {
+    const n = Number(text.replace(/[^0-9]/g, ''));
+    if (!text.trim()) return;
+    if (!Number.isInteger(n) || n < 10 || n > 1000) return setBad(true);
+    setBad(false);
+    onChange(n);
+  };
+  return (
+    <View style={{ gap: 8 }}>
+      <View style={styles.radiusRow}>
+        {RADIUS_PICKS.map((m) => {
+          const on = value === m;
+          return (
+            <Pressable
+              key={m}
+              onPress={() => {
+                setText('');
+                setBad(false);
+                onChange(m);
+              }}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: on }}
+              style={[styles.radiusChip, on && styles.ampmOn]}
+            >
+              <Text style={[styles.ampmText, on && { color: colors.bg }]}>{`${m} m`}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      <View style={styles.radiusRow}>
+        <View style={[styles.timeBox, { width: undefined, flex: 1 }, custom && { borderColor: colors.text }, bad && { borderColor: colors.red }]}>
+          <TextInput
+            value={text}
+            onChangeText={(v) => {
+              setText(v.replace(/[^0-9]/g, '').slice(0, 4));
+              setBad(false);
+            }}
+            onBlur={commit}
+            onSubmitEditing={commit}
+            keyboardType="number-pad"
+            returnKeyType="done"
+            placeholder="Custom, e.g. 20"
+            placeholderTextColor={colors.textDim}
+            accessibilityLabel="Custom distance in metres"
+            style={[styles.timeInput, { fontSize: 17, textAlign: 'left' }]}
+          />
+        </View>
+        <Text variant="bodyStrong">metres</Text>
+      </View>
+      <Text variant="small" color={bad ? colors.red : undefined}>
+        {bad ? 'Enter a distance from 10 to 1000 metres.' : `Students must be within ${value} m of the classroom centre (plus a few metres for GPS drift).`}
       </Text>
-      <Pressable onPress={() => onChange(addDays(value, 1))} style={styles.dateBtn} accessibilityRole="button" accessibilityLabel="One day later">
-        <Plus color={colors.text} size={14} />
-      </Pressable>
-      <Pressable onPress={() => onChange(addDays(value, 7))} style={styles.dateBtn} accessibilityRole="button" accessibilityLabel="One week later">
-        <Text variant="monoSmall">+7</Text>
-      </Pressable>
     </View>
   );
 }
@@ -355,6 +503,12 @@ const styles = StyleSheet.create({
   stepVal: { fontFamily: fonts.monoMedium, fontSize: 20, color: colors.text, minWidth: 34, textAlign: 'center' },
   colon: { fontFamily: fonts.monoMedium, fontSize: 20, color: colors.textMuted },
   timeRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  timeBox: { borderWidth: 1, borderColor: colors.borderHi, borderRadius: radius.md, backgroundColor: colors.bgRaised, width: 112 },
+  timeInput: { fontFamily: fonts.monoMedium, fontSize: 22, color: colors.text, paddingVertical: 10, paddingHorizontal: 14, textAlign: 'center' },
+  nudge: { width: 40, height: 44, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
+  radiusRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  radiusChip: { paddingVertical: 10, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: colors.borderHi },
+  dateInput: { flex: 1, fontFamily: fonts.monoMedium, fontSize: 17, color: colors.text, textAlign: 'center', paddingVertical: 8, borderWidth: 1, borderColor: colors.text, borderRadius: radius.sm },
   ampm: { flexDirection: 'row', borderRadius: 999, borderWidth: 1, borderColor: colors.border, padding: 3, gap: 2, marginLeft: 4 },
   ampmBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999 },
   ampmOn: { backgroundColor: colors.text },

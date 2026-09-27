@@ -225,6 +225,8 @@ export const TodaySession = z.object({
   scheduledEnd: IsoDate,
   marked: z.boolean(),
   change: SessionChange.nullable().default(null),
+  /** The professor's QR is on screen right now: scan it. */
+  taking: z.boolean().default(false),
 });
 export type TodaySession = z.infer<typeof TodaySession>;
 

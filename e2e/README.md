@@ -61,3 +61,5 @@ Same demo-mode server (reset between runs).
 ## `notices.cjs` (5 steps)
 
 Same demo-mode server. A student sees new notices on Home, opens the pinned welcome (formatting rendered, no raw Markdown), reacts and un-reacts; a professor (no "Everyone" option) writes a notice to CSE-6A with the toolbar ("Reaches 8 people"), previews and sends it; the student opens it; the professor sees "Seen by 1 of 8"; the admin can address everyone.
+
+- `ui-upgrade.cjs` — Who’s free, a typed 20 m geofence, typed class times, a Sunday class added by hand, the detailed preview before publishing, batch mentors, the grouped notification list and the student’s privacy switches.

@@ -16,20 +16,13 @@ import { staffApi } from '@/api';
 import { AdjustSheet } from '@/components/Adjust';
 import { CoverSheet } from '@/components/Requests';
 import { BigScreenSheet } from '@/components/BigScreen';
-import { Chips, Field, Header, confirmAction } from '@/components/forms';
+import { Chips, Field, Header, confirmAction, RadiusField } from '@/components/forms';
 import { StatusBadge } from '@/components/SessionCard';
 import { localSessions } from '@/local-sessions';
 import { qk, useFeed, useCan, useIsAdmin, useMe } from '@/queries';
 import { useSessionView } from '@/session-view';
 import { TEACHER_EDIT_WINDOW_MS, canStartNow, minutesLabel } from '@/time';
 
-const RADII = [
-  { value: 25, label: '25 m' },
-  { value: 50, label: '50 m' },
-  { value: 75, label: '75 m' },
-  { value: 100, label: '100 m' },
-  { value: 150, label: '150 m' },
-] as const;
 const ROTATIONS = [
   { value: 5, label: '5 s' },
   { value: 7, label: '7 s' },
@@ -237,7 +230,7 @@ export default function SessionScreen() {
                 />
               </Field>
               <Field label="Allowed distance">
-                <Chips value={r} options={RADII} onChange={setRadius} />
+                <RadiusField value={r} onChange={setRadius} />
               </Field>
               <Field label="QR changes every" hint="Faster = harder to share a photo of the code.">
                 <Chips value={rot} options={ROTATIONS} onChange={setRotation} />
@@ -297,6 +290,14 @@ export default function SessionScreen() {
 
       {s.status === 'live' ? (
         <View style={{ gap: 10, marginTop: 18 }}>
+          {s.mode === 'qr' ? (
+            <View style={[styles.takingBar, s.showingQr ? styles.takingOn : null]}>
+              <View style={[styles.takingDot, { backgroundColor: s.showingQr ? colors.green : colors.amber }]} />
+              <Text variant="bodyStrong" style={{ flex: 1 }}>
+                {s.showingQr ? `Attendance being taken · ${s.marked} of ${s.enrolled} marked` : 'Class is live — show the QR to take attendance'}
+              </Text>
+            </View>
+          ) : null}
           {s.mode === 'qr' ? (
             <>
               <Button title="Show the QR code" onPress={() => router.push({ pathname: '/live/[id]', params: { id: s.id } })} icon={<QrCode color="#0a0a0a" size={18} />} />
@@ -407,6 +408,9 @@ function EntryRow({ e, tz, first }: { e: FeedEntry; tz?: string; first: boolean 
 }
 
 const styles = StyleSheet.create({
+  takingBar: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(251,191,36,0.4)', backgroundColor: 'rgba(251,191,36,0.08)' },
+  takingOn: { borderColor: 'rgba(74,222,128,0.5)', backgroundColor: 'rgba(74,222,128,0.1)' },
+  takingDot: { width: 10, height: 10, borderRadius: 5 },
   hintRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   entry: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 11 },
 });

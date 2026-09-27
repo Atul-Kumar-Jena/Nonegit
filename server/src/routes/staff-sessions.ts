@@ -27,12 +27,13 @@ import {
 import type { PoolClient } from 'pg';
 import type { Deps } from '../deps';
 import { decidableStudents } from '../lib/mentors';
+import { markShowing } from '../lib/class-clock';
 import { insertNotifications } from '../lib/notify';
 import { assertPhoneFree, hardwareHash } from '../lib/users';
 import { tenantFlag } from '../lib/flags';
 import { withTx, type Queryable } from '../db';
 import { STAFF, can, instructorFilter, isAdmin, loadCourseFor, loadSessionFor, requirePerm, type SessionAccessRow } from '../lib/access';
-import { requireDevice, type AuthContext } from '../lib/auth';
+import { perDeviceKey, requireDevice, type AuthContext } from '../lib/auth';
 import { ApiError } from '../lib/errors';
 import { signReceipt } from '../lib/receipts';
 import { assignLectureNo, createSession } from '../lib/sessions';
@@ -132,13 +133,23 @@ export async function staffSessionRoutes(app: FastifyInstance, deps: Deps) {
       // A future extra class is news for the students of the course.
       if (starts.getTime() > now()) {
         const course = await loadCourseFor(tx, auth, b.courseId);
-        await deliverChanges(tx, auth.tenantId, [
-          { kind: 'extra', courseId: b.courseId, courseCode: course.code, sessionId: c.id, text: `Extra ${course.code} class: ${fmtWhen(starts, inst.timezone)}${room ? ` · ${room.name}` : ''}` },
-        ]);
+        const line = { kind: 'extra' as const, courseId: b.courseId, courseCode: course.code, sessionId: c.id, text: `Extra ${course.code} class: ${fmtWhen(starts, inst.timezone)}${room ? ` · ${room.name}` : ''}` };
+        // …and for its professor, when someone else scheduled it.
+        const staff = course.instructor_id && course.instructor_id !== auth.userId ? new Map([[course.instructor_id, [line]]]) : undefined;
+        await deliverChanges(tx, auth.tenantId, [line], staff);
       }
       return c;
     });
     return loadStaffSession(deps.db, created.id);
+  });
+
+  /** The professor's phone is showing this class's QR (sent when opened, then every 30 s). */
+  app.post('/v1/staff/sessions/:id/showing', { config: { rateLimit: { max: 20, timeWindow: '1 minute', keyGenerator: perDeviceKey } } }, async (req) => {
+    const auth = await requireDevice(req, deps, STAFF);
+    const { id } = IdParam.parse(req.params);
+    await loadSessionFor(deps.db, auth, id, true);
+    await markShowing(deps.db, id, new Date(now()));
+    return { ok: true as const };
   });
 
   app.get('/v1/staff/sessions/:id', async (req): Promise<SessionWithSecret> => {

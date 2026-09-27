@@ -9,16 +9,9 @@ import { getPreciseFix } from '@kit/lib/location';
 import { useApi } from '@kit/state/session';
 import { colors } from '@kit/theme';
 import { staffApi } from '@/api';
-import { Chips, Empty, Field, Header, Sheet, ToggleRow, firstIssue } from '@/components/forms';
+import { Chips, Empty, Field, Header, Sheet, ToggleRow, firstIssue, RadiusField } from '@/components/forms';
 import { useCan, useRooms } from '@/queries';
 
-const RADII = [
-  { value: 25, label: '25 m' },
-  { value: 50, label: '50 m' },
-  { value: 75, label: '75 m' },
-  { value: 100, label: '100 m' },
-  { value: 150, label: '150 m' },
-] as const;
 
 /** Classrooms and their saved locations (the geofence QR classes use). */
 export default function Rooms() {
@@ -118,7 +111,7 @@ function RoomSheet({ room, onClose }: { room: Room | null; onClose: () => void }
       ) : null}
       {accuracy !== null && accuracy > 40 ? <Text variant="small" color={colors.amber} style={{ marginTop: 4 }}>Weak GPS (±{accuracy} m). Move near a window and try again for a better fix.</Text> : null}
       <Field label="Allowed distance">
-        <Chips value={radiusM} options={RADII} onChange={setRadius} />
+        <RadiusField value={radiusM} onChange={setRadius} />
       </Field>
       {room ? <ToggleRow label="Active" hint="Hidden rooms can’t be picked for new classes." value={active} onChange={setActive} /> : null}
       {error ? (

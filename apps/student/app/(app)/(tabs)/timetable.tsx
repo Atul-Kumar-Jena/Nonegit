@@ -81,7 +81,7 @@ export default function Timetable() {
         <ChevronRight color={colors.textDim} size={16} />
       </Pressable>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.days} style={{ marginTop: 16, marginHorizontal: -20 }}>
+      <ScrollView horizontal showsHorizontalScrollIndicator persistentScrollbar indicatorStyle="white" contentContainerStyle={styles.days} style={{ marginTop: 16, marginHorizontal: -20 }}>
         {DAYS.map(({ d, label }) => {
           const on = d === day;
           const count = bySlotDay.get(d)?.length ?? 0;

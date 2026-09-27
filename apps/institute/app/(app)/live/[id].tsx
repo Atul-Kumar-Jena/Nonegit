@@ -59,6 +59,16 @@ export default function LiveQr() {
     return () => clearInterval(t);
   }, [api]);
 
+  // Tell the server the QR is on screen (now and every 30 s): students see “attendance being taken”.
+  const live = s?.status === 'live';
+  useEffect(() => {
+    if (!live) return;
+    const ping = () => void staffApi.showing(api, id).catch(() => undefined);
+    ping();
+    const t = setInterval(ping, 30_000);
+    return () => clearInterval(t);
+  }, [api, id, live]);
+
   const key = useMemo(() => {
     try {
       return secret ? fromB64url(secret) : null;

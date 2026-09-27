@@ -36,7 +36,9 @@ export function Screen({
     <ScrollView
       contentContainerStyle={[styles.content, contentStyle]}
       keyboardShouldPersistTaps="handled"
-      showsVerticalScrollIndicator={false}
+      showsVerticalScrollIndicator
+      persistentScrollbar
+      indicatorStyle="white"
       refreshControl={onRefresh ? <RefreshControl refreshing={!!refreshing} onRefresh={onRefresh} tintColor={colors.cyan} colors={[colors.cyan]} progressBackgroundColor={colors.card} /> : undefined}
     >
       {children}

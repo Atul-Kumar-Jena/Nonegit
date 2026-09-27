@@ -199,7 +199,7 @@ export function NoticeHomeCard() {
 /** Horizontal filter chips. */
 export function ChipRow<T extends string>({ value, options, onChange }: { value: T; options: readonly { value: T; label: string }[]; onChange: (v: T) => void }) {
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={{ gap: 8, paddingVertical: 2 }}>
+    <ScrollView horizontal showsHorizontalScrollIndicator persistentScrollbar indicatorStyle="white" style={{ flexGrow: 0 }} contentContainerStyle={{ gap: 8, paddingVertical: 2 }}>
       {options.map((o) => {
         const on = o.value === value;
         return (

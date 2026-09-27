@@ -74,7 +74,14 @@ Every Android phone now creates its key **inside its security chip** (TEE / Stro
 - **Emergency:** if a phone model is wrongly refused, Developer app → Console → switch **Relax phone hardware checks** on, and tell us the model.
 - Phones bound before this update move their key into the chip by themselves the next time the app opens online.
 
-## 8 · Go-live check
+## 8 · Classes, alerts and notifications
+- Classes **go live by themselves** at their start time (the professor gets “▶ CS-301 is live now”) and close 15 minutes after they end. A QR class needs its room’s location saved (Rooms → Use my location); otherwise its professor starts it from their phone.
+- When the QR is on screen (phone or big screen), students see **“Attendance being taken — scan now”** and get one notification.
+- Phone requests go to each batch’s **mentor** (Batches → a batch → Settings → Mentor); batches without one go to the admins.
+- Push notifications carry a thumbnail. On Render this works by itself; elsewhere set `PUBLIC_URL` to the server’s https address.
+- Optional: Developer app → Institutions → Flags → **Refuse offline scans** (campuses with reliable internet).
+
+## 9 · Go-live check
 1. Developer app → **Console → Production checklist**: 6/6 ✓.
 2. Developer app → **Institutions** → each real institution shows **✓ Verified**; share its code with its admin.
 3. A real professor and a real student sign in with emailed codes, run a class, scan, download a report.

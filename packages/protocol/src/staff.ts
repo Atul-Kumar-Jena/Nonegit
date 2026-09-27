@@ -268,6 +268,8 @@ export const StaffSession = z.object({
   teacher: z.object({ id: uuid, name: z.string() }).nullable().default(null),
   substitute: z.object({ id: uuid, name: z.string() }).nullable().default(null),
   change: SessionChange.nullable().default(null),
+  /** The QR is on screen now (phone or big screen): attendance is being taken. */
+  showingQr: z.boolean().default(false),
 });
 export type StaffSession = z.infer<typeof StaffSession>;
 

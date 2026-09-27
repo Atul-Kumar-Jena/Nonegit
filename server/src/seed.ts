@@ -77,6 +77,7 @@ export async function seedDemo(pool: Db, config: Config, opts: { reset?: boolean
       if (!reset) {
         if (await ensureDemoBatches(tx, existing.rows[0].id)) log('Added the demo batches (CSE-6A, CSE-6B).');
         if (await ensureDemoNotices(tx, existing.rows[0].id)) log('Added the demo notices.');
+        if (await ensureDemoMentors(tx, existing.rows[0].id)) log('Gave the demo batches their mentors.');
         log('Demo institution already exists. Run "npm run seed -- --reset" to recreate it.');
         return false;
       }
@@ -190,6 +191,7 @@ export async function seedDemo(pool: Db, config: Config, opts: { reset?: boolean
     }
     await ensureDemoBatches(tx, tenantId);
     await ensureDemoNotices(tx, tenantId);
+    await ensureDemoMentors(tx, tenantId);
     await appendAudit(tx, { tenantId, actorType: 'system', action: 'seed.demo', data: { students: studentIds.length, records } });
     log(`Seeded "Demo Institute of Technology": ${studentIds.length} students, ${COURSES.length} courses, ${records} historic attendance records.`);
     log('Sign in to the Student app as  aarav@demo.attendly.app  (or +919000000001).');
@@ -222,6 +224,18 @@ async function ensureDemoBatches(tx: PoolClient, tenantId: string): Promise<bool
     );
   }
   return true;
+}
+
+/** Demo batches get mentors (idempotent): CSE-6A → Dr. S. Banerjee, CSE-6B → Dr. R. Khanna. */
+async function ensureDemoMentors(tx: PoolClient, tenantId: string): Promise<boolean> {
+  const r = await tx.query(
+    `update batches b set mentor_id = u.id
+       from (values ('CSE-6A', 'banerjee@demo.attendly.app'), ('CSE-6B', 'khanna@demo.attendly.app')) as m(batch, email)
+       join users u on u.email = m.email and u.tenant_id = $1
+      where b.tenant_id = $1 and b.name = m.batch and b.mentor_id is null`,
+    [tenantId],
+  );
+  return (r.rowCount ?? 0) > 0;
 }
 
 /** Two sample notices (idempotent): a pinned welcome to everyone, a quiz notice to one batch. */

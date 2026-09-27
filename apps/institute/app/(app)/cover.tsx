@@ -233,7 +233,7 @@ export default function Cover() {
     <Screen scroll={false}>
       <View ref={rootRef} style={{ flex: 1 }} collapsable={false}>
         <Header info="cover" title="Cover a class" subtitle="Admin · any class, any teacher" />
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={{ gap: 8, paddingRight: 16 }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator persistentScrollbar indicatorStyle="white" style={{ flexGrow: 0 }} contentContainerStyle={{ gap: 8, paddingRight: 16 }}>
           {[0, 1, 2, 3, 4, 5, 6].map((i) => {
             const on = offset === i;
             return (
@@ -507,12 +507,12 @@ function TeacherChip({
       style={[styles.chip, { borderColor: picked ? colors.cyan : free ? 'rgba(52,211,153,0.5)' : colors.border, opacity: dragging ? 0.35 : 1 }, picked && { backgroundColor: colors.cyanSoft }]}
     >
       <Avatar text={initials(t.name)} size={30} />
-      <View style={{ maxWidth: 130 }}>
-        <Text variant="bodyStrong" numberOfLines={1}>
+      <View style={{ maxWidth: 190 }}>
+        <Text variant="bodyStrong" numberOfLines={2} style={{ fontSize: 15 }}>
           {t.name}
           {me ? ' (you)' : ''}
         </Text>
-        <Text variant="small" color={free ? colors.green : colors.amber} numberOfLines={1}>
+        <Text variant="small" color={free ? colors.green : colors.amber} numberOfLines={2}>
           {status}
         </Text>
         <DayStrip blocks={blocks} highlight={highlight} />

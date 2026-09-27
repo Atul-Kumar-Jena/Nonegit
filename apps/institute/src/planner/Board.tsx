@@ -13,8 +13,8 @@ export const t12 = (min: number) => {
   const h = Math.floor(min / 60) % 24;
   return `${h % 12 === 0 ? 12 : h % 12}:${String(min % 60).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
 };
-const HEADER_H = 44;
-const GUTTER = 38;
+const HEADER_H = 50;
+const GUTTER = 50;
 const LONG_PRESS_MS = 230;
 const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const HUES = [190, 265, 150, 25, 330, 45, 210, 290, 120, 0];
@@ -176,12 +176,17 @@ const Card = memo(function Card({
       </View>
       {h > 30 ? (
         <Text style={styles.meta} numberOfLines={1}>
-          {compact ? t12(hmToMin(item.start)).replace(':00', '') : `${t12(hmToMin(item.start))}–${t12(hmToMin(item.end))}`}
+          {compact ? t12(hmToMin(item.start)).replace(':00', '') : `${t12(hmToMin(item.start))} – ${t12(hmToMin(item.end))}`}
         </Text>
       ) : null}
-      {h > 46 && !compact ? (
+      {h > 50 && teacher ? (
+        <Text style={[styles.teacher, compact && { fontSize: 10.5 }]} numberOfLines={compact ? 2 : 1}>
+          {teacher}
+        </Text>
+      ) : null}
+      {h > 70 && room && !compact ? (
         <Text style={styles.meta} numberOfLines={1}>
-          {[room, teacher].filter(Boolean).join(' · ')}
+          {room}
         </Text>
       ) : null}
     </View>
@@ -201,8 +206,8 @@ function TrayChip({ course, drag, onTap }: { course: PlannerCourse; drag: DragHa
   return (
     <View {...handlers.panHandlers} accessible accessibilityRole="button" accessibilityLabel={`${course.code}: tap to add a class, or long-press and drag it onto the timetable`} style={[styles.chip, { backgroundColor: color.bg, borderColor: color.line }]}>
       <Text style={styles.code}>{course.code}</Text>
-      <Text style={styles.meta} numberOfLines={1}>
-        {course.instructorName ?? 'no teacher'}
+      <Text style={styles.teacher} numberOfLines={1}>
+        {course.instructorName ?? 'No teacher yet'}
       </Text>
     </View>
   );
@@ -244,8 +249,9 @@ export function Board(p: BoardProps) {
     }
     return { dayStart: Math.max(0, s), dayEnd: Math.min(24 * 60, e) };
   }, [p.items]);
-  const colW = p.compact ? Math.max(48, (vpW - GUTTER - 2) / p.days.length) : 136;
-  const ppm = (p.compact ? 56 : 72) / 60;
+  // Roomy by default (easy to read and to aim a drop); zoom out to see the whole week.
+  const colW = p.compact ? Math.max(52, (vpW - GUTTER - 2) / p.days.length) : 180;
+  const ppm = (p.compact ? 64 : 104) / 60;
   const geom: Geometry = { days: p.days, colW, ppm, dayStart, dayEnd };
   const gridW = GUTTER + colW * p.days.length;
   const gridH = (dayEnd - dayStart) * ppm;
@@ -413,7 +419,9 @@ export function Board(p: BoardProps) {
           ref={hRef}
           horizontal
           scrollEnabled={!drag && gridW > vpW + 1}
-          showsHorizontalScrollIndicator={false}
+          showsHorizontalScrollIndicator
+          persistentScrollbar
+          indicatorStyle="white"
           onScroll={(e) => (scroll.current.x = e.nativeEvent.contentOffset.x)}
           scrollEventThrottle={16}
           contentContainerStyle={{ width: Math.max(gridW, vpW) }}
@@ -430,7 +438,7 @@ export function Board(p: BoardProps) {
                     <Text style={[styles.dayName, isToday && { color: colors.cyan }]}>{DAY_SHORT[weekdayOf(d)]}</Text>
                     <Text style={styles.dayDate}>
                       {Number(d.slice(8))}
-                      {p.compact ? '' : ` · ${n}`}
+                      {p.compact ? '' : ` · ${n} ${n === 1 ? 'class' : 'classes'}`}
                     </Text>
                   </View>
                 );
@@ -442,15 +450,20 @@ export function Board(p: BoardProps) {
               scrollEnabled={!drag}
               onScroll={(e) => (scroll.current.y = e.nativeEvent.contentOffset.y)}
               scrollEventThrottle={16}
-              showsVerticalScrollIndicator={false}
+              showsVerticalScrollIndicator
+              persistentScrollbar
+              indicatorStyle="white"
               nestedScrollEnabled
             >
               <View style={{ width: gridW, height: gridH + 8 }}>
                 {hours.map((m) => (
                   <View key={m} style={[styles.hourLine, { top: (m - dayStart) * ppm }]}>
-                    <Text style={styles.hourText}>{`${Math.floor(m / 60) % 12 === 0 ? 12 : Math.floor(m / 60) % 12}${Math.floor(m / 60) < 12 ? 'a' : 'p'}`}</Text>
+                    <Text style={styles.hourText}>{`${Math.floor(m / 60) % 12 === 0 ? 12 : Math.floor(m / 60) % 12} ${Math.floor(m / 60) < 12 ? 'AM' : 'PM'}`}</Text>
                   </View>
                 ))}
+                {p.compact
+                  ? null
+                  : hours.slice(0, -1).map((m) => <View key={`h${m}`} style={[styles.halfLine, { top: (m + 30 - dayStart) * ppm, left: GUTTER }]} />)}
                 {p.days.map((d, i) => (
                   <View key={d} style={[styles.dayCol, { left: GUTTER + i * colW, width: colW, height: gridH }, d === p.today && { backgroundColor: 'rgba(255, 255, 255, 0.035)' }, d < p.today && { backgroundColor: 'rgba(255,255,255,0.02)' }]} />
                 ))}
@@ -505,11 +518,33 @@ export function Board(p: BoardProps) {
           <Text variant="label" style={{ marginBottom: 6 }}>
             Add a class — tap, or hold & drag onto the week
           </Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }} scrollEnabled={!drag}>
+          <ScrollView horizontal showsHorizontalScrollIndicator persistentScrollbar indicatorStyle="white" contentContainerStyle={{ gap: 8, paddingBottom: 8, paddingRight: 12 }} scrollEnabled={!drag}>
             {p.tray.map((c) => (
               <TrayChip key={c.id} course={c} drag={handlers} onTap={p.onTrayTap} />
             ))}
           </ScrollView>
+        </View>
+      ) : null}
+
+      {drag ? (
+        <View pointerEvents="none" style={[styles.dragInfo, { borderColor: tone }]}>
+          <Text style={styles.dragTitle} numberOfLines={1}>
+            {`${ghostCourse?.code ?? ''}${ghostCourse?.instructorName ? ` · ${drag.src.kind === 'item' && drag.src.item.teacherId ? (p.teachers.get(drag.src.item.teacherId) ?? ghostCourse.instructorName) : ghostCourse.instructorName}` : ''}`}
+          </Text>
+          <Text style={styles.dragLine} numberOfLines={1}>
+            {drag.src.kind === 'item'
+              ? `From ${DAY_SHORT[weekdayOf(drag.src.item.date)]} ${t12(hmToMin(drag.src.item.start))} – ${t12(hmToMin(drag.src.item.end))}`
+              : 'New class · 1 hour'}
+          </Text>
+          <Text style={[styles.dragLine, { color: tone }]} numberOfLines={2}>
+            {!target
+              ? 'Move over a day to choose the time'
+              : target.overKey
+                ? `Drop to swap with ${p.courses.get(p.items.find((i) => i.key === target.overKey)?.courseId ?? '')?.code ?? 'that class'}`
+                : clash
+                  ? `✕ ${clash}`
+                  : `To ${DAY_SHORT[weekdayOf(target.date)]} ${Number(target.date.slice(8))} · ${t12(target.startMin)} – ${t12(target.startMin + targetDur)} ✓`}
+          </Text>
         </View>
       ) : null}
 
@@ -547,19 +582,24 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border, backgroundColor: colors.bg },
   dayHead: { alignItems: 'center', justifyContent: 'center', borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: colors.border },
   today: { backgroundColor: 'rgba(255, 255, 255, 0.07)' },
-  dayName: { fontFamily: fonts.semibold, fontSize: 13, color: colors.text },
-  dayDate: { fontFamily: fonts.mono, fontSize: 10.5, color: colors.textMuted },
+  dayName: { fontFamily: fonts.semibold, fontSize: 14, color: colors.text },
+  dayDate: { fontFamily: fonts.mono, fontSize: 11, color: colors.textMuted },
   hourLine: { position: 'absolute', left: 0, right: 0, height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
-  hourText: { position: 'absolute', left: 5, top: 1, fontFamily: fonts.mono, fontSize: 10, color: colors.textMuted },
+  hourText: { position: 'absolute', left: 6, top: 2, fontFamily: fonts.mono, fontSize: 10.5, color: colors.textMuted },
   nowLine: { position: 'absolute', height: 2, backgroundColor: colors.red },
   nowDot: { position: 'absolute', left: -4, top: -3, width: 8, height: 8, borderRadius: 4, backgroundColor: colors.red },
   dayCol: { position: 'absolute', top: 0, borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: colors.border },
-  card: { position: 'absolute', borderRadius: 8, paddingHorizontal: 4, paddingVertical: 3, overflow: 'hidden' },
-  code: { fontFamily: fonts.bold, fontSize: 12.5, color: colors.text },
-  meta: { fontFamily: fonts.medium, fontSize: 10.5, color: colors.textMuted },
+  card: { position: 'absolute', borderRadius: 10, paddingHorizontal: 7, paddingVertical: 5, overflow: 'hidden', gap: 1 },
+  code: { fontFamily: fonts.bold, fontSize: 14, color: colors.text },
+  meta: { fontFamily: fonts.medium, fontSize: 11.5, color: colors.textMuted },
+  teacher: { fontFamily: fonts.semibold, fontSize: 12, color: colors.text },
+  halfLine: { position: 'absolute', right: 0, height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(255,255,255,0.05)' },
+  dragInfo: { position: 'absolute', top: 8, left: 12, right: 12, padding: 12, borderRadius: 14, borderWidth: 2, backgroundColor: 'rgba(10,10,10,0.96)', gap: 3, elevation: 20 },
+  dragTitle: { fontFamily: fonts.bold, fontSize: 15, color: colors.text },
+  dragLine: { fontFamily: fonts.medium, fontSize: 13, color: colors.textMuted },
   dropPreview: { position: 'absolute', borderRadius: 8, borderWidth: 2, borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255, 255, 255, 0.08)' },
   dropText: { fontFamily: fonts.semibold, fontSize: 11, color: colors.text, textAlign: 'center' },
-  tray: { paddingTop: 10, paddingBottom: 6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
-  chip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, borderWidth: 1, minWidth: 84 },
+  tray: { paddingTop: 10, paddingBottom: 4, paddingLeft: 14, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  chip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: 1, minWidth: 110, maxWidth: 190 },
   ghost: { position: 'absolute', borderRadius: 12, borderWidth: 2, padding: 7, gap: 2, shadowColor: '#000', shadowOpacity: 0.6, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 16 },
 });

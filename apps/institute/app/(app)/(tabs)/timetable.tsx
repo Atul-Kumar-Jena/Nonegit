@@ -79,11 +79,11 @@ export default function Timetable() {
         <Button title="Open the planner (drag & drop)" onPress={() => router.push('/planner')} icon={<CalendarRange color="#0a0a0a" size={16} />} style={{ marginTop: 12 }} />
       ) : null}
       <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
-        <Button title="Who’s busy where" kind="ghost" compact onPress={() => router.push('/busy')} icon={<Clock4 color={colors.text} size={14} />} />
+        <Button title="Who’s free" kind="ghost" compact onPress={() => router.push('/busy')} icon={<Clock4 color={colors.text} size={14} />} />
         {planner ? <Button title="Cover a class (drag a free teacher)" kind="ghost" compact onPress={() => router.push('/cover')} icon={<UserPlus color={colors.text} size={14} />} /> : null}
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.days} style={{ marginTop: 16, marginHorizontal: -20 }}>
+      <ScrollView horizontal showsHorizontalScrollIndicator persistentScrollbar indicatorStyle="white" contentContainerStyle={styles.days} style={{ marginTop: 16, marginHorizontal: -20 }}>
         {WEEKDAYS.map(({ value: d, label }) => {
           const on = d === day;
           const count = byDay.get(d)?.length ?? 0;

@@ -49,6 +49,9 @@ export function BatchList({ onCreate }: { onCreate: () => void }) {
                     <Text variant="small" numberOfLines={1}>
                       {[b.department, `${b.size} ${b.size === 1 ? 'student' : 'students'}`, `${b.courseIds.length} ${b.courseIds.length === 1 ? 'subject' : 'subjects'}`].filter(Boolean).join(' · ')}
                     </Text>
+                    <Text variant="small" numberOfLines={1} color={b.mentor ? colors.text : colors.textDim}>
+                      {b.mentor ? `Mentor: ${b.mentor.name}` : 'No mentor yet'}
+                    </Text>
                   </View>
                   {!b.active ? <Badge label="Archived" tone="muted" dot={false} /> : null}
                   <ChevronRight color={colors.textDim} size={16} />

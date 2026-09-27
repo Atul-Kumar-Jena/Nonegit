@@ -106,6 +106,7 @@ export const staffApi = {
   sessions: (api: ApiClient, f: { date?: string; days?: number; courseId?: string } = {}) => api.authed('GET', `/v1/staff/sessions${qs(f)}`, z.array(StaffSession)),
   createSession: (api: ApiClient, b: CreateSessionBody) => api.authed('POST', '/v1/staff/sessions', StaffSession, b),
   session: (api: ApiClient, id: string) => api.authed('GET', `/v1/staff/sessions/${enc(id)}`, SessionWithSecret),
+  showing: (api: ApiClient, id: string) => api.authed('POST', `/v1/staff/sessions/${enc(id)}/showing`, OkResponse, {}),
   start: (api: ApiClient, id: string, b: StartSessionBody) => api.authed('POST', `/v1/staff/sessions/${enc(id)}/start`, SessionWithSecret, b),
   end: (api: ApiClient, id: string, b: EndSessionBody) => api.authed('POST', `/v1/staff/sessions/${enc(id)}/end`, StaffSession, b),
   cancel: (api: ApiClient, id: string, reason?: string) => api.authed('POST', `/v1/staff/sessions/${enc(id)}/cancel`, StaffSession, reason ? { reason } : {}),

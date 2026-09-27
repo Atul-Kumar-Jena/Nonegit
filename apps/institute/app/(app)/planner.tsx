@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { ChevronLeft, ChevronRight, CloudOff, FileClock, ListChecks, Undo2, ZoomIn, ZoomOut } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight, CloudOff, FileClock, ListChecks, Plus, Undo2, ZoomIn, ZoomOut } from 'lucide-react-native';
 import {
   addDaysYmd,
   applyOps,
@@ -28,10 +28,11 @@ import {
 import { Backdrop } from '@kit/components/Screen';
 import { Badge, Button, Card, IconButton, Input, Loading, Notice, Segmented, Text } from '@kit/components/ui';
 import { useApi } from '@kit/state/session';
-import { colors } from '@kit/theme';
+import { colors, fonts } from '@kit/theme';
 import { ConflictList, TeacherPicker } from '@/components/Adjust';
-import { DateField, Field, Select, Sheet, TimeField, confirmAction, fromMinutes, toMinutes } from '@/components/forms';
-import { Board, type DragSource, type DropTarget, t12 } from '@/planner/Board';
+import { DateField, Field, Select, Sheet, TimeField, confirmAction, fromMinutes, prettyDate, toMinutes } from '@/components/forms';
+import { Board, courseColor, type DragSource, type DropTarget, t12 } from '@/planner/Board';
+import { buildPreview, type ChangeKind, type ClassChange, type DraftPreview } from '@/planner/preview';
 import { describeOp, type KnownSession } from '@/planner/describe';
 import { useDraft } from '@/planner/useDraft';
 import { useCan, useOverview, usePlannerWeek } from '@/queries';
@@ -65,7 +66,7 @@ export default function Planner() {
   const [filterId, setFilterId] = useState<string | null>(null);
   const [history, setHistory] = useState<DraftOp[][]>([]);
   const [selected, setSelected] = useState<PlannerItem | null>(null);
-  const [adding, setAdding] = useState<PlannerCourse | null>(null);
+  const [adding, setAdding] = useState<PlannerCourse | 'pick' | null>(null);
   const [swap, setSwap] = useState<{ a: PlannerItem; b: PlannerItem; target: DropTarget } | null>(null);
   const [review, setReview] = useState(false);
   const [menu, setMenu] = useState(false);
@@ -112,11 +113,8 @@ export default function Planner() {
     return all;
   }, [week, filterKind, filterId]);
 
-  const days = useMemo(() => {
-    const all = Array.from({ length: 7 }, (_, i) => addDaysYmd(weekStart, i));
-    const sunday = all[6]!;
-    return applied.items.some((i) => i.date === sunday) ? all : all.slice(0, 6);
-  }, [weekStart, applied.items]);
+  // All seven days: classes can be planned on Sundays too.
+  const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDaysYmd(weekStart, i)), [weekStart]);
 
   if (!admin) {
     return (
@@ -211,6 +209,7 @@ export default function Planner() {
             <ChevronRight color={colors.text} size={16} />
           </IconButton>
           <View style={{ flex: 1 }} />
+          <Button title="Add class" kind="secondary" compact onPress={() => setAdding('pick')} icon={<Plus color={colors.text} size={15} />} />
           <IconButton label={compact ? 'Zoom in (wide days)' : 'Zoom out (whole week)'} onPress={() => setCompact((c) => !c)}>
             {compact ? <ZoomIn color={colors.text} size={18} /> : <ZoomOut color={colors.text} size={18} />}
           </IconButton>
@@ -260,7 +259,7 @@ export default function Planner() {
       {d.notice ? <Notice tone="violet" message={d.notice} onDismiss={d.clearNotice} /> : null}
       {notice ? <Notice tone="cyan" message={notice} onDismiss={() => setNotice(null)} /> : null}
 
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1, marginHorizontal: 8, borderRadius: 14, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border }}>
         {!week ? (
           weekQ.isError ? (
             <View style={{ padding: 20 }}>
@@ -294,7 +293,7 @@ export default function Planner() {
             {counts.weekly ? <Text variant="small"> · {counts.weekly} weekly</Text> : null}
           </Text>
           <Text variant="small" color={errorsCount ? colors.red : warnCount ? colors.amber : colors.textMuted}>
-            {errorsCount ? `${errorsCount} ${errorsCount === 1 ? 'clash' : 'clashes'} to fix` : warnCount ? `${warnCount} to check` : d.ops.length ? 'No clashes' : 'Long-press a class to drag it'}
+            {errorsCount ? `${errorsCount} ${errorsCount === 1 ? 'clash' : 'clashes'} to fix` : warnCount ? `${warnCount} to check` : d.ops.length ? 'No clashes' : 'Hold & drag a class, or tap it to set things by hand'}
           </Text>
         </View>
         <Button title="Review & publish" compact onPress={() => setReview(true)} disabled={!d.ops.length} icon={<ListChecks color="#0a0a0a" size={16} />} />
@@ -314,7 +313,9 @@ export default function Planner() {
       ) : null}
       {adding && week ? (
         <AddSheet
-          course={adding}
+          course={adding === 'pick' ? null : adding}
+          courses={(week.courses ?? []).filter((c) => c.active)}
+          teachers={week.teachers}
           scope={scope}
           week={week}
           weekStart={weekStart}
@@ -353,6 +354,10 @@ export default function Planner() {
       ) : null}
       {review && week ? (
         <ReviewSheet
+          preview={buildPreview(week.items, applied.items, maps.courses)}
+          elsewhere={d.ops.filter((o) => ('date' in o && typeof o.date === 'string' && !days.includes(o.date)) || ('sessionId' in o && typeof o.sessionId === 'string' && !week.items.some((i) => i.sessionId === o.sessionId)))}
+          maps={maps}
+          batches={week.batches}
           ops={d.ops}
           describe={(o) => describeOp(o, { courses: maps.courses, sessions: known.current, slots: maps.slots, teachers: maps.teachers, rooms: maps.rooms })}
           conflicts={newConflicts}
@@ -599,7 +604,9 @@ function ClassSheet({
 
 /** Add a class of a course: a one-off (this date) or a new weekly slot. */
 function AddSheet({
-  course,
+  course: initial,
+  courses,
+  teachers,
   scope,
   week,
   weekStart,
@@ -607,7 +614,9 @@ function AddSheet({
   onAdd,
   onClose,
 }: {
-  course: PlannerCourse;
+  course: PlannerCourse | null;
+  courses: PlannerCourse[];
+  teachers: { id: string; name: string }[];
   scope: Scope;
   week: { today: string; now: string };
   weekStart: string;
@@ -620,11 +629,26 @@ function AddSheet({
   const [start, setStart] = useState('10:00');
   const [end, setEnd] = useState('11:00');
   const [roomId, setRoomId] = useState<string | null>(null);
+  const [courseId, setCourseId] = useState<string | null>(initial?.id ?? null);
+  const course = courses.find((c) => c.id === courseId) ?? initial;
+  const [teacherId, setTeacherId] = useState<string | null>(null);
   const past = scope === 'once' && isPast(date, start, week.today, week.now);
   const bad = toMinutes(end) <= toMinutes(start);
   return (
-    <Sheet open onClose={onClose} title={`Add ${course.code}`}>
-      <Text variant="small">{scope === 'weekly' ? 'A new weekly slot: this class every week from now on.' : 'A one-off class on one date (extra or make-up).'}</Text>
+    <Sheet open onClose={onClose} title={course ? `Add ${course.code}` : 'Add a class'} scroll>
+      <Text variant="small">{scope === 'weekly' ? 'A new weekly slot: this class every week from now on.' : 'A one-off class on one date (extra or make-up). Set each detail below.'}</Text>
+      <Field label="Subject">
+        <Select
+          title="Subject"
+          value={courseId}
+          onChange={(v) => {
+            setCourseId(v);
+            setTeacherId(null);
+          }}
+          placeholder="Choose a subject"
+          options={courses.map((c) => ({ value: c.id, label: `${c.code} · ${c.title}`, sub: c.instructorName ?? 'No teacher yet' }))}
+        />
+      </Field>
       {scope === 'weekly' ? (
         <Field label="Day (every week)">
           <Segmented
@@ -656,15 +680,27 @@ function AddSheet({
       <Field label="Room">
         <Select title="Room" value={roomId} onChange={setRoomId} allowNone="No room" options={rooms.map((r) => ({ value: r.id, label: r.name }))} />
       </Field>
+      {scope === 'once' ? (
+        <Field label="Teacher" hint={course?.instructorName ? `Leave as is for ${course.instructorName}, the subject’s teacher.` : undefined}>
+          <Select
+            title="Teacher"
+            value={teacherId}
+            onChange={setTeacherId}
+            allowNone={course?.instructorName ? `${course.instructorName} (subject’s teacher)` : 'Subject’s teacher'}
+            options={teachers.filter((t) => t.id !== course?.instructorId).map((t) => ({ value: t.id, label: t.name }))}
+          />
+        </Field>
+      ) : null}
       {past ? <Text variant="small" color={colors.red}>That time has already passed.</Text> : null}
       <Button
         title="Add to draft"
-        disabled={bad || past}
+        disabled={bad || past || !course}
         onPress={() =>
+          course &&
           onAdd(
             scope === 'weekly'
               ? { op: 'slot.create', tempId: newTempId(), courseId: course.id, weekday: weekdayOf(date), start, end, roomId }
-              : { op: 'extra', tempId: newTempId(), courseId: course.id, date, start, end, roomId },
+              : { op: 'extra', tempId: newTempId(), courseId: course.id, date, start, end, roomId, ...(teacherId ? { teacherId } : {}) },
           )
         }
         style={{ marginTop: 16 }}
@@ -673,8 +709,78 @@ function AddSheet({
   );
 }
 
+const KIND_LABEL: Record<ChangeKind, { text: string; tone: 'green' | 'amber' | 'red' | 'violet' | 'cyan' | 'muted' }> = {
+  new: { text: 'New class', tone: 'green' },
+  moved: { text: 'Moved', tone: 'violet' },
+  cancelled: { text: 'Cancelled', tone: 'red' },
+  removed: { text: 'Off the timetable', tone: 'red' },
+  teacher: { text: 'New teacher', tone: 'cyan' },
+  room: { text: 'New room', tone: 'amber' },
+  restored: { text: 'Back on', tone: 'green' },
+};
+
+/** One class, before → after, with who teaches it, where, and which batches it reaches. */
+function ChangeCard({ ch, maps, batches }: { ch: ClassChange; maps: { courses: Map<string, PlannerCourse>; rooms: Map<string, string>; teachers: Map<string, string> }; batches: { id: string; name: string; size: number }[] }) {
+  const course = maps.courses.get(ch.courseId);
+  const color = courseColor(ch.courseId);
+  const line = (i: PlannerItem | null) =>
+    i
+      ? {
+          when: `${prettyDate(i.date).replace(/,? \d{4}$/, '')} · ${t12(hmToMin(i.start))} – ${t12(hmToMin(i.end))}`,
+          who: i.teacherId ? (maps.teachers.get(i.teacherId) ?? 'Teacher') : 'No teacher',
+          where: i.roomId ? (maps.rooms.get(i.roomId) ?? 'Room') : 'No room',
+        }
+      : null;
+  const b = line(ch.before);
+  const a = line(ch.after);
+  const reach = (course?.batchIds ?? []).map((id) => batches.find((x) => x.id === id)).filter((x): x is { id: string; name: string; size: number } => !!x);
+  return (
+    <View style={[styles.changeCard, { borderLeftColor: color.line }]}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <Text variant="bodyStrong" style={{ fontSize: 16 }}>
+          {course?.code ?? 'Class'}
+        </Text>
+        <Text variant="small" numberOfLines={1} style={{ flex: 1 }}>
+          {course?.title ?? ''}
+        </Text>
+      </View>
+      <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+        {ch.kinds.map((k) => (
+          <Badge key={k} label={KIND_LABEL[k].text} tone={KIND_LABEL[k].tone} dot={false} />
+        ))}
+        {ch.weekly ? <Badge label="Every week" tone="muted" dot={false} /> : null}
+      </View>
+      {b && ch.kinds.some((k) => k !== 'new') ? (
+        <View style={styles.beforeAfter}>
+          <Text style={styles.baLabel}>BEFORE</Text>
+          <Text variant="small" style={[{ flex: 1 }, a && { textDecorationLine: 'line-through' }]}>
+            {`${b.when}\n${b.who} · ${b.where}`}
+          </Text>
+        </View>
+      ) : null}
+      {a && !ch.kinds.includes('cancelled') ? (
+        <View style={[styles.beforeAfter, { backgroundColor: 'rgba(74,222,128,0.08)' }]}>
+          <Text style={[styles.baLabel, { color: colors.green }]}>{b && ch.kinds.some((k) => k !== 'new') ? 'AFTER' : 'NEW'}</Text>
+          <Text variant="small" color={colors.text} style={{ flex: 1 }}>
+            {`${a.when}\n${a.who} · ${a.where}`}
+          </Text>
+        </View>
+      ) : null}
+      {reach.length ? (
+        <Text variant="small">{`Reaches ${reach.map((r) => `${r.name} (${r.size})`).join(', ')}`}</Text>
+      ) : course?.students.length ? (
+        <Text variant="small">{`Reaches ${course.students.length} enrolled students`}</Text>
+      ) : null}
+    </View>
+  );
+}
+
 /** Every change in the draft, the clashes it would create, and the publish button. */
 function ReviewSheet({
+  preview,
+  elsewhere,
+  maps,
+  batches,
   ops,
   describe,
   conflicts,
@@ -686,6 +792,11 @@ function ReviewSheet({
   onDiscard,
   onClose,
 }: {
+  preview: DraftPreview;
+  /** Edits for classes outside the week on screen. */
+  elsewhere: DraftOp[];
+  maps: { courses: Map<string, PlannerCourse>; rooms: Map<string, string>; teachers: Map<string, string> };
+  batches: { id: string; name: string; size: number }[];
   ops: DraftOp[];
   describe: (o: DraftOp) => string;
   conflicts: PlannerConflict[];
@@ -698,6 +809,7 @@ function ReviewSheet({
   onClose: () => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const [showRaw, setShowRaw] = useState(false);
   const [result, setResult] = useState<PublishResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const shownConflicts = result && !result.published ? result.conflicts : conflicts;
@@ -730,15 +842,70 @@ function ReviewSheet({
       </Sheet>
     );
 
+  const c = preview.counts;
+  const summary = [
+    c.moved && `${c.moved} moved`,
+    c.new && `${c.new} added`,
+    c.cancelled && `${c.cancelled} cancelled`,
+    c.removed && `${c.removed} removed`,
+    c.teacher && `${c.teacher} new teacher`,
+    c.room && `${c.room} new room`,
+    c.restored && `${c.restored} restored`,
+  ].filter(Boolean);
+  const byDay = new Map<string, ClassChange[]>();
+  for (const ch of preview.changes) {
+    const day = (ch.after ?? ch.before)!.date;
+    byDay.set(day, [...(byDay.get(day) ?? []), ch]);
+  }
   return (
-    <Sheet open onClose={onClose} title="Review changes">
+    <Sheet open onClose={onClose} title="Preview before publishing" scroll>
+      <Card style={{ gap: 6 }}>
+        <Text variant="heading" style={{ fontSize: 20 }}>
+          {preview.changes.length + elsewhere.length} {preview.changes.length + elsewhere.length === 1 ? 'class changes' : 'classes change'}
+        </Text>
+        <Text variant="small" color={colors.text}>
+          {[...summary, elsewhere.length ? `${elsewhere.length} in other weeks` : null].filter(Boolean).join(' · ') || 'No changes yet'}
+        </Text>
+        <Text variant="small">
+          {`${preview.students} ${preview.students === 1 ? 'student' : 'students'} will be notified, plus the teachers involved.`}
+        </Text>
+      </Card>
+      {[...byDay].map(([day, list]) => (
+        <View key={day} style={{ marginTop: 14 }}>
+          <Text variant="label" style={{ marginBottom: 8 }}>
+            {prettyDate(day)}
+          </Text>
+          <View style={{ gap: 10 }}>
+            {list.map((ch) => (
+              <ChangeCard key={ch.key} ch={ch} maps={maps} batches={batches} />
+            ))}
+          </View>
+        </View>
+      ))}
+      {elsewhere.length ? (
+        <View style={{ marginTop: 14 }}>
+          <Text variant="label" style={{ marginBottom: 8 }}>
+            Other weeks
+          </Text>
+          <View style={{ gap: 10 }}>
+            {elsewhere.map((o, i) => (
+              <View key={i} style={[styles.changeCard, { borderLeftColor: colors.violet }]}>
+                <Badge label={o.op === 'extra' ? 'New class' : o.op === 'cancel' ? 'Cancelled' : o.op === 'reschedule' ? 'Moved' : 'Changed'} tone={o.op === 'cancel' ? 'red' : o.op === 'extra' ? 'green' : 'violet'} dot={false} />
+                <Text variant="small" color={colors.text}>
+                  {describe(o)}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      ) : null}
       <Field label="Draft name">
         <Input value={title} onChangeText={onRename} maxLength={80} />
       </Field>
-      <Text variant="label" style={{ marginTop: 14, marginBottom: 6 }}>
-        {ops.length} {ops.length === 1 ? 'change' : 'changes'}
-      </Text>
-      <View style={{ gap: 6 }}>
+      <Pressable onPress={() => setShowRaw((v) => !v)} accessibilityRole="button" style={{ marginTop: 14 }}>
+        <Text variant="label">{`${showRaw ? '▾' : '▸'} ${ops.length} ${ops.length === 1 ? 'edit' : 'edits'} in this draft — tap to ${showRaw ? 'hide' : 'remove any'}`}</Text>
+      </Pressable>
+      <View style={{ gap: 6, display: showRaw ? 'flex' : 'none' }}>
         {ops.map((o, i) => {
           const err = shownErrors.find((e) => e.index === i);
           return (
@@ -784,5 +951,8 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   footer: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, backgroundColor: 'rgba(8,13,28,0.98)' },
   draftRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.border },
+  changeCard: { gap: 8, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: colors.border, borderLeftWidth: 4, backgroundColor: colors.card },
+  beforeAfter: { flexDirection: 'row', gap: 10, padding: 10, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.04)' },
+  baLabel: { fontFamily: fonts.monoMedium, fontSize: 10, letterSpacing: 1, color: colors.textMuted, width: 50, paddingTop: 2 },
   opRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
 });

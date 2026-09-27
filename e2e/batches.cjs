@@ -121,7 +121,7 @@ const visible = (page, text, exact = true) => page.getByText(text, { exact }).lo
     await visible(k, 'Neha Gupta').waitFor();
     if (await k.getByRole('button', { name: /^Remove / }).count()) throw new Error('remove buttons shown to a non-owner');
     await k.getByRole('tab', { name: 'Settings' }).click();
-    await visible(k, /Renaming, changing the semester, removing or archiving is for an admin/, false).waitFor();
+    await visible(k, /Renaming, changing the semester or mentor, removing or archiving is for an admin/, false).waitFor();
     await shot(k, 'other-professor');
   });
 

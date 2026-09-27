@@ -52,7 +52,7 @@ export const HELP: Record<string, { title: string; text: string[] }> = {
     ],
   },
   busy: {
-    title: 'Who’s busy where',
+    title: 'Who’s free',
     text: ['Every teacher’s and room’s classes for a day, on a timeline.', 'Use “Free at” to find who can take a class at a given time.'],
   },
   register: {
