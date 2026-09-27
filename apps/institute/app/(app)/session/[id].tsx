@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
-import { ArrowRightLeft, ClipboardList, CloudOff, MapPin, Monitor, QrCode, ShieldAlert, UserRound, XCircle } from 'lucide-react-native';
-import { randomToken, type FeedEntry, type SessionMode, type StartSessionBody } from '@attendly/protocol';
+import { ArrowRightLeft, ClipboardList, CloudOff, MapPin, Monitor, Play, QrCode, ShieldAlert, UserRound, XCircle } from 'lucide-react-native';
+import { randomToken, type FeedEntry, type SessionMode, type StaffSession, type StartSessionBody } from '@attendly/protocol';
 import { Screen } from '@kit/components/Screen';
 import { Badge, Button, Card, ErrorState, InfoRow, Loading, Notice, SectionLabel, Text } from '@kit/components/ui';
 import { ApiRequestError } from '@kit/lib/api-core';
@@ -106,6 +106,9 @@ export default function SessionScreen() {
         const res = await staffApi.start(api, s!.id, body);
         qc.setQueryData(qk.session(s!.id), res);
         refresh();
+        // Live for the whole batch now; the QR (or the register) is opened when the professor chooses.
+        setInfo(m === 'qr' ? 'Class started — your students see it live. Show the QR whenever you want to take attendance.' : 'Class started — your students see it live. Open the register to take attendance.');
+        return;
       } catch (err) {
         if (!offline(err)) throw err;
         if (m === 'qr' && !secret)
@@ -188,6 +191,8 @@ export default function SessionScreen() {
         </View>
       ) : null}
 
+      {s.status !== 'cancelled' ? <ClassTimeline s={s} tz={tz} now={now} /> : null}
+
       {fromCache ? (
         <View style={{ marginTop: 12 }}>
           <Notice tone="violet" message="Offline — showing the copy saved on this phone. Everything you do here syncs when you’re back online." />
@@ -250,13 +255,16 @@ export default function SessionScreen() {
             </Text>
           ) : null}
           <Button
-            title={m === 'qr' ? 'Start class & show QR' : 'Open the register'}
-            onPress={() => (m === 'qr' ? void start() : router.push({ pathname: '/register/[id]', params: { id: s.id } }))}
+            title="I’m in class — start"
+            onPress={() => void start()}
             loading={busy === 'start'}
-            disabled={m === 'qr' ? !startable : !canEditRegister}
-            icon={m === 'qr' ? <QrCode color="#0a0a0a" size={18} /> : <ClipboardList color="#0a0a0a" size={18} />}
+            disabled={!startable}
+            icon={<Play color="#0a0a0a" size={18} />}
             style={{ marginTop: 16 }}
           />
+          <Text variant="small" style={{ marginTop: 8 }}>
+            Starting makes the class live for the whole batch. You take attendance after that, when you choose.
+          </Text>
           {m === 'qr' ? (
             <View style={[styles.hintRow, { marginTop: 10 }]}>
               <MapPin color={colors.textDim} size={13} />
@@ -294,7 +302,7 @@ export default function SessionScreen() {
             <View style={[styles.takingBar, s.showingQr ? styles.takingOn : null]}>
               <View style={[styles.takingDot, { backgroundColor: s.showingQr ? colors.green : colors.amber }]} />
               <Text variant="bodyStrong" style={{ flex: 1 }}>
-                {s.showingQr ? `Attendance being taken · ${s.marked} of ${s.enrolled} marked` : 'Class is live — show the QR to take attendance'}
+                {s.showingQr ? `Attendance being taken · ${s.marked} of ${s.enrolled} marked` : 'Class is live — show the QR when you want to take attendance'}
               </Text>
             </View>
           ) : null}
@@ -406,6 +414,48 @@ function EntryRow({ e, tz, first }: { e: FeedEntry; tz?: string; first: boolean 
       </View>
       {e.present ? <Text variant="monoSmall">{e.markedAt ? clock(e.markedAt, tz) : ''}</Text> : <Badge label="Absent" tone="muted" dot={false} />}
     </View>
+  );
+}
+
+/**
+ * The class's log: its time starting (automatic), the professor starting it (arrival, with how late),
+ * attendance being taken, and the end.
+ */
+function ClassTimeline({ s, tz, now }: { s: StaffSession; tz?: string; now: number }) {
+  const due = Date.parse(s.scheduledStart) <= now;
+  const rows: { key: string; done: boolean; tone: string; label: string; detail: string }[] = [
+    { key: 'due', done: due, tone: colors.text, label: 'Class time', detail: clock(s.scheduledStart, tz) + (due ? '' : ' · upcoming') },
+    s.startedAt
+      ? { key: 'start', done: true, tone: s.lateMin ? colors.amber : colors.green, label: 'Started by the professor', detail: `${clock(s.startedAt, tz)}${s.lateMin ? ` · ${s.lateMin} min late` : ' · on time'}` }
+      : s.missed
+        ? { key: 'start', done: true, tone: colors.red, label: 'Not started', detail: 'The class time ran out' }
+        : { key: 'start', done: false, tone: due ? colors.amber : colors.textDim, label: 'Started by the professor', detail: due ? `Waiting · ${Math.max(0, Math.floor((now - Date.parse(s.scheduledStart)) / 60_000))} min since class time` : 'Not yet' },
+    {
+      key: 'att',
+      done: s.marked > 0 || s.showingQr,
+      tone: s.showingQr ? colors.green : colors.textDim,
+      label: 'Attendance',
+      detail: s.showingQr ? 'Being taken now' : s.marked > 0 ? `${s.marked} of ${s.enrolled} marked` : s.status === 'live' ? 'When you choose' : '—',
+    },
+    ...(s.endedAt ? [{ key: 'end', done: true, tone: colors.text, label: 'Ended', detail: clock(s.endedAt, tz) }] : []),
+  ];
+  return (
+    <Card style={{ marginTop: 14, gap: 12 }}>
+      {rows.map((r, i) => (
+        <View key={r.key} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <View style={{ alignItems: 'center', width: 14 }}>
+            <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: r.done ? r.tone : 'transparent', borderWidth: 1.5, borderColor: r.tone }} />
+            {i < rows.length - 1 ? <View style={{ position: 'absolute', top: 14, width: 1, height: 20, backgroundColor: colors.border }} /> : null}
+          </View>
+          <Text variant="bodyStrong" style={{ flex: 1 }}>
+            {r.label}
+          </Text>
+          <Text variant="small" color={r.done ? r.tone : colors.textDim}>
+            {r.detail}
+          </Text>
+        </View>
+      ))}
+    </Card>
   );
 }
 

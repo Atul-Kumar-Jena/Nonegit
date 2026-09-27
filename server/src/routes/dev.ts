@@ -24,6 +24,9 @@ const StartBody = z.object({
   radiusM: z.number().int().min(10).max(1000),
   rotationS: z.number().int().min(3).max(60),
   durationMin: z.number().int().min(5).max(240),
+  /** 'scheduled': the class time began `startedMinAgo` minutes ago and the professor hasn't started it. */
+  status: z.enum(['live', 'scheduled']).default('live'),
+  startedMinAgo: z.number().int().min(0).max(120).default(0),
 });
 
 export async function devRoutes(app: FastifyInstance, deps: Deps) {
@@ -88,7 +91,7 @@ export async function devRoutes(app: FastifyInstance, deps: Deps) {
     return withTx(deps.db, async (tx) => {
       const c = await tx.query<{ tenant_id: string }>('select tenant_id from courses where id = $1', [b.courseId]);
       if (!c.rows[0]) throw new ApiError(404, 'NOT_FOUND', 'Unknown course');
-      const now = new Date(deps.clock());
+      const now = new Date(deps.clock() - b.startedMinAgo * 60_000);
       return createSession(tx, {
         tenantId: c.rows[0].tenant_id,
         courseId: b.courseId,
@@ -97,10 +100,10 @@ export async function devRoutes(app: FastifyInstance, deps: Deps) {
         lng: b.lng,
         radiusM: b.radiusM,
         rotationS: b.rotationS,
-        status: 'live',
+        status: b.status,
         scheduledStart: now,
         scheduledEnd: new Date(now.getTime() + b.durationMin * 60_000),
-        startedAt: now,
+        startedAt: b.status === 'live' ? now : null,
         createdBy: null,
       });
     });

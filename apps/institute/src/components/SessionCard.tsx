@@ -7,9 +7,12 @@ import { timeRange } from '@kit/lib/format';
 import { colors } from '@kit/theme';
 
 export function StatusBadge({ s }: { s: StaffSession & { pendingSync?: boolean } }) {
-  if (s.status === 'live') return <Badge label="LIVE" tone="cyan" />;
+  if (s.status === 'live') return <Badge label={s.lateMin ? `LIVE · ${s.lateMin} min late` : 'LIVE'} tone="cyan" />;
   if (s.status === 'closed') return <Badge label="Done" tone="green" dot={false} />;
   if (s.status === 'cancelled') return <Badge label="Cancelled" tone="red" dot={false} />;
+  if (s.missed) return <Badge label="Missed" tone="red" dot={false} />;
+  // Class time has started but it hasn't been started (the professor isn't in yet).
+  if (s.dueAt || Date.parse(s.scheduledStart) <= Date.now()) return <Badge label="Waiting to start" tone="amber" dot={false} />;
   return <Badge label="Scheduled" tone="muted" dot={false} />;
 }
 

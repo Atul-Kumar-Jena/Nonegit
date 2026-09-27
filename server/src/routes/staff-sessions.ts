@@ -27,7 +27,7 @@ import {
 import type { PoolClient } from 'pg';
 import type { Deps } from '../deps';
 import { decidableStudents } from '../lib/mentors';
-import { markShowing } from '../lib/class-clock';
+import { announceStarted, markShowing } from '../lib/class-clock';
 import { insertNotifications } from '../lib/notify';
 import { assertPhoneFree, hardwareHash } from '../lib/users';
 import { tenantFlag } from '../lib/flags';
@@ -37,7 +37,7 @@ import { perDeviceKey, requireDevice, type AuthContext } from '../lib/auth';
 import { ApiError } from '../lib/errors';
 import { signReceipt } from '../lib/receipts';
 import { assignLectureNo, createSession } from '../lib/sessions';
-import { listStaffSessions, loadStaffSession, localDayBounds } from '../lib/staff-sessions';
+import { lateMinutes, listStaffSessions, loadStaffSession, localDayBounds } from '../lib/staff-sessions';
 import { deliverChanges, fmtWhen } from '../lib/notify';
 import { publishOps } from '../lib/planner-server';
 import { loadRoster } from './staff-academics';
@@ -193,7 +193,10 @@ export async function staffSessionRoutes(app: FastifyInstance, deps: Deps) {
           ],
         );
         await assignLectureNo(tx, id);
-        await staffAudit(tx, auth, 'session.start', `session:${id}`, { mode: b.mode, synced: b.startedAt !== undefined, device: auth.deviceFingerprint });
+        // Log 2: the professor is in class (log 1, the class time starting, is the clock's).
+        const lateMin = lateMinutes(s.scheduled_start, new Date(startedAt));
+        await staffAudit(tx, auth, 'session.start', `session:${id}`, { mode: b.mode, synced: b.startedAt !== undefined, device: auth.deviceFingerprint, lateMin });
+        await announceStarted(tx, id);
         return { already: false };
       });
       void result;

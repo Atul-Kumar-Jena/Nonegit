@@ -227,6 +227,12 @@ export const TodaySession = z.object({
   change: SessionChange.nullable().default(null),
   /** The professor's QR is on screen right now: scan it. */
   taking: z.boolean().default(false),
+  /** The class time has started but the professor hasn't started the class yet (not in class). */
+  waitingForProfessor: z.boolean().default(false),
+  /** The professor started the class this many minutes late (null: on time, or not started). */
+  lateMin: z.number().int().nullable().default(null),
+  /** The class time ran out without the professor starting it. */
+  missed: z.boolean().default(false),
 });
 export type TodaySession = z.infer<typeof TodaySession>;
 

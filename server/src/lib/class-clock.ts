@@ -1,33 +1,46 @@
 /**
- * The class clock: every class goes live by itself at its start time (its professor is told to
- * open the QR), classes started this way close 15 minutes after they end, and when the QR is on
- * screen students are told "attendance is being taken".
+ * The class clock. A class has two logged moments:
+ *   1. its time starts — logged here, and the professor is reminded to start it;
+ *   2. the professor arrives and starts it (makes it live) — from the Institute app; the batch sees
+ *      the class as live, and the professor opens the QR for attendance when they choose.
+ * A class whose time runs out without being started is logged as missed. When the QR is on screen,
+ * students are told "attendance is being taken". (Classes started by the older clock still close
+ * 15 minutes after their end.)
  */
 import type { Db, Queryable } from '../db';
 import { withTx } from '../db';
+import { appendAudit } from './audit';
 import { insertNotifications } from './notify';
-import { assignLectureNo } from './sessions';
 
-/** Classes started by the clock close this long after their scheduled end. */
+/** Classes started by the clock (older builds) close this long after their scheduled end. */
 export const AUTO_CLOSE_AFTER_MS = 15 * 60_000;
 /** The QR counts as "on screen" for this long after the last sign of it. */
 export const SHOWING_FOR_MS = 90_000;
 
-export async function tickClasses(db: Db, now: Date): Promise<{ started: number; closed: number }> {
+interface DueRow {
+  id: string;
+  tenant_id: string;
+  teacher_id: string | null;
+  code: string;
+  room: string | null;
+}
+
+export async function tickClasses(db: Db, now: Date): Promise<{ due: number; missed: number; closed: number }> {
   return withTx(db, async (tx) => {
-    // A QR class needs to know where the classroom is; a paper register doesn't.
-    const started = await tx.query<{ id: string; tenant_id: string; teacher_id: string | null; code: string; room: string | null }>(
-      `update class_sessions s set status = 'live', started_at = s.scheduled_start, auto_started = true
+    // Log 1: the class time has started. Remind whoever teaches it to start it once they're in class.
+    const due = await tx.query<DueRow>(
+      `update class_sessions s set due_at = $1
          from courses c
-        where c.id = s.course_id and s.status = 'scheduled' and s.scheduled_start <= $1 and s.scheduled_end > $1
-          and (s.mode = 'manual' or (s.lat is not null and s.lng is not null))
+        where c.id = s.course_id and s.status = 'scheduled' and s.due_at is null and s.scheduled_start <= $1 and s.scheduled_end > $1
         returning s.id, s.tenant_id, coalesce(s.substitute_id, c.instructor_id) as teacher_id, c.code,
                   (select coalesce(r.name, s.room) from rooms r where r.id = s.room_id) as room`,
       [now],
     );
-    for (const s of started.rows) await assignLectureNo(tx, s.id);
-    const byTenant = new Map<string, typeof started.rows>();
-    for (const s of started.rows) if (s.teacher_id) byTenant.set(s.tenant_id, [...(byTenant.get(s.tenant_id) ?? []), s]);
+    const byTenant = new Map<string, DueRow[]>();
+    for (const s of due.rows) {
+      await appendAudit(tx, { tenantId: s.tenant_id, actorType: 'system', action: 'session.due', subject: `session:${s.id}` });
+      if (s.teacher_id) byTenant.set(s.tenant_id, [...(byTenant.get(s.tenant_id) ?? []), s]);
+    }
     for (const [tenantId, list] of byTenant)
       await insertNotifications(
         tx,
@@ -35,17 +48,27 @@ export async function tickClasses(db: Db, now: Date): Promise<{ started: number;
         list.map((s) => ({
           userId: s.teacher_id!,
           kind: 'live',
-          title: `▶ ${s.code} is live now`,
-          body: `${s.room ? `${s.room} · ` : ''}Open the QR so students can mark attendance.`,
+          title: `⏰ ${s.code} starts now`,
+          body: `${s.room ? `${s.room} · ` : ''}When you’re in class, tap Start — your students see the class as live. Open the QR for attendance whenever you like.`,
           data: { sessionId: s.id },
         })),
       );
+
+    // The class time ran out and nobody started it: logged as missed.
+    const missed = await tx.query<{ id: string; tenant_id: string }>(
+      `update class_sessions set missed_at = $1
+        where status = 'scheduled' and missed_at is null and scheduled_end <= $1 and scheduled_start > $1::timestamptz - interval '2 days'
+        returning id, tenant_id`,
+      [now],
+    );
+    for (const s of missed.rows) await appendAudit(tx, { tenantId: s.tenant_id, actorType: 'system', action: 'session.missed', subject: `session:${s.id}` });
+
     const closed = await tx.query(
       `update class_sessions set status = 'closed', ended_at = scheduled_end
         where status = 'live' and auto_started and scheduled_end <= $1`,
       [new Date(now.getTime() - AUTO_CLOSE_AFTER_MS)],
     );
-    return { started: started.rowCount ?? 0, closed: closed.rowCount ?? 0 };
+    return { due: due.rowCount ?? 0, missed: missed.rowCount ?? 0, closed: closed.rowCount ?? 0 };
   });
 }
 
@@ -80,6 +103,35 @@ export async function markShowing(db: Queryable, sessionId: string, now: Date): 
   );
 }
 
+/** Log 2: the professor started the class — the batch sees it live (one quiet notification each). */
+export async function announceStarted(db: Queryable, sessionId: string): Promise<void> {
+  const s = (
+    await db.query<{ tenant_id: string; course_id: string; code: string; title: string; teacher: string | null; room: string | null }>(
+      `select s.tenant_id, s.course_id, c.code, c.title, coalesce(su.full_name, iu.full_name) as teacher, coalesce(r.name, s.room) as room
+         from class_sessions s join courses c on c.id = s.course_id
+         left join users su on su.id = s.substitute_id left join users iu on iu.id = c.instructor_id left join rooms r on r.id = s.room_id
+        where s.id = $1`,
+      [sessionId],
+    )
+  ).rows[0];
+  if (!s) return;
+  const students = await db.query<{ id: string }>(
+    `select e.user_id as id from enrollments e join users u on u.id = e.user_id where e.course_id = $1 and u.status = 'active' and u.role = 'student'`,
+    [s.course_id],
+  );
+  await insertNotifications(
+    db,
+    s.tenant_id,
+    students.rows.map((u) => ({
+      userId: u.id,
+      kind: 'started',
+      title: `▶ ${s.code} has started`,
+      body: `${s.teacher ? `${s.teacher} is in class` : 'Your class has started'}${s.room ? ` · ${s.room}` : ''}.`,
+      data: { sessionId, courseId: s.course_id },
+    })),
+  );
+}
+
 /** Runs the class clock every 20 seconds. */
 export function startClassClock(db: Db, clock: () => number, log: (msg: string) => void): () => void {
   let running = false;
@@ -88,7 +140,7 @@ export function startClassClock(db: Db, clock: () => number, log: (msg: string) 
     running = true;
     try {
       const r = await tickClasses(db, new Date(clock()));
-      if (r.started || r.closed) log(`class clock: ${r.started} started, ${r.closed} closed`);
+      if (r.due || r.missed || r.closed) log(`class clock: ${r.due} due, ${r.missed} missed, ${r.closed} closed`);
     } catch (err) {
       log(`class clock error: ${(err as Error).message}`);
     } finally {

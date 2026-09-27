@@ -20,7 +20,7 @@ import { isUniqueViolation, withTx } from '../db';
 import { appendAudit } from '../lib/audit';
 import { perDeviceKey, requireDevice, type AuthContext } from '../lib/auth';
 import { ApiError } from '../lib/errors';
-import { sessionChange } from '../lib/staff-sessions';
+import { lateMinutes, sessionChange } from '../lib/staff-sessions';
 import { courseStats, loadTenantTerm } from '../lib/stats';
 import { loadDevice, loadUser, toDeviceSummary, toUserSummary } from '../lib/users';
 
@@ -56,8 +56,11 @@ export async function studentRoutes(app: FastifyInstance, deps: Deps) {
         original_start: Date | null;
         substitute_name: string | null;
         taking: boolean;
+        started_at: Date | null;
+        missed_at: Date | null;
       }>(
         `select s.id, c.code, c.title, coalesce(s.status = 'live' and s.qr_shown_at > now() - interval '90 seconds', false) as taking, coalesce(r.name, s.room) as room, s.status, s.mode, s.scheduled_start, s.scheduled_end,
+                s.started_at, s.missed_at,
                 exists(select 1 from attendance_records a where a.session_id = s.id and a.user_id = $1 and a.revoked_at is null) as marked, s.change_kind, s.change_note, s.original_start, su.full_name as substitute_name
            from class_sessions s
            join courses c on c.id = s.course_id
@@ -101,6 +104,9 @@ export async function studentRoutes(app: FastifyInstance, deps: Deps) {
         marked: r.marked,
         change: sessionChange(r),
         taking: r.taking,
+        waitingForProfessor: r.status === 'scheduled' && !r.missed_at && r.scheduled_start.getTime() <= deps.clock() && r.scheduled_end.getTime() > deps.clock(),
+        lateMin: lateMinutes(r.scheduled_start, r.started_at),
+        missed: r.status === 'scheduled' && r.missed_at !== null,
       })),
       timezone: term.timezone,
       serverTime: deps.clock(),

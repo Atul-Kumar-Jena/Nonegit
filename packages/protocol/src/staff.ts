@@ -276,6 +276,12 @@ export const StaffSession = z.object({
   change: SessionChange.nullable().default(null),
   /** The QR is on screen now (phone or big screen): attendance is being taken. */
   showingQr: z.boolean().default(false),
+  /** Log 1: the class time started (the professor was reminded). */
+  dueAt: IsoDate.nullable().default(null),
+  /** Log 2 is startedAt: the professor arrived and started the class — this many minutes after its time. */
+  lateMin: z.number().int().nullable().default(null),
+  /** The class time ran out and the professor never started it. */
+  missed: z.boolean().default(false),
 });
 export type StaffSession = z.infer<typeof StaffSession>;
 

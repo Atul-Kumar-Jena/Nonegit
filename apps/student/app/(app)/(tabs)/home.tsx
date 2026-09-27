@@ -217,14 +217,16 @@ function SessionCard({ s, tz, now }: { s: TodaySession; tz: string; now: number 
   const live = s.status === 'live';
   const manual = s.mode === 'manual';
   const inWindow = s.status === 'scheduled' && now >= Date.parse(s.scheduledStart) - GRACE_MS && now <= Date.parse(s.scheduledEnd) + GRACE_MS;
-  const canScan = !manual && !s.marked && (live || inWindow);
+  const canScan = !manual && !s.marked && !s.waitingForProfessor && (live || inWindow);
   return (
     <Card style={[styles.session, live && { borderColor: 'rgba(255, 255, 255, 0.35)' }]} padded={false}>
       <View style={[styles.accent, { backgroundColor: live ? colors.cyan : s.marked ? colors.green : colors.borderHi }]} />
       <View style={{ flex: 1, paddingVertical: 14, paddingLeft: 14, gap: 3 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Text variant="monoSmall">{s.courseCode}</Text>
-          {live ? <Badge label="LIVE" tone="cyan" /> : null}
+          {live ? <Badge label={s.lateMin ? `LIVE · started ${s.lateMin} min late` : 'LIVE'} tone="cyan" /> : null}
+          {s.waitingForProfessor ? <Badge label="Waiting for the professor" tone="amber" dot={false} /> : null}
+          {s.missed ? <Badge label="Not held" tone="red" dot={false} /> : null}
           {manual ? <Badge label="Paper register" tone="violet" dot={false} icon={<ClipboardList color={colors.violet} size={11} />} /> : null}
           {s.status === 'cancelled' ? <Badge label="Cancelled" tone="red" dot={false} /> : null}
         </View>
