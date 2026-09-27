@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Share, View } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
-import { BadgeCheck, Pause, Play, RefreshCw, Share2, ShieldCheck } from 'lucide-react-native';
+import { BadgeCheck, Pause, Play, RefreshCw, Share2, ShieldCheck, Users } from 'lucide-react-native';
 import { formatInstitutionCode, type IssuedSetupCode } from '@attendly/protocol';
 import { SetupCodeCard } from '@kit/components/SetupCodeCard';
 import { Screen } from '@kit/components/Screen';
@@ -113,6 +113,14 @@ export default function TenantScreen() {
         <InfoRow label="EMAIL DOMAINS" value={t.emailDomains.join(', ') || '—'} />
         <InfoRow label="CREATED" value={new Date(t.createdAt).toDateString()} />
       </Card>
+
+      <Button
+        title="Manage people"
+        kind="secondary"
+        onPress={() => router.push({ pathname: '/tenant/people', params: { id: t.id, name: t.name } })}
+        icon={<Users color={colors.text} size={16} />}
+        style={{ marginTop: 12 }}
+      />
 
       <SectionLabel>Admins</SectionLabel>
       {issued ? (

@@ -136,6 +136,23 @@ const nextWindow = () => new Promise((r) => setTimeout(r, 30_500 - (Date.now() %
     await shot(a, 'professor-setup-code');
   });
 
+  await step('Drill-in: the developer opens the institution’s people and acts as “Attendly support” (on the record)', async () => {
+    lastPage = d;
+    await d.getByRole('button', { name: 'Manage people' }).click({ timeout: 20_000 });
+    await d.getByRole('tab', { name: 'Professors & admins' }).click();
+    await d.waitForTimeout(900); // the double-tap guard
+    await d.getByRole('button', { name: 'Dr. Kavya Menon' }).click({ timeout: 20_000 });
+    await d.getByText('Act on this account').waitFor({ timeout: 20_000 });
+    await d.getByRole('tab', { name: 'Attendly support' }).click();
+    await d.getByPlaceholder('Reason (e.g. lost phone, ticket #42)').fill('e2e check');
+    await d.getByRole('button', { name: 'New setup code' }).click();
+    await d.getByText(/New setup code for Dr. Kavya Menon/).locator('visible=true').first().waitFor({ timeout: 20_000 });
+    await d.getByText('Setup code for Dr. Kavya Menon').locator('visible=true').last().waitFor();
+    await shot(d, 'dev-support-person');
+    await d.goBack();
+    await d.goBack();
+  });
+
   await step('The developer signs in again with only the authenticator code (ID remembered)', async () => {
     lastPage = d;
     await d.goBack();

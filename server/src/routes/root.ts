@@ -45,7 +45,7 @@ import { parseServiceAccount } from '../lib/push';
 import { randomBytes } from '@attendly/protocol';
 import { revokeActiveDevice } from './staff-admin';
 
-interface RootAuth extends AuthContext {
+export interface RootAuth extends AuthContext {
   sandbox: boolean;
   /** null = every institution. */
   tenants: string[] | null;
@@ -53,7 +53,7 @@ interface RootAuth extends AuthContext {
   name: string;
 }
 
-async function requireRoot(req: FastifyRequest, deps: Deps): Promise<RootAuth> {
+export async function requireRoot(req: FastifyRequest, deps: Deps): Promise<RootAuth> {
   const auth = await requireDevice(req, deps, ['developer']);
   const { rows } = await deps.db.query<{ email: string | null; full_name: string }>('select email, full_name from users where id = $1', [auth.userId]);
   const sandbox = isDemoEmail(rows[0]?.email);
@@ -93,7 +93,7 @@ function noSandbox(r: RootAuth, what: string) {
 }
 
 /** The sandbox developer may manage its test institutions, but not the shared demo institute everyone tries. */
-function noSandboxOnDemo(r: RootAuth, id: string, what: string) {
+export function noSandboxOnDemo(r: RootAuth, id: string, what: string) {
   if (r.sandbox && id === r.tenantId) throw new ApiError(403, 'FORBIDDEN', `Sandbox developer: ${what} for the shared demo institute needs a real developer account.`);
 }
 
@@ -107,7 +107,7 @@ const PLANNED = [
   { key: 'ble_proximity', label: 'BLE proximity', detail: 'A Bluetooth beacon in the room instead of GPS.' },
 ];
 
-interface AuditRow {
+export interface AuditRow {
   id: string;
   at: Date;
   action: string;
@@ -117,9 +117,9 @@ interface AuditRow {
   data: Record<string, unknown>;
   hash: Buffer;
 }
-const AUDIT_SELECT = `select a.id, a.at, a.action, u.full_name as actor, t.name as tenant, a.subject, a.data, a.hash
+export const AUDIT_SELECT = `select a.id, a.at, a.action, u.full_name as actor, t.name as tenant, a.subject, a.data, a.hash
   from audit_log a left join users u on u.id = a.actor_id left join tenants t on t.id = a.tenant_id`;
-const toEntry = (r: AuditRow): AuditEntry => ({
+export const toAuditEntry = (r: AuditRow): AuditEntry => ({
   id: Number(r.id),
   at: r.at.toISOString(),
   action: r.action,
@@ -140,7 +140,7 @@ const ACTION_PREFIX: Record<Exclude<AuditCategory, 'all'>, string[]> = {
 
 async function recentAudit(db: Queryable, tenants: string[] | null, limit: number): Promise<AuditEntry[]> {
   const { rows } = await db.query<AuditRow>(`${AUDIT_SELECT} where ($1::uuid[] is null or a.tenant_id = any($1)) order by a.id desc limit $2`, [tenants, limit]);
-  return rows.map(toEntry);
+  return rows.map(toAuditEntry);
 }
 
 async function tenantSummaries(db: Queryable, tenants: string[] | null, q: string | null): Promise<TenantSummary[]> {
@@ -315,7 +315,7 @@ export async function rootRoutes(app: FastifyInstance, deps: Deps) {
     const { rows } = await deps.db.query<AuditRow>(`${AUDIT_SELECT} where ${where} order by a.id desc limit ${q.limit + 1}`, params);
     const total = (await deps.db.query<{ n: number }>(`select count(*)::int as n from audit_log a where ${where}`, [params[0], null, ...params.slice(2)])).rows[0]!.n;
     const more = rows.length > q.limit;
-    const entries = rows.slice(0, q.limit).map(toEntry);
+    const entries = rows.slice(0, q.limit).map(toAuditEntry);
     return { entries, nextBefore: more ? entries.at(-1)!.id : null, total };
   });
 

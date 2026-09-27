@@ -8,6 +8,10 @@ import {
   FlagsResponse,
   OkResponse,
   RootConsole,
+  Person,
+  SupportActionResult,
+  SupportPerson,
+  type SupportActionBody,
   RootMe,
   TenantDetail,
   TenantSummary,
@@ -44,4 +48,10 @@ export const rootApi = {
   flags: (api: ApiClient) => api.authed('GET', '/v1/root/flags', FlagsResponse),
   setFlag: (api: ApiClient, b: SetFlagBody) => api.authed('POST', '/v1/root/flags', OkResponse, b),
   me: (api: ApiClient) => api.authed('GET', '/v1/root/me', RootMe),
+  /** Support: an institution's people, one person (attendance + history), and actions on them. */
+  people: (api: ApiClient, tenantId: string, role: 'student' | 'staff', q?: string) =>
+    api.authed('GET', `/v1/root/tenants/${enc(tenantId)}/people${qs({ role, q })}`, z.array(Person)),
+  person: (api: ApiClient, tenantId: string, personId: string) => api.authed('GET', `/v1/root/tenants/${enc(tenantId)}/people/${enc(personId)}`, SupportPerson),
+  act: (api: ApiClient, tenantId: string, personId: string, b: SupportActionBody) =>
+    api.authed('POST', `/v1/root/tenants/${enc(tenantId)}/people/${enc(personId)}/action`, SupportActionResult, b),
 };

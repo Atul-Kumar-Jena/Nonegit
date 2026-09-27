@@ -62,7 +62,7 @@ async function institution(db: Queryable, tenantId: string): Promise<Institution
   };
 }
 
-interface PersonRow {
+export interface PersonRow {
   id: string;
   role: Person['role'];
   full_name: string;
@@ -83,14 +83,14 @@ interface PersonRow {
   setup_pending: boolean;
 }
 
-const PERSON_SELECT = `
+export const PERSON_SELECT = `
   select u.id, u.role, u.full_name, u.email, u.phone, u.roll_no, u.department, u.semester, u.status, u.totp_enabled_at is not null as totp, u.permissions, u.is_owner,
          (u.setup_code_hash is not null and u.setup_code_expires_at > now() and u.setup_code_attempts < 5) as setup_pending,
          d.model as device_model, d.fingerprint as device_fingerprint, d.bound_at as device_bound_at, case when d.hw_key_spki is not null then d.attest_level end as device_attest_level,
          (select array_agg(e.course_id) from enrollments e where e.user_id = u.id) as course_ids
     from users u left join devices d on d.user_id = u.id and d.status = 'active'`;
 
-function toPerson(r: PersonRow): Person {
+export function toPerson(r: PersonRow): Person {
   return {
     id: r.id,
     role: r.role,
@@ -119,7 +119,7 @@ export async function requireOwner(db: Queryable, auth: AuthContext): Promise<vo
   if (!(await isOwner(db, auth.userId))) throw new ApiError(403, 'FORBIDDEN', 'Only the main admin can add, change or remove admins.');
 }
 
-async function loadPerson(db: Queryable, tenantId: string, id: string): Promise<Person> {
+export async function loadPerson(db: Queryable, tenantId: string, id: string): Promise<Person> {
   const { rows } = await db.query<PersonRow>(`${PERSON_SELECT} where u.id = $1 and u.tenant_id = $2`, [id, tenantId]);
   if (!rows[0]) throw new ApiError(404, 'NOT_FOUND', 'Person not found.');
   return toPerson(rows[0]);

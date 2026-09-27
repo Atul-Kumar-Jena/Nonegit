@@ -4,6 +4,7 @@
  */
 import { z } from 'zod';
 import { IsoDate, IssuedSetupCode } from './schemas';
+import { Person } from './staff';
 
 const uuid = z.uuid();
 
@@ -184,3 +185,24 @@ export const RootMe = z.object({
   environment: z.object({ env: z.string(), demoMode: z.boolean(), otpDelivery: z.string(), webClients: z.boolean(), emulators: z.boolean() }),
 });
 export type RootMe = z.infer<typeof RootMe>;
+
+// ── Support: the developer opens an institution and manages its people ──
+// Every action is recorded on the institution's and the platform's audit chains under the
+// developer's own account. "as" only chooses what the institution's people are shown as the author
+// in their notifications: the developer's name, or "Attendly support".
+export const SupportAttribution = z.enum(['named', 'support']);
+export type SupportAttribution = z.infer<typeof SupportAttribution>;
+export const SupportAction = z.enum(['suspend', 'reactivate', 'reset_phone', 'setup_code', 'make_admin', 'make_professor', 'make_owner']);
+export type SupportAction = z.infer<typeof SupportAction>;
+export const SupportActionBody = z.object({ action: SupportAction, as: SupportAttribution, reason: z.string().trim().min(3).max(200) });
+export type SupportActionBody = z.infer<typeof SupportActionBody>;
+export const SupportPerson = z.object({
+  person: Person,
+  /** Students: classes attended of those held in their subjects. */
+  attendance: z.object({ attended: z.number().int(), held: z.number().int(), percent: z.number().nullable() }).nullable(),
+  /** What happened to or by this account, newest first. */
+  history: z.array(AuditEntry),
+});
+export type SupportPerson = z.infer<typeof SupportPerson>;
+export const SupportActionResult = z.object({ person: Person, setup: IssuedSetupCode.nullable(), message: z.string() });
+export type SupportActionResult = z.infer<typeof SupportActionResult>;
