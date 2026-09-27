@@ -34,7 +34,7 @@ import { DateField, Field, Select, Sheet, TimeField, confirmAction, fromMinutes,
 import { Board, type DragSource, type DropTarget, t12 } from '@/planner/Board';
 import { describeOp, type KnownSession } from '@/planner/describe';
 import { useDraft } from '@/planner/useDraft';
-import { useIsAdmin, useOverview, usePlannerWeek } from '@/queries';
+import { useCan, useOverview, usePlannerWeek } from '@/queries';
 import { InfoButton } from '@kit/components/Features';
 import { HELP } from '@/help';
 import { ymdIn } from '@/time';
@@ -52,7 +52,7 @@ const newTempId = () => randomToken(9).replace(/[^A-Za-z0-9_-]/g, 'x');
  */
 export default function Planner() {
   const api = useApi();
-  const admin = useIsAdmin();
+  const admin = useCan('planner');
   const tz = useOverview().data?.timezone;
   const [weekStart, setWeekStart] = useState(() => mondayOf(ymdIn(api.serverNow(), tz)));
   const weekQ = usePlannerWeek(weekStart);
@@ -123,7 +123,7 @@ export default function Planner() {
       <SafeAreaView style={styles.root} edges={['top']}>
         <Backdrop />
         <View style={{ padding: 20 }}>
-          <Notice tone="amber" message="The planner is for admins. Teachers can move, cancel or hand over their own classes from the class screen." />
+          <Notice tone="amber" message="The planner needs the “Planner & cover” permission (an admin can give it: People → you → Role & permissions). Meanwhile you can move or cancel your own classes from the class screen." />
         </View>
       </SafeAreaView>
     );

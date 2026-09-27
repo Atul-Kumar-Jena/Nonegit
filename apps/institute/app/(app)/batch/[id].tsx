@@ -11,7 +11,7 @@ import { colors, radius } from '@kit/theme';
 import { staffApi } from '@/api';
 import { SEMESTERS, batchLine } from '@/batches';
 import { Checkbox, Chips, Field, Header, Select, Sheet, ToggleRow, confirmAction } from '@/components/forms';
-import { qk, useAllCourses, useBatch, useIsAdmin, usePeople, useStudentSearch } from '@/queries';
+import { qk, useAllCourses, useBatch, useCan, usePeople, useStudentSearch } from '@/queries';
 
 type Tab = 'students' | 'subjects' | 'settings';
 
@@ -22,7 +22,7 @@ export default function BatchDetail() {
   const api = useApi();
   const qc = useQueryClient();
   const q = useBatch(id);
-  const admin = useIsAdmin();
+  const admin = useCan('courses');
   const [tab, setTab] = useState<Tab>('students');
   const [sheet, setSheet] = useState<'students' | 'subjects' | null>(null);
   const [search, setSearch] = useState('');
@@ -242,7 +242,7 @@ function Settings({ b, busy, update }: { b: BatchDetailT; busy: boolean; update:
     return (
       <Card style={{ marginTop: 14, gap: 6 }}>
         <Text variant="bodyStrong">{batchLine(b) || 'No semester set'}</Text>
-        <Text variant="small">You can add students and subjects. Renaming, changing the semester, removing or archiving is for an admin or the teacher who created this batch.</Text>
+        <Text variant="small">You can add students and subjects. Renaming, changing the semester, removing or archiving is for an admin or the professor who created this batch.</Text>
       </Card>
     );
   const next = b.semester ? b.semester + 1 : null;
@@ -359,10 +359,11 @@ function AddStudents({ b, onClose, onAdd }: { b: BatchDetailT; onClose: () => vo
 
 function AddSubject({ b, onClose, onAttach, onCreated }: { b: BatchDetailT; onClose: () => void; onAttach: (ids: string[]) => Promise<boolean>; onCreated: (d: BatchDetailT, code: string) => void }) {
   const api = useApi();
-  const admin = useIsAdmin();
+  const admin = useCan('courses');
+  const canPeople = useCan('people');
   const [mode, setMode] = useState<'existing' | 'new'>('existing');
   const all = useAllCourses();
-  const staff = usePeople({ role: 'staff' }, admin);
+  const staff = usePeople({ role: 'staff' }, admin && canPeople);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [code, setCode] = useState('');
   const [title, setTitle] = useState('');
@@ -377,7 +378,7 @@ function AddSubject({ b, onClose, onAttach, onCreated }: { b: BatchDetailT; onCl
     setBusy(true);
     setError(null);
     try {
-      const d = await staffApi.batchSubject(api, b.id, { code: code.trim(), title: title.trim(), kind, instructorId: admin ? teacher : undefined });
+      const d = await staffApi.batchSubject(api, b.id, { code: code.trim(), title: title.trim(), kind, instructorId: admin && canPeople ? teacher : undefined });
       onCreated(d, code.trim().toUpperCase());
       onClose();
     } catch (err) {
@@ -450,7 +451,7 @@ function AddSubject({ b, onClose, onAttach, onCreated }: { b: BatchDetailT; onCl
           <Field label="Type">
             <Chips value={kind} options={[{ value: 'theory', label: 'Theory' }, { value: 'lab', label: 'Lab' }]} onChange={setKind} />
           </Field>
-          {admin ? (
+          {admin && canPeople ? (
             <Field label="Teacher">
               <Select
                 title="Teacher"

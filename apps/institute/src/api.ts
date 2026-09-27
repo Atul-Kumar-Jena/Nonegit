@@ -19,6 +19,7 @@ import {
   PlannerWeek,
   PublishResponse,
   type BatchUpdateBody,
+  type StaffAccessBody,
   type BatchBody,
   type BatchSubjectBody,
   StudentHit,
@@ -79,6 +80,8 @@ export const staffApi = {
   people: (api: ApiClient, f: { role?: string; q?: string; courseId?: string } = {}) => api.authed('GET', `/v1/staff/people${qs(f)}`, z.array(Person)),
   person: (api: ApiClient, id: string) => api.authed('GET', `/v1/staff/people/${enc(id)}`, Person),
   createPerson: (api: ApiClient, b: PersonBody) => api.authed('POST', '/v1/staff/people', Person, b),
+  /** Admins: admin ↔ professor, and a professor's extra powers. */
+  setAccess: (api: ApiClient, id: string, b: StaffAccessBody) => api.authed('POST', `/v1/staff/people/${enc(id)}/access`, Person, b),
   updatePerson: (api: ApiClient, id: string, b: PersonUpdateBody) => api.authed('POST', `/v1/staff/people/${enc(id)}`, Person, b),
   importPeople: (api: ApiClient, rows: unknown[], courseIds: string[], batchId?: string | null) =>
     api.authed('POST', '/v1/staff/people/import', BulkImportResponse, { rows, courseIds, ...(batchId ? { batchId } : {}) }),

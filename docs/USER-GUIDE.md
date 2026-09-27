@@ -1,11 +1,12 @@
 # Attendly — how to install, demo, beta-test and use everything
 
-Two phone apps talk to one server (`https://attendly-api-bt9r.onrender.com`, built into the apps):
+Three phone apps talk to one server (`https://attendly-api-bt9r.onrender.com`, built into the apps):
 
 | App | Icon | Who |
 |---|---|---|
 | **Attendly** | black tile, white squares + dot | Students |
-| **Attendly Institute** | white tile, black squares + building | Admins (principal / HOD) and teachers |
+| **Attendly Institute** | white tile, black squares + building | Admins (principal / HOD) and professors |
+| **Attendly Developer** | — | You (Attendly's owner): onboard and verify institutions |
 
 The server keeps its data in your **Supabase** database (Render → Environment → `DATABASE_URL`). Every schema change is applied automatically when Render deploys; there is nothing to run by hand.
 
@@ -16,16 +17,19 @@ The server keeps its data in your **Supabase** database (Render → Environment 
 1. Open the zip link on the phone → download → open the zip → tap the `.apk`.
 2. Allow "Install unknown apps" for your browser/file manager → **Install**. If Play Protect warns "unknown developer": **More details → Install anyway** (it's a test-signed build).
 3. Open the app. It connects to the server by itself (the first open after a quiet hour takes up to a minute: the free server wakes up).
+   **Attendly Institute** first asks for the **institution code** (8 characters, e.g. `7F3A-91C2`). It shows the institution's name with **✓ Verified by Attendly** → **Continue**. This happens once per phone; **Change** on the sign-in screen picks another institution.
 4. After signing in, a **Permissions** screen asks for camera (student), location and notifications → **Allow all**. You can change them later in Settings → Apps → Attendly → Permissions.
 
 ## 2 · Demo test (dummy accounts, no codes)
 
-The server contains a ready-made **Demo Institute of Technology** with a timetable and 3 months of attendance. On the sign-in screen, scroll to **Demo accounts** and tap one: no code is needed. Then tap **Bind this device**.
+The server contains a ready-made **Demo Institute of Technology** (code **DEMO-2026**) with a timetable, two Semester-6 batches and 3 months of attendance.
+- **Attendly Institute:** on "Your institution" tap **Try the demo · DEMO-2026** → **Continue**.
+- **Both apps:** on the sign-in screen scroll to **Demo accounts** and tap one (no code needed) → **Bind this device**.
 
 | Tap this | Role | Use it for |
 |---|---|---|
-| **Dr. N. Iyer** | Admin (HOD) + teaches CS-301 | Cover classes, planner, people, everything |
-| **Dr. S. Banerjee** · **Dr. R. Khanna** · **Prof. A. Joshi** | Teachers | Accept cover requests, run classes |
+| **Dr. N. Iyer** | Admin (HOD) + teaches CS-301 | Cover classes, planner, people & roles, everything |
+| **Dr. S. Banerjee** · **Dr. R. Khanna** · **Prof. A. Joshi** | Professors | Accept cover requests, run classes, batches, reports |
 | **Aarav Reddy** (and 10 more) | Students | Scan, timetable, "Ask" a teacher |
 
 (Typing the email works too, e.g. `aarav@demo.attendly.app`.)
@@ -50,17 +54,30 @@ The server contains a ready-made **Demo Institute of Technology** with a timetab
 9. Teachers can't hand classes out: the cover board and "Give to a teacher" are admin-only.
 10. **Batches:** sign in as *Dr. S. Banerjee* → **Classes** (opens on Batches, grouped by semester) → **New batch** → name `MATH-3A`, semester 3 → **Add students** (search "Aarav") → **Paste a list** → **Subjects → Add a subject → New subject** → **Settings → Move up to Semester 4**.
 11. **Reports:** More → **Attendance reports** → pick *CSE-6A* → a subject → **PDF** / **Excel**. Tap a student to see every subject and every class. On **B** (Aarav): Profile → **Download attendance**.
+12. **Roles:** as *Dr. N. Iyer* → More → **People & roles** → Professors → *Dr. S. Banerjee* → **Role & permissions** → tick **Planner & cover** → Save. Banerjee gets a notification, and More now shows *Cover a class* and *Planner*. Untick it to take it back.
+13. **Big screen:** see "Big screen" below — open `attendly-api-bt9r.onrender.com/tv` on a laptop.
 
 ## 3 · Beta test (your own institution, new accounts)
 
-Your real institution is the one you named in Render (`BOOTSTRAP_INSTITUTION_NAME`), with you as admin (`BOOTSTRAP_ADMIN_EMAIL`).
+Your real institution is the one you named in Render (`BOOTSTRAP_INSTITUTION_NAME`), with you as admin (`BOOTSTRAP_ADMIN_EMAIL`). It is already verified.
+
+**Its institution code** (staff type it once in Attendly Institute) is shown in any of these places:
+- Render → your service → **Logs**: the line `institution code for "…": XXXX-XXXX` (printed at every start).
+- The `/dev` page (below), under **Institution codes**.
+- The Developer app → Institutions → your institution.
+- Institute app → **More** (under your name; tap it to share it on WhatsApp).
+
+**Onboarding another institution** (Developer app, signed in with `BOOTSTRAP_DEVELOPER_EMAIL`):
+1. Institutions → **+** → name, first admin's name and email → **Create**. It starts *Pending verification*: nobody can sign in yet.
+2. Check it's genuine → **Verify institution** (✓ Verified). **Remove verification** blocks new sign-ins again; **New** gives it a fresh code if the old one leaked.
+3. **Share** the code with their admin. They install Attendly Institute, enter the code, and sign in with the admin email you typed.
 
 **Sign-in codes for real accounts** (until email is set up):
 - Open `https://attendly-api-bt9r.onrender.com/dev?token=<DEV_TOOLS_TOKEN>` on a laptop (the token is in Render → Environment). Codes appear there a second after someone taps "Send OTP".
 - Or switch to **Google Authenticator** (below): no codes to fetch at all.
 
 **Steps**
-1. Institute app → type your admin email → **Send OTP** → type the code from the /dev page → **Bind this device**.
+1. Institute app → enter your **institution code** → **Continue** → type your admin email → **Send OTP** → type the code from the /dev page → **Bind this device**.
 2. Today → **Finish setting up**:
    1. institution settings (time zone, term, minimum %);
    2. **Rooms**: stand in each room → *Use my location*;
@@ -105,9 +122,25 @@ Everything is organised as **Semester → batch → its students → its subject
 ### Class reminders
 More / Profile → **Class reminders**: pick any of 5 / 10 / 15 / 30 min, 1 hour or a day before. They're set on the phone, so they ring on time even offline, include the room, follow every timetable change (and classes you're covering).
 
-### Teacher — Institute app
+### Roles: admin vs professor
+- **Admin (principal / HOD):** everything, including institution settings and who may do what. Badge: *Admin · Principal / HOD*.
+- **Professor:** runs their own classes, manages batches, sees every attendance report. Badge: *Professor* (or *Professor · +2* with extra powers).
+- An admin gives a professor extra powers: **More → People & roles → Professors → the person → Role & permissions**:
+  - **People**: add or edit students and professors, paste lists, unbind phones, reset authenticators.
+  - **Courses & timetable**: every course and its students, weekly slots, rooms.
+  - **Planner & cover**: drag-and-drop planner, publish changes, give a class to another professor.
+  - **Phones & scans**: approve phone switches, review suspicious scans.
+- The same screen turns a professor into an admin (or back). The person gets a notification and sees the change at once.
+- Only admins change roles; a professor with *People* can't create admins or edit an admin. An institution always keeps at least one admin.
+
+### Big screen (projector / smartboard / laptop)
+1. On the classroom computer open **`attendly-api-bt9r.onrender.com/tv`** in any browser (or in the app: class → **Show on a big screen → Send the link**). It shows a **pairing QR** and a code like `KXF7-M2QD`.
+2. In Attendly Institute: open the live class → **Show on a big screen** → **Scan the screen** and point the phone at the pairing QR (or type the code) → check it says your screen (e.g. "Chrome on Windows") → **Approve & show QR**.
+3. The screen shows the big rotating QR, the class, a countdown ring and **present / enrolled**, updating live. It stays awake; press **F** for full screen. If the Wi-Fi drops it says "Reconnecting…" and carries on.
+4. **End class** (or Disconnect in the app) blanks the screen. A photo of the QR is useless: it changes every few seconds and needs the student's bound phone, inside the room.
+
+### Professor — Institute app
 - Tap a class → **QR** (the code rotates every few seconds), **Show on a big screen**, or **Register**.
-- **Big screen**: on the classroom PC open `attendly-api-bt9r.onrender.com/present` (or tap **Share link** and open it there). It shows a code like `KXF7-M2QD`. Type it in the app → check the device → **Approve & show QR**. **End class** blanks the screen.
 - **Register**: "Tap who's absent" (everyone starts present) or "Tap who's present". Tick *I have checked every name* → Save. Works offline.
 - **Move / Cancel** your own class (with a note to students). **Requests**: accept/decline classes you're asked to take; answer students.
 
@@ -143,6 +176,9 @@ Nothing more. Your database password lives only in Render's `DATABASE_URL`, and 
 
 | Problem | Fix |
 |---|---|
+| "No institution has that code" | Check the 8 characters with your admin (letters and digits; the dash is optional). |
+| "Waiting for verification by Attendly" | The developer hasn't verified the institution yet (Developer app → the institution → Verify). |
+| A professor can't see Planner / People | An admin grants it: People & roles → the professor → Role & permissions. |
 | "Connecting…" for a long time | The free server is waking up (≤ 1 min). "Try again" if it stops. |
 | No code on the /dev page | Wait 30 s between requests for the same email; check the email is exactly the one added. |
 | "Set a screen lock first" (Institute) | Add a PIN/fingerprint in phone Settings → Security. |

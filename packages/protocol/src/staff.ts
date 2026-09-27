@@ -55,7 +55,23 @@ export const UpdateInstitutionBody = z
   .partial();
 export type UpdateInstitutionBody = z.infer<typeof UpdateInstitutionBody>;
 
-export const StaffMe = z.object({ user: UserSummary, device: DeviceSummary, institution: InstitutionSettings });
+/** Extra powers an admin can give a professor (admins have them all). */
+export const StaffPermission = z.enum(['people', 'courses', 'planner', 'devices']);
+export type StaffPermission = z.infer<typeof StaffPermission>;
+export const STAFF_PERMISSIONS: readonly { key: StaffPermission; label: string; detail: string }[] = [
+  { key: 'people', label: 'People', detail: 'Add and edit students and professors, paste class lists, unbind phones, reset authenticators.' },
+  { key: 'courses', label: 'Courses & timetable', detail: 'Every course and its students, the weekly timetable, rooms.' },
+  { key: 'planner', label: 'Planner & cover', detail: 'Drag-and-drop planner, publish changes, give a class to another professor.' },
+  { key: 'devices', label: 'Phones & scans', detail: 'Approve students moving to a new phone, review suspicious scans.' },
+];
+
+export const StaffMe = z.object({
+  user: UserSummary,
+  device: DeviceSummary,
+  institution: InstitutionSettings,
+  /** What this person may do beyond teaching (admins: all of them). */
+  permissions: z.array(StaffPermission).default([]),
+});
 export type StaffMe = z.infer<typeof StaffMe>;
 
 // ───────────────────────────── rooms ─────────────────────────────
@@ -100,8 +116,14 @@ export const Person = z.object({
   courseIds: z.array(uuid),
   /** Signs in with an authenticator app (Google Authenticator) instead of emailed codes. */
   authenticator: z.boolean().default(false),
+  /** Professors only: extra powers given by an admin. */
+  permissions: z.array(StaffPermission).default([]),
 });
 export type Person = z.infer<typeof Person>;
+
+/** Admins only: make someone an admin or a professor, and choose a professor's extra powers. */
+export const StaffAccessBody = z.object({ role: z.enum(['teacher', 'admin']), permissions: z.array(StaffPermission).max(4).default([]) });
+export type StaffAccessBody = z.infer<typeof StaffAccessBody>;
 
 export const PersonBody = z
   .object({

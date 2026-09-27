@@ -6,7 +6,7 @@ import { Screen } from '@kit/components/Screen';
 import { Badge, Button, Input, Loading, Notice, Segmented, Text } from '@kit/components/ui';
 import { colors, radius } from '@kit/theme';
 import { Header } from '@/components/forms';
-import { usePeople } from '@/queries';
+import { useIsAdmin, usePeople } from '@/queries';
 
 type Role = 'student' | 'teacher' | 'admin';
 
@@ -21,18 +21,19 @@ export default function People() {
     return () => clearTimeout(t);
   }, [q]);
   const list = usePeople({ role, q: debounced || undefined });
+  const isAdmin = useIsAdmin();
 
   return (
     <Screen scroll={false} keyboard>
       <Header info="people"
-        title="People"
-        right={<Button title="Add" compact onPress={() => router.push({ pathname: '/person-form', params: { role } })} icon={<UserPlus color="#0a0a0a" size={15} />} />}
+        title="People & roles"
+        right={role !== 'admin' || isAdmin ? <Button title="Add" compact onPress={() => router.push({ pathname: '/person-form', params: { role } })} icon={<UserPlus color={colors.bg} size={15} />} /> : undefined}
       />
       <Segmented
         value={role}
         options={[
           { value: 'student', label: 'Students' },
-          { value: 'teacher', label: 'Teachers' },
+          { value: 'teacher', label: 'Professors' },
           { value: 'admin', label: 'Admins' },
         ]}
         onChange={setRole}
@@ -64,6 +65,7 @@ export default function People() {
                 {[item.rollNo, item.email ?? item.phone].filter(Boolean).join(' · ')}
               </Text>
             </View>
+            {item.role === 'teacher' && item.permissions.length ? <Badge label={`+${item.permissions.length}`} tone="muted" dot={false} /> : null}
             {item.status === 'suspended' ? <Badge label="Suspended" tone="red" dot={false} /> : item.device ? <Badge label="Phone bound" tone="green" dot={false} /> : <Badge label="Not signed in" tone="muted" dot={false} />}
             <ChevronRight color={colors.textDim} size={16} />
           </Pressable>

@@ -25,7 +25,7 @@ import type { Deps } from '../deps';
 import type { Queryable } from '../db';
 import { SLOT_SELECT, toSlot, type SlotRow } from '../routes/staff-academics';
 import { loadInstitution, staffAudit } from '../routes/staff-admin';
-import { isAdmin, isOwnerOf, loadCourseFor, loadSessionFor } from './access';
+import { can, isOwnerOf, loadCourseFor, loadSessionFor } from './access';
 import type { AuthContext } from './auth';
 import { ApiError } from './errors';
 import { WEEKDAY_NAMES, deliverChanges, fmtWhen, type ChangeLine } from './notify';
@@ -226,21 +226,22 @@ export async function publishOps(
 ): Promise<PublishResult & { slotsToMaterialize: string[] }> {
   const ops = DraftOps.parse(rawOps);
   if (!ops.length) throw new ApiError(400, 'BAD_REQUEST', 'There are no changes to publish.');
-  const admin = isAdmin(auth);
+  // Planner & cover permission (admins have it): the weekly timetable, any class, handing classes out.
+  const admin = can(auth, 'planner');
   const errors: OpError[] = [];
 
   // ── who may do what ──
   const sessionIds = new Set<string>();
   for (const [index, o] of ops.entries()) {
     if (o.op.startsWith('slot.') && !admin) {
-      errors.push({ index, message: 'Only admins can change the weekly timetable.' });
+      errors.push({ index, message: 'Changing the weekly timetable needs the “Planner & cover” permission.' });
       continue;
     }
     if ('sessionId' in o) {
       try {
         const s = await loadSessionFor(tx, auth, o.sessionId, true);
         if (!isOwnerOf(auth, s)) errors.push({ index, message: 'Only the course’s own teacher or an admin can change this class.' });
-        else if (o.op === 'substitute' && !admin) errors.push({ index, message: 'Only an admin (principal or HOD) can give a class to another teacher.' });
+        else if (o.op === 'substitute' && !admin) errors.push({ index, message: 'Only an admin, or a professor with the “Planner & cover” permission, can give a class to another professor.' });
         if (o.op === 'cancel') {
           const marks = await tx.query('select 1 from attendance_records where session_id = $1 limit 1', [s.id]);
           if (marks.rowCount) errors.push({ index, message: 'This class already has attendance, so it can’t be cancelled.' });

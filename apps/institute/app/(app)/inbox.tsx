@@ -7,13 +7,13 @@ import { Button, ErrorState, Loading, Segmented, Text } from '@kit/components/ui
 import { colors } from '@kit/theme';
 import { Empty, Header } from '@/components/forms';
 import { RequestCard } from '@/components/Requests';
-import { useChangeRequests, useIsAdmin, useOverview } from '@/queries';
+import { useChangeRequests, useCan, useOverview } from '@/queries';
 
 /** Requests: teachers asking me to cover, students' questions, and what I sent. */
 export default function InboxScreen() {
   const q = useChangeRequests();
   const tz = useOverview().data?.timezone;
-  const admin = useIsAdmin();
+  const admin = useCan('planner');
   const [tab, setTab] = useState<'in' | 'out'>(admin ? 'out' : 'in');
   if (q.isPending)
     return (

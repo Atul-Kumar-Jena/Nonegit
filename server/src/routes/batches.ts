@@ -13,7 +13,7 @@ import { z } from 'zod';
 import { Batch, BatchBody, BatchDetail, BatchSubjectBody, BatchUpdateBody, type BatchCourse, type StudentHit } from '@attendly/protocol';
 import type { Deps } from '../deps';
 import { withTx, type Queryable } from '../db';
-import { STAFF, isAdmin } from '../lib/access';
+import { STAFF, can, isAdmin } from '../lib/access';
 import { requireDevice, type AuthContext } from '../lib/auth';
 import { reconcileBatchEnrollments } from '../lib/batches';
 import { ApiError } from '../lib/errors';
@@ -81,7 +81,7 @@ async function loadDetail(db: Queryable, auth: AuthContext, id: string): Promise
       title: c.title,
       kind: c.kind,
       instructor: c.instructor_id && c.instructor_name ? { id: c.instructor_id, name: c.instructor_name } : null,
-      canOpen: isAdmin(auth) || c.instructor_id === auth.userId,
+      canOpen: can(auth, 'courses') || c.instructor_id === auth.userId,
     })),
   };
 }
@@ -216,7 +216,7 @@ export async function batchRoutes(app: FastifyInstance, deps: Deps) {
     const auth = await requireDevice(req, deps, STAFF);
     const { id } = IdParam.parse(req.params);
     const b = BatchSubjectBody.parse(req.body);
-    const instructorId = isAdmin(auth) ? (b.instructorId ?? null) : auth.userId;
+    const instructorId = can(auth, 'courses') ? (b.instructorId ?? null) : auth.userId;
     if (instructorId) {
       const r = await deps.db.query(`select 1 from users where id = $1 and tenant_id = $2 and role in ('teacher', 'admin') and status = 'active'`, [instructorId, auth.tenantId]);
       if (r.rowCount !== 1) throw new ApiError(400, 'BAD_REQUEST', 'The teacher must be an active teacher or admin of this institution.');

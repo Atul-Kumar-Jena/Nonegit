@@ -19,7 +19,7 @@ import { BigScreenSheet } from '@/components/BigScreen';
 import { Chips, Field, Header, confirmAction } from '@/components/forms';
 import { StatusBadge } from '@/components/SessionCard';
 import { localSessions } from '@/local-sessions';
-import { qk, useFeed, useIsAdmin, useMe } from '@/queries';
+import { qk, useFeed, useCan, useIsAdmin, useMe } from '@/queries';
 import { useSessionView } from '@/session-view';
 import { TEACHER_EDIT_WINDOW_MS, canStartNow, minutesLabel } from '@/time';
 
@@ -46,6 +46,7 @@ export default function SessionScreen() {
   const api = useApi();
   const qc = useQueryClient();
   const isAdmin = useIsAdmin();
+  const planner = useCan('planner');
   const { session: s, secret, tz, query, fromCache } = useSessionView(id);
   const feed = useFeed(id, s?.status === 'live');
 
@@ -71,7 +72,7 @@ export default function SessionScreen() {
   }
 
   const now = api.serverNow();
-  const canReorganise = isAdmin || (!!me.data && s.teacher?.id === me.data.user.id);
+  const canReorganise = planner || (!!me.data && s.teacher?.id === me.data.user.id);
   const m: SessionMode = mode ?? s.mode;
   const roomHasLocation = s.lat !== null && s.lng !== null && s.status === 'scheduled';
   const w = where ?? 'phone';
@@ -273,12 +274,12 @@ export default function SessionScreen() {
               <SectionLabel>Adjustment</SectionLabel>
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 <Button title="Move" kind="secondary" compact onPress={() => setAdjust('reschedule')} icon={<ArrowRightLeft color={colors.text} size={15} />} style={{ flex: 1 }} />
-                {isAdmin ? <Button title="Give to a teacher" kind="secondary" compact onPress={() => setAdjust('substitute')} icon={<UserRound color={colors.text} size={15} />} style={{ flex: 1 }} /> : null}
+                {planner ? <Button title="Give to a teacher" kind="secondary" compact onPress={() => setAdjust('substitute')} icon={<UserRound color={colors.text} size={15} />} style={{ flex: 1 }} /> : null}
               </View>
               <Button title="Cancel this class" kind="danger" onPress={() => setAdjust('cancel')} icon={<XCircle color={colors.red} size={16} />} style={{ marginTop: 10 }} />
               <Text variant="small" style={{ marginTop: 8 }}>
                 Students of {s.courseCode} are notified immediately. Changes are checked for clashes with other classes, teachers and rooms.
-                {isAdmin ? '' : ' Can’t take this class? Ask your admin (principal / HOD) — only they can give it to another teacher.'}
+                {planner ? '' : ' Can’t take this class? Ask your admin (principal / HOD) to give it to another professor.'}
               </Text>
             </>
           ) : (

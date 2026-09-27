@@ -10,7 +10,7 @@ import { useApi } from '@kit/state/session';
 import { colors } from '@kit/theme';
 import { staffApi } from '@/api';
 import { Chips, Empty, Field, Header, Sheet, ToggleRow, firstIssue } from '@/components/forms';
-import { useIsAdmin, useRooms } from '@/queries';
+import { useCan, useRooms } from '@/queries';
 
 const RADII = [
   { value: 25, label: '25 m' },
@@ -22,7 +22,7 @@ const RADII = [
 
 /** Classrooms and their saved locations (the geofence QR classes use). */
 export default function Rooms() {
-  const admin = useIsAdmin();
+  const admin = useCan('courses');
   const q = useRooms();
   const [editing, setEditing] = useState<Room | 'new' | null>(null);
 

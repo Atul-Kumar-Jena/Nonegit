@@ -17,7 +17,7 @@ import {
 } from '@attendly/protocol';
 import type { Deps } from '../deps';
 import { withTx, type Queryable } from '../db';
-import { COURSE_SELECT, STAFF, instructorFilter, loadCourseFor, requireAdmin, type CourseRow } from '../lib/access';
+import { COURSE_SELECT, STAFF, instructorFilter, loadCourseFor, requirePerm, type CourseRow } from '../lib/access';
 import { requireDevice } from '../lib/auth';
 import { ApiError } from '../lib/errors';
 import { loadTenantTerm } from '../lib/stats';
@@ -116,7 +116,7 @@ export async function staffAcademicRoutes(app: FastifyInstance, deps: Deps) {
 
   app.post('/v1/staff/courses', async (req): Promise<CourseSummary> => {
     const auth = await requireDevice(req, deps, STAFF);
-    requireAdmin(auth);
+    requirePerm(auth, 'courses');
     const b = CourseBody.parse(req.body);
     await checkInstructor(deps.db, auth.tenantId, b.instructorId);
     try {
@@ -137,7 +137,7 @@ export async function staffAcademicRoutes(app: FastifyInstance, deps: Deps) {
 
   app.post('/v1/staff/courses/:id', async (req): Promise<CourseSummary> => {
     const auth = await requireDevice(req, deps, STAFF);
-    requireAdmin(auth);
+    requirePerm(auth, 'courses');
     const { id } = IdParam.parse(req.params);
     const b = CourseBody.parse(req.body);
     await loadCourseFor(deps.db, auth, id);
@@ -180,7 +180,7 @@ export async function staffAcademicRoutes(app: FastifyInstance, deps: Deps) {
 
   app.post('/v1/staff/courses/:id/enrollments', async (req): Promise<RosterEntry[]> => {
     const auth = await requireDevice(req, deps, STAFF);
-    requireAdmin(auth);
+    requirePerm(auth, 'courses');
     const { id } = IdParam.parse(req.params);
     const b = EnrollmentBody.parse(req.body);
     await loadCourseFor(deps.db, auth, id);
@@ -261,7 +261,7 @@ export async function staffAcademicRoutes(app: FastifyInstance, deps: Deps) {
 
   async function saveSlot(req: FastifyRequest, id: string | null): Promise<Slot> {
     const auth = await requireDevice(req, deps, STAFF);
-    requireAdmin(auth);
+    requirePerm(auth, 'courses');
     const b = SlotBody.parse(req.body);
     await loadCourseFor(deps.db, auth, b.courseId);
     if (b.roomId) {
@@ -352,7 +352,7 @@ export async function staffAcademicRoutes(app: FastifyInstance, deps: Deps) {
 
   app.post('/v1/staff/timetable/:id/delete', async (req) => {
     const auth = await requireDevice(req, deps, STAFF);
-    requireAdmin(auth);
+    requirePerm(auth, 'courses');
     const { id } = IdParam.parse(req.params);
     await withTx(deps.db, async (tx) => {
       const r = await tx.query('select 1 from timetable_slots where id = $1 and tenant_id = $2', [id, auth.tenantId]);

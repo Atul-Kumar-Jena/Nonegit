@@ -12,14 +12,14 @@ import { useApi } from '@kit/state/session';
 import { colors, fonts } from '@kit/theme';
 import { staffApi } from '@/api';
 import { Header } from '@/components/forms';
-import { qk, useIsAdmin, useStudentReport } from '@/queries';
+import { qk, useCan, useStudentReport } from '@/queries';
 
 /** Any student's attendance, subject by subject (every teacher can open this). */
 export default function StudentAttendance() {
   const { id: raw } = useLocalSearchParams<{ id: string }>();
   const id = String(raw ?? '');
   const api = useApi();
-  const admin = useIsAdmin();
+  const admin = useCan('people');
   const q = useStudentReport(id);
   const [open, setOpen] = useState<string | null>(null);
 

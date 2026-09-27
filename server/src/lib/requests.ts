@@ -24,7 +24,7 @@ import {
 import type { Deps } from '../deps';
 import type { Queryable } from '../db';
 import { loadInstitution, staffAudit } from '../routes/staff-admin';
-import { isAdmin, loadSessionFor } from './access';
+import { can, loadSessionFor } from './access';
 import type { AuthContext } from './auth';
 import { appendAudit } from './audit';
 import { ApiError } from './errors';
@@ -142,7 +142,7 @@ async function whenText(db: Queryable, tenantId: string, start: Date, end: Date)
  */
 export async function createCoverRequest(tx: PoolClient, deps: Deps, auth: AuthContext, body: CoverRequestBody): Promise<CoverResponse> {
   // Hierarchy: only admins (principal / HOD) hand classes out; teachers answer.
-  if (!isAdmin(auth)) throw new ApiError(403, 'FORBIDDEN', 'Only an admin (principal or HOD) can give a class to another teacher. Teachers accept or decline requests.');
+  if (!can(auth, 'planner')) throw new ApiError(403, 'FORBIDDEN', 'Only an admin (principal or HOD) — or a professor they gave “Planner & cover” — can give a class to another teacher. Teachers accept or decline requests.');
   const s = await loadSessionFor(tx, auth, body.sessionId, true);
   assertOpen(s, deps.clock());
   const target = (
@@ -220,12 +220,13 @@ export async function acceptRequest(tx: PoolClient, deps: Deps, auth: AuthContex
       throw new ApiError(409, 'CONFLICT', 'This class is cancelled or already over, so the request has expired.');
     }
     // Publish with the requester's authority: they are the one who may reorganise this class.
-    const requester = (await tx.query<{ role: AuthContext['role']; status: string }>('select role, status from users where id = $1', [r.requested_by])).rows[0];
+    const requester = (await tx.query<{ role: AuthContext['role']; status: string; permissions: string[] }>('select role, status, permissions from users where id = $1', [r.requested_by])).rows[0];
     if (!requester || requester.status !== 'active') {
       await decide('expired');
       throw new ApiError(409, 'CONFLICT', 'The person who asked no longer has access, so the request has expired.');
     }
-    const asRequester: AuthContext = { ...auth, userId: r.requested_by, role: requester.role };
+    // (If their "Planner & cover" permission was taken away meanwhile, publishing is refused.)
+    const asRequester: AuthContext = { ...auth, userId: r.requested_by, role: requester.role, permissions: requester.permissions };
     const op: DraftOp = { op: 'substitute', sessionId: r.session_id, teacherId: auth.userId, noteToStudents: r.note_to_students ?? undefined };
     const res = await publishOps(tx, deps, asRequester, [op], { acceptWarnings: body.acceptWarnings, note: r.note_to_students, skipNotifyUserId: auth.userId });
     if (!res.published) return { request: toRequest(r), conflicts: res.conflicts, errors: res.errors, notified: 0 };
@@ -282,7 +283,7 @@ export async function declineRequest(tx: PoolClient, deps: Deps, auth: AuthConte
 /** The person who asked (or an admin, for cover requests) takes it back. */
 export async function cancelRequest(tx: PoolClient, deps: Deps, auth: AuthContext, id: string): Promise<ChangeRequest> {
   const r = await loadRequest(tx, id, auth.tenantId, true);
-  if (r.requested_by !== auth.userId && !(r.kind === 'cover' && isAdmin(auth))) throw new ApiError(403, 'FORBIDDEN', 'Only the person who asked can withdraw this.');
+  if (r.requested_by !== auth.userId && !(r.kind === 'cover' && can(auth, 'planner'))) throw new ApiError(403, 'FORBIDDEN', 'Only the person who asked can withdraw this.');
   if (r.status !== 'pending') throw new ApiError(409, 'CONFLICT', `This request was already ${r.status}.`);
   await tx.query(`update change_requests set status = 'cancelled', decided_at = $2, decided_by = $3 where id = $1`, [id, new Date(deps.clock()), auth.userId]);
   const when = await whenText(tx, auth.tenantId, r.scheduled_start, r.scheduled_end);

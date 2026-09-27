@@ -6,12 +6,12 @@ import { Screen } from '@kit/components/Screen';
 import { Badge, Button, Card, ErrorState, Input, Loading, Segmented, Text } from '@kit/components/ui';
 import { colors } from '@kit/theme';
 import { Empty } from '@/components/forms';
-import { useBatches, useCourses, useIsAdmin } from '@/queries';
+import { useBatches, useCan, useCourses } from '@/queries';
 import { BatchList, NewBatch } from '@/components/BatchList';
 
 /** Batch-first: semester → batch → students → subjects; or straight to the subjects (courses). */
 export default function Classes() {
-  const admin = useIsAdmin();
+  const admin = useCan('courses');
   const q = useCourses();
   const batches = useBatches();
   const [view, setView] = useState<'batches' | 'subjects'>('batches');

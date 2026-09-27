@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { AuthenticatorCodeBody, type AuthenticatorSetup, type AuthenticatorStatus } from '@attendly/protocol';
 import type { Deps } from '../deps';
 import { withTx } from '../db';
-import { STAFF, requireAdmin } from '../lib/access';
+import { STAFF, requirePerm } from '../lib/access';
 import { appendAudit } from '../lib/audit';
 import { requireDevice } from '../lib/auth';
 import { ApiError } from '../lib/errors';
@@ -78,7 +78,7 @@ export async function authenticatorRoutes(app: FastifyInstance, deps: Deps) {
   /** Admin, in person: a new authenticator for a student or teacher, live at once. */
   app.post('/v1/staff/people/:id/authenticator', write, async (req): Promise<AuthenticatorSetup> => {
     const auth = await requireDevice(req, deps, STAFF);
-    requireAdmin(auth);
+    requirePerm(auth, 'people');
     const { id } = z.object({ id: z.uuid() }).parse(req.params);
     return withTx(deps.db, async (tx) => {
       const u = (await tx.query<{ role: string; email: string | null; phone: string | null; full_name: string }>('select role, email, phone, full_name from users where id = $1 and tenant_id = $2 for update', [id, auth.tenantId])).rows[0];
@@ -94,7 +94,7 @@ export async function authenticatorRoutes(app: FastifyInstance, deps: Deps) {
   /** Admin: someone lost their phone — back to emailed codes (or issue a new one). */
   app.post('/v1/staff/people/:id/authenticator/remove', write, async (req): Promise<AuthenticatorStatus> => {
     const auth = await requireDevice(req, deps, STAFF);
-    requireAdmin(auth);
+    requirePerm(auth, 'people');
     const { id } = z.object({ id: z.uuid() }).parse(req.params);
     return withTx(deps.db, async (tx) => {
       const r = await tx.query("update users set totp_secret_enc = null, totp_enabled_at = null, totp_last_step = null where id = $1 and tenant_id = $2 and role in ('student', 'teacher')", [id, auth.tenantId]);

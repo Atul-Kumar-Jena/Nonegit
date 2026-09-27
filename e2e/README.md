@@ -51,3 +51,9 @@ NODE_PATH=$(npm root -g) OUT=/tmp/shots-cover node e2e/cover.cjs     # must end 
 Same demo-mode server as `cover.cjs` (reset it between runs; needs `fflate` from the repo root: `NODE_PATH=$(npm root -g):$PWD/node_modules`).
 - **reports.cjs**: a non-admin teacher opens Attendance reports, filters by batch and subject, downloads Excel (checked as a real workbook ending with the credit line) and PDF (the printed HTML is captured), opens any student and a subject's class list; a student downloads their own report, then again **offline** from the copy on the phone.
 - **batches.cjs**: a professor creates a batch (department + semester), adds a registered student, pastes a list (one new, one already registered), creates a subject inside the batch, moves the batch up a semester; a second professor can open it but gets no remove/rename/semester controls.
+
+## `bigscreen.cjs` (6 steps) and `roles.cjs` (4 steps)
+
+Same demo-mode server (reset between runs).
+- **bigscreen.cjs**: a live CS-301 class (started via /dev); a "classroom PC" tab opens `/tv`; its **pairing QR is decoded from the screen's pixels** and must equal the code shown; the teacher pairs and approves in the Institute app; the PC's rotating class QR is decoded from pixels and a student is marked present with it; the PC's count goes to 1; ending the class blanks the PC.
+- **roles.cjs**: a plain professor has no planner/cover (and sees the institution code in More); the admin grants "Planner & cover" in People & roles; the professor gets the planner and the cover board; the admin takes it back.

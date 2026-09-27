@@ -10,7 +10,7 @@ import { colors, fonts, radius } from '@kit/theme';
 import { staffApi } from '@/api';
 import { Checkbox, Chips, Field, Header, Select } from '@/components/forms';
 import { parseRows } from '@/import-parse';
-import { useBatches, useCourses, useIsAdmin } from '@/queries';
+import { useBatches, useCourses, useCan } from '@/queries';
 
 const EXAMPLE = 'Aarav Sharma, 21CS1001, aarav@college.edu\nDiya Patel, 21CS1002, diya@college.edu, +919876543210';
 
@@ -19,7 +19,7 @@ export default function Import() {
   const params = useLocalSearchParams<{ role?: string; batchId?: string }>();
   const api = useApi();
   const qc = useQueryClient();
-  const admin = useIsAdmin();
+  const admin = useCan('people');
   const courses = useCourses();
   const [role, setRole] = useState<'student' | 'teacher'>(params.role === 'teacher' ? 'teacher' : 'student');
   const [text, setText] = useState('');

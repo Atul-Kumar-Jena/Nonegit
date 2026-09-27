@@ -50,6 +50,8 @@ export interface AuthContext {
   familyId: string;
   userId: string;
   role: Role;
+  /** Professors: extra powers an admin gave them (see lib/access.ts `can`). */
+  permissions: string[];
   tenantId: string;
   deviceId: string;
   devicePublicKey: Buffer;
@@ -153,6 +155,7 @@ interface SessionRow {
   family_id: string;
   user_id: string;
   role: Role;
+  permissions: string[];
   tenant_id: string;
   device_id: string;
   public_key: Buffer;
@@ -167,7 +170,7 @@ interface SessionRow {
 }
 
 const SESSION_SELECT = `
-  select s.id as session_id, s.family_id, s.user_id, u.role, u.tenant_id, s.device_id,
+  select s.id as session_id, s.family_id, s.user_id, u.role, u.permissions, u.tenant_id, s.device_id,
          d.public_key, d.fingerprint, d.status as device_status, u.status as user_status,
          t.status as tenant_status, s.access_expires_at, s.revoked_at, s.rotated_at, s.last_used_at
     from auth_sessions s
@@ -208,6 +211,7 @@ export async function requireDevice(req: FastifyRequest, deps: Deps, roles?: rea
     familyId: s.family_id,
     userId: s.user_id,
     role: s.role,
+    permissions: s.permissions ?? [],
     tenantId: s.tenant_id,
     deviceId: s.device_id,
     devicePublicKey: s.public_key,

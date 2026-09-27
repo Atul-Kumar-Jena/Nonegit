@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import type { StaffPermission } from '@attendly/protocol';
 import { useApi } from '@kit/state/session';
 import { staffApi } from './api';
 import { localSessions } from './local-sessions';
@@ -38,12 +39,19 @@ const isId = (id: string) => /^[0-9a-f-]{36}$/i.test(id);
 
 export function useMe() {
   const api = useApi();
-  return useQuery({ queryKey: qk.me, queryFn: () => staffApi.me(api), staleTime: 60_000 });
+  // Role and permissions can change any time (an admin's decision): keep them fresh.
+  return useQuery({ queryKey: qk.me, queryFn: () => staffApi.me(api), staleTime: 5_000, refetchInterval: 60_000 });
 }
 
 /** True for admins. While unknown (first launch offline) staff are treated as teachers — the server enforces it anyway. */
 export function useIsAdmin(): boolean {
   return useMe().data?.user.role === 'admin';
+}
+
+/** Admins can do everything; a professor what an admin granted them (server enforces the same). */
+export function useCan(p: StaffPermission): boolean {
+  const me = useMe().data;
+  return me?.user.role === 'admin' || !!me?.permissions.includes(p);
 }
 
 export function useOverview() {

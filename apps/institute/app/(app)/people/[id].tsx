@@ -3,7 +3,7 @@ import { View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { Ban, CheckCircle2, FileBarChart, KeyRound, Pencil, Smartphone } from 'lucide-react-native';
-import type { AuthenticatorSetup } from '@attendly/protocol';
+import { STAFF_PERMISSIONS, type AuthenticatorSetup } from '@attendly/protocol';
 import { QrCode } from '@kit/components/QrCode';
 import { Screen } from '@kit/components/Screen';
 import { Avatar, Badge, Button, Card, ErrorState, InfoRow, Loading, Notice, SectionLabel, Text } from '@kit/components/ui';
@@ -12,6 +12,7 @@ import { useApi } from '@kit/state/session';
 import { colors } from '@kit/theme';
 import { staffApi } from '@/api';
 import { Header, confirmAction } from '@/components/forms';
+import { RoleEditor } from '@/components/RoleEditor';
 import { useCourses, useMe, usePerson } from '@/queries';
 
 /** One person (admins): details, their courses, their phone, suspend / reset. */
@@ -59,7 +60,7 @@ export default function PersonDetail() {
 
   return (
     <Screen onRefresh={() => void q.refetch()} refreshing={q.isRefetching}>
-      <Header title={p.fullName} subtitle={p.role} right={<Button title="Edit" kind="secondary" compact onPress={() => router.push({ pathname: '/person-form', params: { id } })} icon={<Pencil color={colors.text} size={14} />} />} />
+      <Header title={p.fullName} subtitle={p.role === 'admin' ? 'Admin · principal / HOD' : p.role === 'teacher' ? 'Professor' : p.role} right={<Button title="Edit" kind="secondary" compact onPress={() => router.push({ pathname: '/person-form', params: { id } })} icon={<Pencil color={colors.text} size={14} />} />} />
       <Card style={{ alignItems: 'center', paddingVertical: 20, marginTop: 8 }}>
         <Avatar text={initials(p.fullName)} size={60} />
         <Text variant="heading" style={{ marginTop: 12 }}>
@@ -79,7 +80,7 @@ export default function PersonDetail() {
           />
         ) : null}
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
-          <Badge label={p.role === 'admin' ? 'Admin' : p.role === 'teacher' ? 'Teacher' : 'Student'} tone={p.role === 'admin' ? 'violet' : 'cyan'} dot={false} />
+          <Badge label={p.role === 'admin' ? 'Admin' : p.role === 'teacher' ? 'Professor' : 'Student'} tone={p.role === 'admin' ? 'violet' : 'cyan'} dot={false} />
           <Badge label={p.status === 'active' ? 'Active' : 'Suspended'} tone={p.status === 'active' ? 'green' : 'red'} />
         </View>
       </Card>
@@ -135,6 +136,20 @@ export default function PersonDetail() {
           <Text variant="small">No phone bound yet — they bind one the first time they sign in.</Text>
         )}
       </Card>
+
+      {(p.role === 'teacher' || p.role === 'admin') && me.data?.user.role === 'admin' ? (
+        <>
+          <SectionLabel>Role & permissions</SectionLabel>
+          <RoleEditor p={p} self={self} />
+        </>
+      ) : p.role === 'teacher' && p.permissions.length ? (
+        <>
+          <SectionLabel>Also allowed</SectionLabel>
+          <Card>
+            <Text variant="small">{STAFF_PERMISSIONS.filter((x) => p.permissions.includes(x.key)).map((x) => x.label).join(' · ')}</Text>
+          </Card>
+        </>
+      ) : null}
 
       {p.role === 'student' || p.role === 'teacher' ? (
         <>

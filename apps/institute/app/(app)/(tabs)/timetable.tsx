@@ -10,13 +10,14 @@ import { colors, fonts, radius } from '@kit/theme';
 import { Empty, WEEKDAYS } from '@/components/forms';
 import { SessionCard } from '@/components/SessionCard';
 import { useLocalSessions, withLocal } from '@/local-sessions';
-import { useIsAdmin, useOverview, useSessionsOn, useTimetable } from '@/queries';
+import { useCan, useOverview, useSessionsOn, useTimetable } from '@/queries';
 import { ymdIn } from '@/time';
 
 /** The weekly timetable (admins edit it) and the next 7 days of classes it produced. */
 export default function Timetable() {
   const api = useApi();
-  const admin = useIsAdmin();
+  const admin = useCan('courses');
+  const planner = useCan('planner');
   const q = useTimetable();
   const overview = useOverview();
   const tz = overview.data?.timezone;
@@ -74,12 +75,12 @@ export default function Timetable() {
         {admin ? 'Slots repeat every week and create classes 14 days ahead — for every teacher and student app.' : 'Your weekly classes. Ask an admin to change a slot.'}
       </Text>
 
-      {admin ? (
+      {planner ? (
         <Button title="Open the planner (drag & drop)" onPress={() => router.push('/planner')} icon={<CalendarRange color="#0a0a0a" size={16} />} style={{ marginTop: 12 }} />
       ) : null}
       <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
         <Button title="Who’s busy where" kind="ghost" compact onPress={() => router.push('/busy')} icon={<Clock4 color={colors.text} size={14} />} />
-        {admin ? <Button title="Cover a class (drag a free teacher)" kind="ghost" compact onPress={() => router.push('/cover')} icon={<UserPlus color={colors.text} size={14} />} /> : null}
+        {planner ? <Button title="Cover a class (drag a free teacher)" kind="ghost" compact onPress={() => router.push('/cover')} icon={<UserPlus color={colors.text} size={14} />} /> : null}
       </View>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.days} style={{ marginTop: 16, marginHorizontal: -20 }}>

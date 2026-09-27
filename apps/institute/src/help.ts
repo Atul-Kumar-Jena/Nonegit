@@ -77,8 +77,13 @@ export const HELP: Record<string, { title: string; text: string[] }> = {
     text: ['Stand in the room and tap “Use my location”. QR scans are accepted only from inside the room’s circle (radius).'],
   },
   people: {
-    title: 'People',
-    text: ['Add students and teachers one by one or paste a list from a spreadsheet.', 'Open a person to see their phone, reset it, set up Google Authenticator for them, or suspend the account.'],
+    title: 'People & roles',
+    text: [
+      'Admin (principal / HOD): everything, including institution settings and who may do what. Professor: their own classes, batches and all attendance reports.',
+      'An admin can give a professor extra powers — People, Courses & timetable, Planner & cover, Phones & scans — or make them an admin: open the professor → Role & permissions.',
+      'Add students and professors one by one or paste a list. Open a person to see their phone, reset it, set up Google Authenticator, or suspend the account.',
+      'An institution always keeps at least one admin.',
+    ],
   },
   flags: {
     title: 'Suspicious scans',

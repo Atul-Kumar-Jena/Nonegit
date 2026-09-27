@@ -1,8 +1,8 @@
-import type { ReactNode } from 'react';
+import { useCallback, type ReactNode } from 'react';
 import { Pressable, Share, StyleSheet, Switch, View } from 'react-native';
-import { router, type Href } from 'expo-router';
+import { router, useFocusEffect, type Href } from 'expo-router';
 import { Share2, AlarmClock, Bell, Building2, CalendarDays, CalendarRange, ChevronRight, Clock4, Inbox, KeyRound, Library, Lock, LogOut, MapPin, Play, Plus, ShieldAlert, Smartphone, Trash2, UserPlus, Users, UsersRound, Wand2, FileBarChart } from 'lucide-react-native';
-import { formatInstitutionCode } from '@attendly/protocol';
+import { STAFF_PERMISSIONS, formatInstitutionCode, type StaffPermission } from '@attendly/protocol';
 import { Screen } from '@kit/components/Screen';
 import { SyncBanner } from '@kit/components/SyncBanner';
 import { Avatar, Badge, Button, Card, Divider, InfoRow, SectionLabel, Text } from '@kit/components/ui';
@@ -22,12 +22,16 @@ import { useMe, useOverview } from '@/queries';
 /** Everything else: people, rooms, reviews, settings, your account. */
 export default function More() {
   const me = useMe();
+  // Role / permissions may have just been changed by an admin: re-check whenever this tab is shown.
+  useFocusEffect(useCallback(() => void me.refetch(), [me.refetch]));
   const overview = useOverview();
   const { server, signOut, resetPhone } = useSession();
   const { items: unsent } = useOutbox();
   const u = me.data?.user;
   const shotsBlocked = useScreenshotsBlocked();
   const admin = u?.role === 'admin';
+  const perms = new Set(me.data?.permissions ?? []);
+  const may = (p: StaffPermission) => admin || perms.has(p);
   const warn = unsent.length
     ? `\n\n⚠ ${unsent.length} offline ${unsent.length === 1 ? 'change has' : 'changes have'} not been uploaded yet (registers, class starts) and will be lost. Connect to the internet first.`
     : '';
@@ -68,8 +72,17 @@ export default function More() {
             </Pressable>
           ) : null}
         </View>
-        {u ? <Badge label={admin ? 'Admin' : 'Teacher'} tone={admin ? 'violet' : 'cyan'} dot={false} /> : null}
+        {u ? <Badge label={admin ? 'Admin' : 'Professor'} tone={admin ? 'violet' : 'cyan'} dot={false} /> : null}
       </Card>
+      {u ? (
+        <Text variant="small" style={{ marginTop: 8 }}>
+          {admin
+            ? 'Admin (principal / HOD): everything, including institution settings and who may do what.'
+            : perms.size
+              ? `Professor · also allowed: ${STAFF_PERMISSIONS.filter((p) => perms.has(p.key)).map((p) => p.label).join(', ')}`
+              : 'Professor: your classes, batches and reports. An admin can give you more (People → you → Role & permissions).'}
+        </Text>
+      ) : null}
 
       <SyncBanner />
 
@@ -83,19 +96,23 @@ export default function More() {
           { icon: <Plus color={colors.text} size={18} />, label: 'Extra class', href: '/extra-class' },
           { icon: <Inbox color={colors.text} size={18} />, label: 'Requests', href: '/inbox' },
           { icon: <Clock4 color={colors.text} size={18} />, label: 'Who’s busy', href: '/busy' },
-          ...(admin
+          ...(may('planner')
             ? [
                 { icon: <UserPlus color={colors.text} size={18} />, label: 'Cover a class', href: '/cover' as Href },
                 { icon: <CalendarRange color={colors.text} size={18} />, label: 'Planner', href: '/planner' as Href },
-                { icon: <Users color={colors.text} size={18} />, label: 'People', href: '/people' as Href },
               ]
             : []),
+          ...(may('people') ? [{ icon: <Users color={colors.text} size={18} />, label: 'People & roles', href: '/people' as Href }] : []),
           { icon: <UsersRound color={colors.text} size={18} />, label: 'Batches', href: '/batches' },
           { icon: <MapPin color={colors.text} size={18} />, label: 'Rooms', href: '/rooms' },
-          ...(admin
+          ...(may('devices')
             ? [
                 { icon: <Smartphone color={colors.text} size={18} />, label: 'Phone requests', href: '/requests' as Href, badge: overview.data?.pendingRequests ? String(overview.data.pendingRequests) : null },
                 { icon: <ShieldAlert color={colors.text} size={18} />, label: 'Suspicious scans', href: '/flags' as Href, badge: overview.data?.flaggedOpen ? String(overview.data.flaggedOpen) : null },
+              ]
+            : []),
+          ...(admin
+            ? [
                 { icon: <Building2 color={colors.text} size={18} />, label: 'Institution', href: '/institution' as Href },
                 { icon: <Wand2 color={colors.text} size={18} />, label: 'Setup checklist', href: '/setup' as Href },
               ]

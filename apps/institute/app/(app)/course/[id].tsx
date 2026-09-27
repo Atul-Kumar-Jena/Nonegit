@@ -10,7 +10,7 @@ import { Empty, Header, WEEKDAY_NAME } from '@/components/forms';
 import { SessionCard } from '@/components/SessionCard';
 import { shareCsv, toCsv } from '@/export-csv';
 import { useLocalSessions, withLocal } from '@/local-sessions';
-import { qk, useCourseSessions, useIsAdmin, useOverview, useReport, useTimetable } from '@/queries';
+import { qk, useCourseSessions, useCan, useOverview, useReport, useTimetable } from '@/queries';
 import { staffApi } from '@/api';
 import { DownloadCard } from '@kit/components/Download';
 import { matrixReportDoc } from '@kit/lib/export';
@@ -27,7 +27,7 @@ const TABS = [
 export default function CourseDetail() {
   const { id: rawId } = useLocalSearchParams<{ id: string }>();
   const id = String(rawId ?? '');
-  const admin = useIsAdmin();
+  const admin = useCan('courses');
   const api = useApi();
   const report = useReport(id);
   const sessions = useCourseSessions(id);

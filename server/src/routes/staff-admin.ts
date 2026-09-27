@@ -7,6 +7,9 @@ import {
   BulkImportBody,
   PersonBody,
   PersonUpdateBody,
+  StaffAccessBody,
+  StaffPermission,
+  STAFF_PERMISSIONS,
   RoomBody,
   UpdateInstitutionBody,
   type BulkImportResponse,
@@ -19,9 +22,10 @@ import {
 import type { PoolClient } from 'pg';
 import type { Deps } from '../deps';
 import { isUniqueViolation, withTx, type Queryable } from '../db';
-import { STAFF, instructorFilter, isAdmin, requireAdmin } from '../lib/access';
+import { STAFF, can, instructorFilter, isAdmin, requireAdmin, requirePerm } from '../lib/access';
 import { reconcileBatchEnrollments } from '../lib/batches';
 import { appendAudit } from '../lib/audit';
+import { insertNotifications } from '../lib/notify';
 import { requireDevice, type AuthContext } from '../lib/auth';
 import { ApiError } from '../lib/errors';
 import { listStaffSessions, localDayBounds } from '../lib/staff-sessions';
@@ -72,10 +76,11 @@ interface PersonRow {
   device_bound_at: Date | null;
   course_ids: string[] | null;
   totp: boolean;
+  permissions: string[];
 }
 
 const PERSON_SELECT = `
-  select u.id, u.role, u.full_name, u.email, u.phone, u.roll_no, u.department, u.semester, u.status, u.totp_enabled_at is not null as totp,
+  select u.id, u.role, u.full_name, u.email, u.phone, u.roll_no, u.department, u.semester, u.status, u.totp_enabled_at is not null as totp, u.permissions,
          d.model as device_model, d.fingerprint as device_fingerprint, d.bound_at as device_bound_at,
          (select array_agg(e.course_id) from enrollments e where e.user_id = u.id) as course_ids
     from users u left join devices d on d.user_id = u.id and d.status = 'active'`;
@@ -94,6 +99,7 @@ function toPerson(r: PersonRow): Person {
     device: r.device_model && r.device_fingerprint ? { model: r.device_model, fingerprint: r.device_fingerprint, boundAt: r.device_bound_at?.toISOString() ?? null } : null,
     courseIds: r.course_ids ?? [],
     authenticator: r.totp,
+    permissions: r.role === 'teacher' ? (r.permissions as Person['permissions']) : [],
   };
 }
 
@@ -140,20 +146,28 @@ async function audit(tx: Queryable, auth: AuthContext, action: string, subject: 
   await appendAudit(tx, { tenantId: auth.tenantId, actorType: 'user', actorId: auth.userId, action, subject, data });
 }
 
+const STAFF_PERMISSION_KEYS = StaffPermission.options;
+
 export async function staffAdminRoutes(app: FastifyInstance, deps: Deps) {
   const now = () => new Date(deps.clock());
 
   app.get('/v1/staff/me', async (req): Promise<StaffMe> => {
     const auth = await requireDevice(req, deps, STAFF);
     const [user, device] = await Promise.all([loadUser(deps.db, auth.userId), loadDevice(deps.db, auth.deviceId)]);
-    return { user: toUserSummary(user!), device: toDeviceSummary(device!), institution: await institution(deps.db, auth.tenantId) };
+    return {
+      user: toUserSummary(user!),
+      device: toDeviceSummary(device!),
+      institution: await institution(deps.db, auth.tenantId),
+      permissions: STAFF_PERMISSION_KEYS.filter((p) => can(auth, p)),
+    };
   });
 
   app.get('/v1/staff/overview', async (req): Promise<Overview> => {
     const auth = await requireDevice(req, deps, STAFF);
     const inst = await institution(deps.db, auth.tenantId);
     const day = await localDayBounds(deps.db, inst.timezone, null);
-    const scope = instructorFilter(auth);
+    // Today: admins see the whole institution; professors their own classes.
+    const scope = isAdmin(auth) ? null : auth.userId;
     const today = await listStaffSessions(deps.db, { tenantId: auth.tenantId, instructorId: scope, from: day.from, to: day.to, includeLive: true });
     const counts = await deps.db.query<{ marked: number; flagged: number; requests: number }>(
       `select
@@ -170,7 +184,7 @@ export async function staffAdminRoutes(app: FastifyInstance, deps: Deps) {
       liveNow: today.filter((s) => s.status === 'live').length,
       markedToday: c.marked,
       flaggedOpen: c.flagged,
-      pendingRequests: isAdmin(auth) ? c.requests : 0,
+      pendingRequests: can(auth, 'devices') ? c.requests : 0,
       today,
       timezone: inst.timezone,
       serverTime: deps.clock(),
@@ -221,7 +235,7 @@ export async function staffAdminRoutes(app: FastifyInstance, deps: Deps) {
   });
 
   async function saveRoom(auth: AuthContext, id: string | null, body: unknown): Promise<Room> {
-    requireAdmin(auth);
+    requirePerm(auth, 'courses');
     const b = RoomBody.parse(body);
     try {
       return await withTx(deps.db, async (tx) => {
@@ -263,7 +277,7 @@ export async function staffAdminRoutes(app: FastifyInstance, deps: Deps) {
     const q = z
       .object({ role: z.enum(['student', 'teacher', 'admin', 'staff']).default('student'), q: z.string().trim().max(60).optional(), courseId: z.uuid().optional() })
       .parse(req.query);
-    if (q.role !== 'student') requireAdmin(auth);
+    if (q.role !== 'student') requirePerm(auth, 'people');
     const roles = q.role === 'staff' ? ['teacher', 'admin'] : [q.role];
     const like = q.q ? `%${q.q.replace(/[\\%_]/g, (m) => `\\${m}`)}%` : null;
     const { rows } = await deps.db.query<PersonRow>(
@@ -274,7 +288,7 @@ export async function staffAdminRoutes(app: FastifyInstance, deps: Deps) {
           and ($5::uuid is null or exists (select 1 from enrollments e join courses c on c.id = e.course_id where e.user_id = u.id and c.instructor_id = $5))
         order by u.status, u.roll_no nulls last, u.full_name
         limit 1000`,
-      [auth.tenantId, roles, like, q.courseId ?? null, instructorFilter(auth)],
+      [auth.tenantId, roles, like, q.courseId ?? null, can(auth, 'people') ? null : instructorFilter(auth)],
     );
     return rows.map(toPerson);
   });
@@ -283,7 +297,7 @@ export async function staffAdminRoutes(app: FastifyInstance, deps: Deps) {
     const auth = await requireDevice(req, deps, STAFF);
     const { id } = IdParam.parse(req.params);
     const p = await loadPerson(deps.db, auth.tenantId, id);
-    if (!isAdmin(auth)) {
+    if (!can(auth, 'people') && !can(auth, 'courses')) {
       const visible = await deps.db.query(
         'select 1 from enrollments e join courses c on c.id = e.course_id where e.user_id = $1 and c.instructor_id = $2 limit 1',
         [id, auth.userId],
@@ -307,8 +321,9 @@ export async function staffAdminRoutes(app: FastifyInstance, deps: Deps) {
 
   app.post('/v1/staff/people', async (req): Promise<Person> => {
     const auth = await requireDevice(req, deps, STAFF);
-    requireAdmin(auth);
+    requirePerm(auth, 'people');
     const b = PersonBody.parse(req.body);
+    if (b.role === 'admin') requireAdmin(auth); // only admins make admins
     try {
       const id = await withTx(deps.db, (tx) => createPerson(tx, auth, b));
       return loadPerson(deps.db, auth.tenantId, id);
@@ -322,8 +337,8 @@ export async function staffAdminRoutes(app: FastifyInstance, deps: Deps) {
   app.post('/v1/staff/people/import', async (req): Promise<BulkImportResponse> => {
     const auth = await requireDevice(req, deps, STAFF);
     const b = BulkImportBody.parse(req.body);
-    // Teachers may add students into a batch (batch-wise); everything else is for admins.
-    if (!isAdmin(auth) && !b.batchId) requireAdmin(auth);
+    // Any professor may add students into a batch (batch-wise); anything else needs "People".
+    if (!b.batchId) requirePerm(auth, 'people');
     if (b.batchId) {
       const ok = await deps.db.query<{ active: boolean }>('select active from batches where id = $1 and tenant_id = $2', [b.batchId, auth.tenantId]);
       if (ok.rowCount !== 1) throw new ApiError(400, 'BAD_REQUEST', 'Unknown batch.');
@@ -358,8 +373,8 @@ export async function staffAdminRoutes(app: FastifyInstance, deps: Deps) {
           }
         }
       }
-      const role = raw.role === 'teacher' && isAdmin(auth) && !b.batchId ? 'teacher' : 'student';
-      const parsed = PersonBody.safeParse({ ...raw, role, courseIds: role === 'teacher' || !isAdmin(auth) ? [] : b.courseIds });
+      const role = raw.role === 'teacher' && can(auth, 'people') && !b.batchId ? 'teacher' : 'student';
+      const parsed = PersonBody.safeParse({ ...raw, role, courseIds: role === 'teacher' || !can(auth, 'people') ? [] : b.courseIds });
       if (!parsed.success) {
         skipped.push({ row: i + 1, reason: parsed.error.issues[0]?.message ?? 'invalid row' });
         continue;
@@ -386,9 +401,48 @@ export async function staffAdminRoutes(app: FastifyInstance, deps: Deps) {
     return { created, addedExisting, skipped };
   });
 
-  app.post('/v1/staff/people/:id', async (req): Promise<Person> => {
+  /** Admins only: admin ↔ professor, and a professor's extra powers. At least one admin always remains. */
+  app.post('/v1/staff/people/:id/access', async (req): Promise<Person> => {
     const auth = await requireDevice(req, deps, STAFF);
     requireAdmin(auth);
+    const { id } = IdParam.parse(req.params);
+    const b = StaffAccessBody.parse(req.body);
+    await withTx(deps.db, async (tx) => {
+      const cur = await tx.query<{ role: string; permissions: string[]; status: string }>('select role, permissions, status from users where id = $1 and tenant_id = $2 for update', [id, auth.tenantId]);
+      const u = cur.rows[0];
+      if (!u) throw new ApiError(404, 'NOT_FOUND', 'Person not found.');
+      if (u.role !== 'teacher' && u.role !== 'admin') throw new ApiError(400, 'BAD_REQUEST', 'Only professors and admins have roles to change.');
+      if (u.role === 'admin' && b.role !== 'admin') {
+        const others = await tx.query(`select 1 from users where tenant_id = $1 and role = 'admin' and status = 'active' and id <> $2 for update`, [auth.tenantId, id]);
+        if (!others.rowCount) throw new ApiError(409, 'CONFLICT', 'Every institution needs at least one admin. Make someone else an admin first.');
+      }
+      const perms = b.role === 'admin' ? [] : [...new Set(b.permissions)].sort();
+      await tx.query('update users set role = $2, permissions = $3 where id = $1', [id, b.role, perms]);
+      await audit(tx, auth, 'person.access', `user:${id}`, { from: { role: u.role, permissions: u.permissions }, to: { role: b.role, permissions: perms } });
+      // Tell them (bell + phone notification); their app picks the change up at once.
+      const labels = STAFF_PERMISSIONS.filter((x) => perms.includes(x.key)).map((x) => x.label);
+      if (id !== auth.userId && (u.role !== b.role || u.permissions.join() !== perms.join()))
+        await insertNotifications(tx, auth.tenantId, [
+          {
+            userId: id,
+            kind: 'access',
+            title: b.role === 'admin' ? 'You are now an admin' : u.role === 'admin' ? 'You are now a professor' : 'Your permissions changed',
+            body:
+              b.role === 'admin'
+                ? 'You can manage everything in your institution, including people and roles.'
+                : labels.length
+                  ? `You can now use: ${labels.join(', ')}.`
+                  : 'You have the standard professor access: your classes, batches and reports.',
+            data: {},
+          },
+        ]);
+    });
+    return loadPerson(deps.db, auth.tenantId, id);
+  });
+
+  app.post('/v1/staff/people/:id', async (req): Promise<Person> => {
+    const auth = await requireDevice(req, deps, STAFF);
+    requirePerm(auth, 'people');
     const { id } = IdParam.parse(req.params);
     const b = PersonUpdateBody.parse(req.body);
     if (id === auth.userId && b.status === 'suspended') throw new ApiError(400, 'BAD_REQUEST', 'You cannot suspend your own account.');
@@ -398,6 +452,7 @@ export async function staffAdminRoutes(app: FastifyInstance, deps: Deps) {
         const cur = await tx.query<{ role: string }>('select role from users where id = $1 and tenant_id = $2 for update', [id, auth.tenantId]);
         if (!cur.rows[0]) throw new ApiError(404, 'NOT_FOUND', 'Person not found.');
         if (cur.rows[0].role === 'developer') throw new ApiError(403, 'FORBIDDEN');
+        if (cur.rows[0].role === 'admin' && !isAdmin(auth)) throw new ApiError(403, 'FORBIDDEN', 'Only an admin can change another admin’s account.');
         const has = (k: keyof typeof b) => Object.prototype.hasOwnProperty.call(b, k);
         await tx.query(
           `update users set

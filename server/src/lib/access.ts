@@ -20,9 +20,26 @@ export function requireAdmin(auth: AuthContext): void {
   if (!isAdmin(auth)) throw new ApiError(403, 'FORBIDDEN', 'Only institution admins can do this.');
 }
 
-/** SQL fragment parameter: null for admins (no instructor filter), else the teacher's id. */
+export type Permission = 'people' | 'courses' | 'planner' | 'devices';
+const PERMISSION_LABEL: Record<Permission, string> = { people: 'People', courses: 'Courses & timetable', planner: 'Planner & cover', devices: 'Phones & scans' };
+
+/** Admins can do everything; a professor only what an admin granted them. */
+export function can(auth: AuthContext, p: Permission): boolean {
+  return isAdmin(auth) || (auth.role === 'teacher' && (auth.permissions ?? []).includes(p));
+}
+
+export function requirePerm(auth: AuthContext, p: Permission): void {
+  if (!can(auth, p)) throw new ApiError(403, 'FORBIDDEN', `This needs the “${PERMISSION_LABEL[p]}” permission. Ask an admin (principal or HOD) to give it to you.`);
+}
+
+/** Reads every course and class of the institution: admins and coordinators ("Courses & timetable" or "Planner & cover"). */
+export function seesAll(auth: AuthContext): boolean {
+  return can(auth, 'courses') || can(auth, 'planner');
+}
+
+/** SQL fragment parameter: null to see every course / class, else the teacher's id. */
 export function instructorFilter(auth: AuthContext): string | null {
-  return isAdmin(auth) ? null : auth.userId;
+  return seesAll(auth) ? null : auth.userId;
 }
 
 export interface CourseRow {
@@ -46,7 +63,7 @@ export const COURSE_SELECT = `
 export async function loadCourseFor(db: Queryable, auth: AuthContext, courseId: string): Promise<CourseRow> {
   const { rows } = await db.query<CourseRow>(`${COURSE_SELECT} where c.id = $1 and c.tenant_id = $2`, [courseId, auth.tenantId]);
   const c = rows[0];
-  if (!c || (!isAdmin(auth) && c.instructor_id !== auth.userId)) throw new ApiError(404, 'NOT_FOUND', 'Course not found.');
+  if (!c || (!seesAll(auth) && c.instructor_id !== auth.userId)) throw new ApiError(404, 'NOT_FOUND', 'Course not found.');
   return c;
 }
 
@@ -83,11 +100,12 @@ export async function loadSessionFor(db: Queryable, auth: AuthContext, sessionId
   );
   const s = rows[0];
   // A teacher reaches their own courses' classes, and any class they are substituting.
-  if (!s || (!isAdmin(auth) && s.instructor_id !== auth.userId && s.substitute_id !== auth.userId)) throw new ApiError(404, 'NOT_FOUND', 'Class not found.');
+  // Coordinators (planner / courses permission) reach every class.
+  if (!s || (!seesAll(auth) && s.instructor_id !== auth.userId && s.substitute_id !== auth.userId)) throw new ApiError(404, 'NOT_FOUND', 'Class not found.');
   return s;
 }
 
 /** The course's own teacher (or an admin) — substitutes run a class but don't reorganise it. */
 export function isOwnerOf(auth: AuthContext, s: Pick<SessionAccessRow, 'instructor_id'>): boolean {
-  return isAdmin(auth) || s.instructor_id === auth.userId;
+  return can(auth, 'planner') || s.instructor_id === auth.userId;
 }

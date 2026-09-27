@@ -29,7 +29,7 @@ import type { Deps } from '../deps';
 import { assertPhoneFree, hardwareHash } from '../lib/users';
 import { tenantFlag } from '../lib/flags';
 import { withTx, type Queryable } from '../db';
-import { STAFF, instructorFilter, isAdmin, loadCourseFor, loadSessionFor, requireAdmin, type SessionAccessRow } from '../lib/access';
+import { STAFF, can, instructorFilter, isAdmin, loadCourseFor, loadSessionFor, requirePerm, type SessionAccessRow } from '../lib/access';
 import { requireDevice, type AuthContext } from '../lib/auth';
 import { ApiError } from '../lib/errors';
 import { signReceipt } from '../lib/receipts';
@@ -452,8 +452,11 @@ export async function staffSessionRoutes(app: FastifyInstance, deps: Deps) {
       );
       const f = rows[0];
       if (!f) throw new ApiError(404, 'NOT_FOUND', 'Flag not found.');
-      if (f.session_id) await loadSessionFor(tx, auth, f.session_id);
-      else requireAdmin(auth);
+      // Suspicious scans: the class's own teacher, or "Phones & scans".
+      if (!can(auth, 'devices')) {
+        if (f.session_id) await loadSessionFor(tx, auth, f.session_id);
+        else requirePerm(auth, 'devices');
+      }
       if (f.review_status !== 'open') throw new ApiError(409, 'CONFLICT', 'This flag was already reviewed.');
       if (b.action === 'valid') {
         if (!f.session_id || !f.user_id) throw new ApiError(400, 'BAD_REQUEST', 'This flag is not linked to a class.');
@@ -490,7 +493,7 @@ export async function staffSessionRoutes(app: FastifyInstance, deps: Deps) {
   // ── device requests (admin) ──
   app.get('/v1/staff/device-requests', async (req): Promise<DeviceRequestItem[]> => {
     const auth = await requireDevice(req, deps, STAFF);
-    requireAdmin(auth);
+    requirePerm(auth, 'devices');
     const { rows } = await deps.db.query<{
       id: string;
       kind: 'rebind' | 'reset';
@@ -527,7 +530,7 @@ export async function staffSessionRoutes(app: FastifyInstance, deps: Deps) {
 
   app.post('/v1/staff/device-requests/:id', async (req) => {
     const auth = await requireDevice(req, deps, STAFF);
-    requireAdmin(auth);
+    requirePerm(auth, 'devices');
     const { id } = IdParam.parse(req.params);
     const b = DecisionBody.parse(req.body);
     const t = new Date(now());

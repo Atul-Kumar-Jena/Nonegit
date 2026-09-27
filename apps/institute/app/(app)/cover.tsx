@@ -12,7 +12,7 @@ import { colors, fonts } from '@kit/theme';
 import { Empty, Header, addDays } from '@/components/forms';
 import { CoverSheet } from '@/components/Requests';
 import { useDrag } from '@/planner/Board';
-import { useAvailability, useChangeRequests, useIsAdmin, useMe, useOverview, useSessionsOn } from '@/queries';
+import { useAvailability, useChangeRequests, useCan, useMe, useOverview, useSessionsOn } from '@/queries';
 import { ymdIn } from '@/time';
 
 type Teacher = Availability['teachers'][number];
@@ -28,7 +28,7 @@ const overlaps = (aS: string, aE: string, bS: string, bE: string) => aS < bE && 
 export default function Cover() {
   const api = useApi();
   const me = useMe();
-  const admin = useIsAdmin();
+  const admin = useCan('planner');
   const overview = useOverview();
   const [offset, setOffset] = useState(0);
   const tz0 = overview.data?.timezone;
@@ -206,7 +206,7 @@ export default function Cover() {
     return (
       <Screen>
         <Header info="cover" title="Cover a class" />
-        <Empty title="For admins only" message="Only the principal or an HOD hands classes to other teachers. When they ask you to take one, it appears in Requests — accept or decline it there." />
+        <Empty title="Needs “Planner & cover”" message="Admins (principal / HOD) — and professors they give the “Planner & cover” permission — hand classes to other professors. When you're asked to take one, it appears in Requests: accept or decline it there." />
       </Screen>
     );
   if (sessionsQ.isPending || avail.isPending)

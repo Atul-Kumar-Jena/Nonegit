@@ -25,7 +25,7 @@ import {
 import type { PoolClient } from 'pg';
 import type { Deps } from '../deps';
 import { withTx, type Queryable } from '../db';
-import { STAFF, loadSessionFor, requireAdmin } from '../lib/access';
+import { STAFF, loadSessionFor, requirePerm } from '../lib/access';
 import { requireDevice, requireDeviceKeyOnly, type AuthContext } from '../lib/auth';
 import { ApiError } from '../lib/errors';
 import { loadPlannerWeek, localNow, publishOps } from '../lib/planner-server';
@@ -124,7 +124,7 @@ export async function staffPlannerRoutes(app: FastifyInstance, deps: Deps) {
 
   app.get('/v1/staff/planner', async (req): Promise<PlannerWeek> => {
     const auth = await requireDevice(req, deps, STAFF);
-    requireAdmin(auth);
+    requirePerm(auth, 'planner');
     const q = z.object({ week: YMD.optional() }).parse(req.query);
     const inst = await loadInstitution(deps.db, auth.tenantId);
     const week = q.week ?? (await localNow(deps.db, inst.timezone, deps.clock())).today;
@@ -133,7 +133,7 @@ export async function staffPlannerRoutes(app: FastifyInstance, deps: Deps) {
 
   app.get('/v1/staff/drafts', async (req): Promise<DraftSummary[]> => {
     const auth = await requireDevice(req, deps, STAFF);
-    requireAdmin(auth);
+    requirePerm(auth, 'planner');
     const { rows } = await deps.db.query<DraftRow>(`${DRAFT_SELECT} where d.tenant_id = $1 and (d.status = 'draft' or d.updated_at > now() - interval '30 days') order by (d.status = 'draft') desc, d.updated_at desc limit 50`, [auth.tenantId]);
     return rows.map((r) => summary(toDraft(r)));
   });
@@ -146,7 +146,7 @@ export async function staffPlannerRoutes(app: FastifyInstance, deps: Deps) {
 
   app.post('/v1/staff/drafts', async (req): Promise<Draft> => {
     const auth = await requireDevice(req, deps, STAFF);
-    requireAdmin(auth);
+    requirePerm(auth, 'planner');
     const b = CreateDraftBody.parse(req.body);
     const { rows } = await deps.db.query<{ id: string }>(
       `insert into timetable_drafts(tenant_id, title, week_start, created_by, updated_by) values ($1, $2, $3, $4, $4) returning id`,
@@ -157,14 +157,14 @@ export async function staffPlannerRoutes(app: FastifyInstance, deps: Deps) {
 
   app.get('/v1/staff/drafts/:id', async (req): Promise<Draft> => {
     const auth = await requireDevice(req, deps, STAFF);
-    requireAdmin(auth);
+    requirePerm(auth, 'planner');
     return loadDraft(deps.db, auth, IdParam.parse(req.params).id);
   });
 
   /** Save the whole list of changes. `version` must match: two admins never overwrite each other silently. */
   app.post('/v1/staff/drafts/:id', async (req): Promise<Draft> => {
     const auth = await requireDevice(req, deps, STAFF);
-    requireAdmin(auth);
+    requirePerm(auth, 'planner');
     const { id } = IdParam.parse(req.params);
     const b = SaveDraftBody.parse(req.body);
     return withTx(deps.db, async (tx) => {
@@ -185,7 +185,7 @@ export async function staffPlannerRoutes(app: FastifyInstance, deps: Deps) {
   /** Server-side check of a draft (same engine as the app), without changing anything. */
   app.post('/v1/staff/drafts/:id/check', async (req): Promise<PublishResponse> => {
     const auth = await requireDevice(req, deps, STAFF);
-    requireAdmin(auth);
+    requirePerm(auth, 'planner');
     const { id } = IdParam.parse(req.params);
     return withTx(deps.db, async (tx) => {
       const d = await loadDraft(tx, auth, id);
@@ -199,7 +199,7 @@ export async function staffPlannerRoutes(app: FastifyInstance, deps: Deps) {
 
   app.post('/v1/staff/drafts/:id/publish', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req): Promise<PublishResponse> => {
     const auth = await requireDevice(req, deps, STAFF);
-    requireAdmin(auth);
+    requirePerm(auth, 'planner');
     const { id } = IdParam.parse(req.params);
     const b = PublishBody.parse(req.body);
     const result = await withTx(deps.db, async (tx) => {
@@ -217,7 +217,7 @@ export async function staffPlannerRoutes(app: FastifyInstance, deps: Deps) {
 
   app.post('/v1/staff/drafts/:id/discard', async (req): Promise<DraftSummary> => {
     const auth = await requireDevice(req, deps, STAFF);
-    requireAdmin(auth);
+    requirePerm(auth, 'planner');
     const { id } = IdParam.parse(req.params);
     return withTx(deps.db, async (tx) => {
       const d = await loadDraft(tx, auth, id, true);

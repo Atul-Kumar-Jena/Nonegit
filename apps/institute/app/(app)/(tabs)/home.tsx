@@ -1,6 +1,6 @@
-import type { ReactNode } from 'react';
+import { useCallback, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { ChevronRight, CloudDownload, Inbox, Plus, Radio, ShieldAlert, Smartphone, UserCheck, UserPlus, Wand2 } from 'lucide-react-native';
 import { NotificationBell } from '@kit/components/NotificationBell';
 import { Screen } from '@kit/components/Screen';
@@ -23,6 +23,8 @@ import { useApi } from '@kit/state/session';
 export default function Today() {
   usePermissionsOnboarding();
   const me = useMe();
+  // Role / permissions may have just been changed by an admin: re-check whenever this tab is shown.
+  useFocusEffect(useCallback(() => void me.refetch(), [me.refetch]));
   const q = useOverview();
   const pack = useOfflinePack();
   const local = useLocalSessions();
@@ -47,6 +49,9 @@ export default function Today() {
   const d = q.data;
   const user = me.data?.user;
   const admin = user?.role === 'admin';
+  const perms = me.data?.permissions ?? [];
+  const planner = admin || perms.includes('planner');
+  const devices = admin || perms.includes('devices');
 
   return (
     <Screen
@@ -68,7 +73,7 @@ export default function Today() {
             {user?.fullName ?? '…'}
           </Text>
         </View>
-        {user ? <Badge label={admin ? 'Admin · Principal / HOD' : 'Teacher'} tone={admin ? 'violet' : 'cyan'} dot={false} /> : null}
+        {user ? <Badge label={admin ? 'Admin · Principal / HOD' : perms.length ? `Professor · +${perms.length}` : 'Professor'} tone={admin ? 'violet' : 'cyan'} dot={false} /> : null}
         <NotificationBell />
       </View>
 
@@ -78,11 +83,11 @@ export default function Today() {
 
       <SyncBanner />
 
-      {d && (d.liveNow || (admin && (d.flaggedOpen || d.pendingRequests))) ? (
+      {d && (d.liveNow || (devices && (d.flaggedOpen || d.pendingRequests))) ? (
         <View style={styles.needs}>
           {d.liveNow ? <Pill icon={<Radio color={colors.green} size={13} />} label={`${d.liveNow} live now`} /> : null}
-          {admin && d.flaggedOpen ? <Pill icon={<ShieldAlert color={colors.amber} size={13} />} label={`${d.flaggedOpen} suspicious ${d.flaggedOpen === 1 ? 'scan' : 'scans'}`} onPress={() => router.push('/flags')} /> : null}
-          {admin && d.pendingRequests ? <Pill icon={<Smartphone color={colors.text} size={13} />} label={`${d.pendingRequests} phone ${d.pendingRequests === 1 ? 'request' : 'requests'}`} onPress={() => router.push('/requests')} /> : null}
+          {devices && d.flaggedOpen ? <Pill icon={<ShieldAlert color={colors.amber} size={13} />} label={`${d.flaggedOpen} suspicious ${d.flaggedOpen === 1 ? 'scan' : 'scans'}`} onPress={() => router.push('/flags')} /> : null}
+          {devices && d.pendingRequests ? <Pill icon={<Smartphone color={colors.text} size={13} />} label={`${d.pendingRequests} phone ${d.pendingRequests === 1 ? 'request' : 'requests'}`} onPress={() => router.push('/requests')} /> : null}
         </View>
       ) : null}
 
@@ -104,7 +109,7 @@ export default function Today() {
       <ComingUp from={addDays(today, 1)} tz={tz} />
       <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
         <Button title="Extra class" kind="secondary" onPress={() => router.push('/extra-class')} icon={<Plus color={colors.text} size={16} />} style={{ flex: 1 }} />
-        {admin ? (
+        {planner ? (
           <Button title="Cover a class" kind="secondary" onPress={() => router.push('/cover')} icon={<UserPlus color={colors.text} size={16} />} style={{ flex: 1 }} />
         ) : (
           <Button title="Requests" kind="secondary" onPress={() => router.push('/inbox')} icon={<Inbox color={colors.text} size={16} />} style={{ flex: 1 }} />
