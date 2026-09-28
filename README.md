@@ -9,6 +9,8 @@
 📥 **Download:** [attendly-institute.apk](https://github.com/atul-kumar-jena/nonegit/releases/latest/download/attendly-institute.apk) · [attendly-student.apk](https://github.com/atul-kumar-jena/nonegit/releases/latest/download/attendly-student.apk)
 📘 **Start here:** [User guide](docs/USER-GUIDE.md) — install, demo test (tap-to-sign-in dummy accounts), beta test with new accounts, every feature, notifications, Supabase.
 
+🧭 **For developers:** [SRS](docs/SRS.md) (what it must and must not do) · [Architecture](docs/ARCHITECTURE.md) (tech stack, every folder and file, data model, flows) · [API reference](docs/API.md) (every endpoint)
+
 📖 **Read next:** [How it works](docs/HOW-IT-WORKS.md) (onboarding → marking, uniqueness, offline, big screen) · [Deploy](docs/DEPLOY.md) (Supabase + Render) · [Test on phones](docs/TESTING.md) (54-step checklist) · [Handoff](docs/HANDOFF.md) (everything needed to continue the work)
 
 ---
@@ -66,7 +68,7 @@ packages/app-kit/    shared app code: signed API client, encrypted vault, offlin
 server/              Fastify API, SQL migrations, big-screen page (/present), CLI, integration tests
 apps/institute/      Attendly Institute (admins + teachers)
 apps/student/        Attendly (students)
-docs/                HOW-IT-WORKS · DEPLOY · TESTING · HANDOFF · PROMPTS
+docs/                SRS · ARCHITECTURE · API · HOW-IT-WORKS · DEPLOY · TESTING · HANDOFF · PROMPTS
 e2e/                 29-step two-app browser rehearsal (Playwright)
 .github/workflows/   CI: typecheck, tests, Docker smoke test, both APKs → GitHub Release
 ```
