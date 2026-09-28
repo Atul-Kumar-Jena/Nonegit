@@ -203,7 +203,7 @@ jobs:
     name: Publish the APKs
     runs-on: ubuntu-latest
     needs: [android-apk, phone-smoke]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/claude/three-secure-synced-apps-42sdud'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/claude/three-secure-synced-apps-42sdud'
     permissions:
       contents: write
     steps:
