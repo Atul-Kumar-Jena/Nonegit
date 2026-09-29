@@ -71,3 +71,50 @@ export type MatrixReport = z.infer<typeof MatrixReport>;
 
 export const MatrixQuery = z.object({ batchId: uuid.optional(), courseId: uuid.optional() });
 export type MatrixQuery = z.infer<typeof MatrixQuery>;
+
+// ───────────────────────────── professors' punctuality ─────────────────────────────
+
+/** How professors are doing: when they arrived for each class (log 2 vs the class time, log 1). */
+export const PunctualityQuery = z.object({ days: z.coerce.number().int().min(1).max(180).default(30), teacherId: uuid.optional() });
+export type PunctualityQuery = z.infer<typeof PunctualityQuery>;
+
+export const PunctualityStatus = z.enum(['on_time', 'late', 'missed', 'cancelled']);
+export type PunctualityStatus = z.infer<typeof PunctualityStatus>;
+
+export const PunctualityReport = ReportHeader.extend({
+  from: z.string(),
+  to: z.string(),
+  teachers: z.array(
+    z.object({
+      teacherId: uuid,
+      name: z.string(),
+      /** Classes whose time has come in the period (cancelled ones included). */
+      classes: z.number().int(),
+      onTime: z.number().int(),
+      late: z.number().int(),
+      missed: z.number().int(),
+      cancelled: z.number().int(),
+      /** Average minutes late, over the late classes. */
+      avgLateMin: z.number().nullable(),
+      /** On time out of the classes that were due (not cancelled). */
+      onTimePercent: z.number().nullable(),
+    }),
+  ),
+  classes: z.array(
+    z.object({
+      sessionId: uuid,
+      teacherId: uuid.nullable(),
+      teacher: z.string(),
+      courseCode: z.string(),
+      courseTitle: z.string(),
+      room: z.string().nullable(),
+      scheduledStart: z.string(),
+      startedAt: z.string().nullable(),
+      endedAt: z.string().nullable(),
+      status: PunctualityStatus,
+      lateMin: z.number().int().nullable(),
+      substitute: z.boolean(),
+    }),
+  ),
+});
+export type PunctualityReport = z.infer<typeof PunctualityReport>;

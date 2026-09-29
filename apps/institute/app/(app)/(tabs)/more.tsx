@@ -1,7 +1,7 @@
 import { useCallback, type ReactNode } from 'react';
 import { Pressable, Share, StyleSheet, Switch, View } from 'react-native';
 import { router, useFocusEffect, type Href } from 'expo-router';
-import { Share2, Megaphone, AlarmClock, Bell, Building2, CalendarDays, CalendarRange, ChevronRight, Clock4, Inbox, KeyRound, Library, Lock, LogOut, MapPin, Play, Plus, ShieldAlert, Smartphone, Trash2, UserPlus, Users, UsersRound, Wand2, FileBarChart } from 'lucide-react-native';
+import { Share2, Megaphone, AlarmClock, Bell, Building2, CalendarDays, CalendarRange, ChevronRight, Clock4, Inbox, KeyRound, Library, Lock, LogOut, MapPin, Play, Plus, ShieldAlert, Smartphone, Trash2, UserPlus, Users, UsersRound, Wand2, FileBarChart, Timer } from 'lucide-react-native';
 import { STAFF_PERMISSIONS, formatInstitutionCode, type StaffPermission } from '@attendly/protocol';
 import { Screen } from '@kit/components/Screen';
 import { SyncBanner } from '@kit/components/SyncBanner';
@@ -97,6 +97,7 @@ export default function More() {
           { icon: <Library color={colors.text} size={18} />, label: 'Classes & reports', href: '/classes' },
           { icon: <Megaphone color={colors.text} size={18} />, label: 'Notice centre', href: '/notices', badge: notices.data?.unread ? String(notices.data.unread) : null },
           { icon: <FileBarChart color={colors.text} size={18} />, label: 'Attendance reports', href: '/reports' },
+          { icon: <Timer color={colors.text} size={18} />, label: may('courses') || may('planner') ? 'Professors’ punctuality' : 'My punctuality', href: '/professors' as Href },
           { icon: <Plus color={colors.text} size={18} />, label: 'Extra class', href: '/extra-class' },
           { icon: <Inbox color={colors.text} size={18} />, label: 'Requests', href: '/inbox' },
           { icon: <Clock4 color={colors.text} size={18} />, label: 'Who’s free', href: '/busy' },

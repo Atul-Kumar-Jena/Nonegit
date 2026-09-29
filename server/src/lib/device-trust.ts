@@ -10,7 +10,6 @@
 import type { Queryable } from '../db';
 import type { Deps } from '../deps';
 import { ApiError } from './errors';
-import { tenantFlag } from './flags';
 import { AttestationError, verifyAndroidAttestation, type AttestationResult } from './attestation';
 
 export const ATTEST_PACKAGES = ['app.attendly.student', 'app.attendly.institute'] as const;
@@ -61,8 +60,11 @@ export function startRevocationRefresh(log: (msg: string) => void): () => void {
 
 /** Must this user's Android phone have an attested hardware key? */
 export async function hardwareRequired(db: Queryable, deps: Deps, tenantId: string, platform: string): Promise<boolean> {
-  if (platform !== 'android') return false;
-  return deps.config.attestation.requireHardware || (await tenantFlag(db, tenantId, 'hardware_binding', deps.config));
+  // Binding works on every phone: the security chip is checked and recorded, never required —
+  // unless the server operator deliberately sets REQUIRE_HARDWARE_KEYS (off; no app can turn it on).
+  void db;
+  void tenantId;
+  return platform === 'android' && deps.config.attestation.requireHardware;
 }
 
 const USER_MESSAGE: Record<AttestationError['code'], string> = {

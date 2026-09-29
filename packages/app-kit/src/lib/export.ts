@@ -5,7 +5,7 @@
  */
 import { Platform } from 'react-native';
 import { strToU8, zipSync } from 'fflate';
-import type { MatrixReport, StudentReport } from '@attendly/protocol';
+import type { MatrixReport, PunctualityReport, StudentReport } from '@attendly/protocol';
 import { clock, pct, zoned } from './format';
 
 export const CREDIT = 'Attendly · Created by Atul Kumar Jena';
@@ -146,6 +146,64 @@ export function matrixReportDoc(r: MatrixReport): ExportDoc {
     meta: [...header(r), ['Below minimum', `${below} of ${r.students.length} students`]],
     sections,
     wide: r.courses.length > 3,
+  };
+}
+
+const PUNCT: Record<string, string> = { on_time: 'On time', late: 'Late', missed: 'Not held (never started)', cancelled: 'Cancelled' };
+
+/** Professors' punctuality: a summary per professor, then every class with its two logs. */
+export function punctualityReportDoc(r: PunctualityReport): ExportDoc {
+  const one = r.teachers.length === 1 ? r.teachers[0] : undefined;
+  return {
+    filename: `Attendly_Professors_${one ? slug(one.name) + '_' : ''}${stamp(r.generatedAt, r.timezone)}`,
+    title: one ? `${one.name} — punctuality` : 'Professors — punctuality',
+    subtitle: `${dateOnly(r.from, r.timezone)} to ${dateOnly(r.to, r.timezone)}`,
+    meta: [
+      ['Institution', r.institution],
+      ['Period', `${dateOnly(r.from, r.timezone)} – ${dateOnly(r.to, r.timezone)}`],
+      ['Late means', 'started 2 minutes or more after the class time'],
+      ['Data as of', when(r.generatedAt, r.timezone)],
+    ],
+    sections: [
+      {
+        heading: `${r.teachers.length} ${r.teachers.length === 1 ? 'professor' : 'professors'}`,
+        columns: [
+          { label: 'Professor', width: 26 },
+          { label: 'Classes', kind: 'int', width: 9 },
+          { label: 'On time', kind: 'int', width: 9 },
+          { label: 'Late', kind: 'int', width: 7 },
+          { label: 'Avg late (min)', width: 13 },
+          { label: 'Not held', kind: 'int', width: 9 },
+          { label: 'Cancelled', kind: 'int', width: 10 },
+          { label: 'On time %', kind: 'pct', width: 10 },
+        ],
+        rows: r.teachers.map((t) => [t.name, t.classes, t.onTime, t.late, t.avgLateMin ?? '', t.missed, t.cancelled, t.onTimePercent]),
+      },
+      {
+        heading: `Every class (${r.classes.length})`,
+        columns: [
+          { label: 'Class time', width: 20 },
+          { label: 'Professor', width: 22 },
+          { label: 'Subject', width: 12 },
+          { label: 'Room', width: 10 },
+          { label: 'Started', width: 10 },
+          { label: 'Ended', width: 10 },
+          { label: 'Status', width: 22 },
+          { label: 'Late (min)', kind: 'int', width: 10 },
+        ],
+        rows: r.classes.map((c) => [
+          when(c.scheduledStart, r.timezone),
+          `${c.teacher}${c.substitute ? ' (cover)' : ''}`,
+          c.courseCode,
+          c.room ?? '',
+          c.startedAt ? clock(c.startedAt, r.timezone) : '',
+          c.endedAt ? clock(c.endedAt, r.timezone) : '',
+          PUNCT[c.status] ?? c.status,
+          c.lateMin,
+        ]),
+      },
+    ],
+    wide: true,
   };
 }
 

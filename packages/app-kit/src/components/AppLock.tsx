@@ -38,8 +38,17 @@ export function AppLock({ children, optional = false }: { children: ReactNode; /
     if (!web) void loadScreenshotSetting();
   }, [web]);
 
-  const unlock = useCallback(async () => {
-    if (web || prompting.current) return;
+  /** Bumped for every prompt: a prompt that never answers (Android sometimes drops one shown while
+   *  the app is still coming to the front) can't block the next tap on Unlock. */
+  const attempt = useRef(0);
+  const unlock = useCallback(async (force = false) => {
+    if (web) return;
+    if (prompting.current && !force) return;
+    if (prompting.current) {
+      // The person tapped Unlock while an earlier prompt is stuck: drop it and ask again.
+      await LocalAuthentication.cancelAuthenticate().catch(() => undefined);
+    }
+    const mine = ++attempt.current;
     prompting.current = true;
     setError(null);
     try {
@@ -59,13 +68,25 @@ export function AppLock({ children, optional = false }: { children: ReactNode; /
         return;
       }
       setState('locked');
-      const r = await LocalAuthentication.authenticateAsync({ promptMessage: `Unlock ${audience.appName}`, cancelLabel: 'Cancel', disableDeviceFallback: false });
+      // Let the app finish coming to the front first — a prompt requested too early is silently dropped.
+      if (AppState.currentState !== 'active') await new Promise((r) => setTimeout(r, 400));
+      const r = await LocalAuthentication.authenticateAsync({
+        promptMessage: `Unlock ${audience.appName}`,
+        promptSubtitle: 'Fingerprint, face, or your phone’s PIN / pattern / password',
+        cancelLabel: 'Cancel',
+        disableDeviceFallback: false,
+        requireConfirmation: false,
+      });
+      if (mine !== attempt.current) return; // a newer prompt took over
       if (r.success) setState('open');
-      else if (r.error !== 'user_cancel' && r.error !== 'system_cancel' && r.error !== 'app_cancel') setError('Couldn’t confirm it’s you. Try again.');
+      else if (r.error === 'lockout') setError('Too many tries — wait 30 seconds, then tap Unlock.');
+      else if (r.error === 'not_enrolled' || r.error === 'passcode_not_set' || r.error === 'not_available')
+        setError('Your phone didn’t show its lock screen. Check Settings → Security has a PIN, pattern or password, then tap Unlock.');
+      else if (r.error !== 'user_cancel' && r.error !== 'system_cancel' && r.error !== 'app_cancel') setError('Couldn’t confirm it’s you. Tap Unlock to try again.');
     } catch {
-      setError('Couldn’t start the unlock prompt. Try again.');
+      if (mine === attempt.current) setError('Couldn’t start the unlock prompt. Tap Unlock to try again.');
     } finally {
-      prompting.current = false;
+      if (mine === attempt.current) prompting.current = false;
     }
   }, [web, optional, audience.appName]);
 
@@ -88,7 +109,8 @@ export function AppLock({ children, optional = false }: { children: ReactNode; /
         backgroundedAt.current = null;
         if (phase === 'signed-in' && (state === 'locked' || away > RELOCK_AFTER_MS)) {
           setState('locked');
-          void unlock();
+          // A moment after coming back, so Android actually shows the prompt.
+          setTimeout(() => void unlock(), 350);
         }
       } else {
         setHidden(true);
@@ -124,7 +146,7 @@ export function AppLock({ children, optional = false }: { children: ReactNode; /
                 <Text variant="body" style={styles.text}>
                   This phone has no PIN, pattern, password or fingerprint. This account can see sensitive data, so {audience.appName} only runs on a locked phone. Add a screen lock in Settings → Security, then come back.
                 </Text>
-                <Button title="I’ve set it — check again" onPress={() => void unlock()} style={styles.btn} />
+                <Button title="I’ve set it — check again" onPress={() => void unlock(true)} style={styles.btn} />
               </>
             ) : (
               <>
@@ -140,7 +162,7 @@ export function AppLock({ children, optional = false }: { children: ReactNode; /
                     {error}
                   </Text>
                 ) : null}
-                {state === 'locked' ? <Button title="Unlock" onPress={() => void unlock()} style={styles.btn} /> : null}
+                {state === 'locked' ? <Button title="Unlock" onPress={() => void unlock(true)} style={styles.btn} /> : null}
               </>
             )}
             <Button title="Sign out" kind="ghost" onPress={() => void signOut()} style={{ marginTop: 8, alignSelf: 'stretch' }} />

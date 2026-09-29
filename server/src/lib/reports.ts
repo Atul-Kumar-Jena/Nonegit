@@ -1,4 +1,4 @@
-import { attendancePercent, standing, type MatrixReport, type ReportHeader, type StudentReport } from '@attendly/protocol';
+import { attendancePercent, standing, type MatrixReport, type PunctualityReport, type PunctualityStatus, type ReportHeader, type StudentReport } from '@attendly/protocol';
 import type { Queryable } from '../db';
 import { ApiError } from './errors';
 import { courseStats, loadTenantTerm, type TenantTerm } from './stats';
@@ -139,4 +139,88 @@ export async function buildMatrixReport(db: Queryable, tenantId: string, now: nu
       return { userId: s.id, fullName: s.full_name, rollNo: s.roll_no, cells: row, attended, held, percent: attendancePercent(attended, held), standing: standing(attended, held, min) };
     }),
   };
+}
+
+/**
+ * How professors are doing: every class of the period whose time has come — started on time,
+ * late (from 2 minutes; by how much), never started ("not held") or cancelled. The professor of a
+ * class is its substitute when someone covered it. `teacherId` limits it to one professor.
+ */
+export async function buildPunctualityReport(db: Queryable, tenantId: string, now: number, q: { days: number; teacherId?: string }): Promise<PunctualityReport> {
+  const { h } = await header(db, tenantId, now);
+  const to = new Date(now);
+  const from = new Date(now - q.days * 86_400_000);
+  const { rows } = await db.query<{
+    id: string;
+    teacher_id: string | null;
+    teacher: string | null;
+    code: string;
+    title: string;
+    room: string | null;
+    scheduled_start: Date;
+    scheduled_end: Date;
+    started_at: Date | null;
+    ended_at: Date | null;
+    status: string;
+    missed_at: Date | null;
+    substitute: boolean;
+  }>(
+    `select s.id, coalesce(s.substitute_id, c.instructor_id) as teacher_id, t.full_name as teacher, c.code, c.title, coalesce(r.name, s.room) as room,
+            s.scheduled_start, s.scheduled_end, s.started_at, s.ended_at, s.status, s.missed_at, s.substitute_id is not null as substitute
+       from class_sessions s
+       join courses c on c.id = s.course_id
+       left join users t on t.id = coalesce(s.substitute_id, c.instructor_id)
+       left join rooms r on r.id = s.room_id
+      where s.tenant_id = $1 and s.scheduled_start >= $2 and s.scheduled_start <= $3
+        and ($4::uuid is null or coalesce(s.substitute_id, c.instructor_id) = $4)
+      order by s.scheduled_start desc
+      limit 5000`,
+    [tenantId, from, to, q.teacherId ?? null],
+  );
+  const classes: PunctualityReport['classes'] = [];
+  for (const r of rows) {
+    let status: PunctualityStatus;
+    let lateMin: number | null = null;
+    if (r.status === 'cancelled') status = 'cancelled';
+    else if (r.started_at) {
+      const late = Math.floor((r.started_at.getTime() - r.scheduled_start.getTime()) / 60_000);
+      lateMin = late >= 2 ? late : null;
+      status = lateMin ? 'late' : 'on_time';
+    } else if (r.missed_at || r.scheduled_end.getTime() <= now) status = 'missed';
+    else continue; // its time has come but it's still running its window: not judged yet
+    classes.push({
+      sessionId: r.id,
+      teacherId: r.teacher_id,
+      teacher: r.teacher ?? 'No professor',
+      courseCode: r.code,
+      courseTitle: r.title,
+      room: r.room,
+      scheduledStart: r.scheduled_start.toISOString(),
+      startedAt: r.started_at?.toISOString() ?? null,
+      endedAt: r.ended_at?.toISOString() ?? null,
+      status,
+      lateMin,
+      substitute: r.substitute,
+    });
+  }
+  const by = new Map<string, PunctualityReport['teachers'][number] & { lateSum: number }>();
+  for (const c of classes) {
+    if (!c.teacherId) continue;
+    const t = by.get(c.teacherId) ?? { teacherId: c.teacherId, name: c.teacher, classes: 0, onTime: 0, late: 0, missed: 0, cancelled: 0, avgLateMin: null, onTimePercent: null, lateSum: 0 };
+    t.classes++;
+    if (c.status === 'on_time') t.onTime++;
+    else if (c.status === 'late') {
+      t.late++;
+      t.lateSum += c.lateMin ?? 0;
+    } else if (c.status === 'missed') t.missed++;
+    else t.cancelled++;
+    by.set(c.teacherId, t);
+  }
+  const teachers = [...by.values()]
+    .map(({ lateSum, ...t }) => {
+      const due = t.onTime + t.late + t.missed;
+      return { ...t, avgLateMin: t.late ? Math.round((lateSum / t.late) * 10) / 10 : null, onTimePercent: due ? Math.round((t.onTime / due) * 1000) / 10 : null };
+    })
+    .sort((a, b) => (a.onTimePercent ?? 101) - (b.onTimePercent ?? 101) || a.name.localeCompare(b.name));
+  return { ...h, from: from.toISOString(), to: to.toISOString(), teachers, classes };
 }

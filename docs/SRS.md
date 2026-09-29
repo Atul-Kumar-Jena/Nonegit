@@ -63,9 +63,9 @@ Each requirement has an ID so tests, issues and commits can refer to it.
 |---|---|
 | FR-DV-1 | On first sign-in, each person **binds** one phone. The phone creates its own signing key, which never leaves the phone. |
 | FR-DV-2 | One active phone per person, and one person per phone. This is enforced for every role except developers. |
-| FR-DV-3 | Signing in on a different phone creates a **phone-switch request**. An admin, a mentor or a professor with `devices` approves it; nobody approves their own. |
+| FR-DV-3 | Signing in on a different phone creates a **phone-switch request**. It goes to the student's batch mentor; admins (and professors with `devices`) are the backup for students without a mentor and can decide any request; the main admin can do everything. Nobody approves their own. |
 | FR-DV-4 | The same physical phone with a new key (app reinstalled or data cleared) re-binds without approval. |
-| FR-DV-5 | Android phones prove their key lives in the security chip (Google key attestation). The result is always recorded. Phones are *refused* only where the institution turns on "Secure-hardware phones only" or the server sets `REQUIRE_HARDWARE_KEYS`. |
+| FR-DV-5 | Every Android phone is recognised by its Android ID plus the app's own key, so binding works on every phone model. A build that doesn't send the Android ID is asked to update. The security-chip check (Google key attestation) is recorded and shown to staff but never blocks (only the server operator's `REQUIRE_HARDWARE_KEYS` could). |
 | FR-DV-6 | Developers are never blocked by binding: the authenticator code signs them straight in, and a new phone replaces the old one. |
 | FR-DV-7 | The developer can unbind any person's phone and sign them out at once, with no approval (audited). |
 | FR-DV-8 | Testing switch "phone rules off": when on, nobody is stopped by phone binding. Every takeover is audited. It is off by default. |
@@ -78,7 +78,7 @@ Each requirement has an ID so tests, issues and commits can refer to it.
 | FR-CL-2 | Every class has two logs: **class time reached** (`due_at`) and **professor arrived and started** (`started_at`). Students see "Waiting for the professor" in between. |
 | FR-CL-3 | Lateness counts from 2 minutes after the scheduled start. A class never started is marked "Not held" (`missed_at`). |
 | FR-CL-4 | Once started, the class is live for the whole batch. The professor chooses when to show the QR, or uses the paper-style register. |
-| FR-CL-5 | The QR rotates every few seconds and is `HMAC(class secret, class ‖ sequence)`. A photo of it goes stale almost immediately. |
+| FR-CL-5 | The QR rotates every 5 s (default) and is `HMAC(class secret, class ‖ sequence)`. A code is valid only while it is on screen (its neighbour only within 1.5 s of the switch, for clock skew); after a class ends, scans are refused within 2 s. |
 | FR-CL-6 | A scan is accepted only if every check passes, in order: the code is genuine and fresh → the class is live → the student is enrolled → it comes from the student's bound phone → the location is real, recent (under 60 s), accurate (under 75 m) and inside the room's geofence. |
 | FR-CL-7 | Every refusal has a code (`E-GEO`, `E-EXPIRED`, …) with a human title and hint. Refusals are recorded, and repeated suspicious refusals are flagged to staff. |
 | FR-CL-8 | One attendance record per student per class. Scanning twice changes nothing. |
@@ -86,6 +86,8 @@ Each requirement has an ID so tests, issues and commits can refer to it.
 | FR-CL-10 | Offline scans are sealed on the phone and uploaded later. They are judged against the moment of scanning and accepted up to 24 h later, unless the institution refuses offline scans. |
 | FR-CL-11 | The professor can add a missed student or remove a mark with a written reason. Professors can correct for 14 days, admins at any time. Every change is audited. |
 | FR-CL-12 | **Big screen:** a browser at `/present` shows a pairing code. The professor approves it in the app. The screen only ever receives the current QR picture, never the class secret. |
+| FR-CL-14 | A class closes itself as soon as every enrolled student is marked present (audited as `session.auto_end`); the professor sees why. |
+| FR-CL-15 | **Layered scans** (fests, webinars): the professor sets 1–5 scans per class and opens each round; a student is present only after scanning in every round, and is notified when a round opens. |
 | FR-CL-13 | **Attendance credit:** staff can credit a missed class (medical, fest, other) with a note. Credits count towards the percentage and can be undone. |
 
 ### 4.4 Timetable, planner and cover
@@ -97,7 +99,9 @@ Each requirement has an ID so tests, issues and commits can refer to it.
 | FR-TT-3 | The **planner** edits a week by drag and drop into a server-saved **draft** with a version number. A stale save gets 409. Publishing applies all changes in one transaction. |
 | FR-TT-4 | Every published change notifies each affected person **once**, as a grouped notification. |
 | FR-TT-5 | **Cover requests:** an admin asks a free professor to take a class, with a note. The professor accepts or declines, and students are told. |
-| FR-TT-6 | **Who's busy:** each professor's and room's classes on a timeline, with a "free at" filter. |
+| FR-TT-6 | **Who's free:** each professor's and room's classes on a timeline, the free window around a chosen time, and one tap to schedule a class for a free professor or in a free room. |
+| FR-TT-7 | Scheduling starts from the **batch**, then one of its subjects. The form suggests rooms free for the whole time and warns when the professor is busy (with their next free time). |
+| FR-TT-8 | The planner shows "Past" while dragging over a time that has gone, and refuses the drop. |
 
 ### 4.5 People, batches and courses
 
@@ -116,7 +120,7 @@ Each requirement has an ID so tests, issues and commits can refer to it.
 | FR-NO-1 | The **notice centre** sends a notice to everyone, students, faculty, admins, batches or subjects, with formatting, categories, pinning, "important", emoji reactions and a "seen by N of M" count. |
 | FR-NO-2 | Developer **broadcasts** go to every institution or one, to everyone, only students or only admins. They are signed "Attendly" or with the developer's name, read-only for institutions, and can be withdrawn. |
 | FR-NO-3 | Every notification appears in the in-app bell and as a phone notification. With Firebase configured it arrives instantly even when the app is closed. Otherwise the app checks about every 15 minutes. |
-| FR-NO-4 | Class reminders count down before a class and can be acknowledged. |
+| FR-NO-4 | Class reminders count down before a class and can be acknowledged. The server also sends every student and the professor a "starts in 5 min" push. "Send me a test notification" checks a phone end to end. |
 | FR-NO-5 | Students can send **requests** ("Ask") to professors, and see and cancel them. |
 
 ### 4.7 Reports
@@ -125,6 +129,8 @@ Each requirement has an ID so tests, issues and commits can refer to it.
 |---|---|
 | FR-RE-1 | Students see % per subject, "can miss N", "must attend N in a row", a plan-ahead calculator and full history. |
 | FR-RE-2 | Staff export per-student and per-course reports and an institution matrix as PDF and Excel. |
+| FR-RE-3 | **Professors' punctuality:** for every class, its time vs when the professor started it — on time, late (minutes), not held, cancelled — per professor, over 7/30/90 days; downloadable. Admins see everyone; a professor sees their own. |
+| FR-RE-4 | Students see a heads-up on Home for subjects below the minimum (classes needed in a row) or with no margin left. |
 
 ### 4.8 Developer console
 

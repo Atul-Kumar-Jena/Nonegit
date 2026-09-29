@@ -15,6 +15,7 @@ export default function Result() {
   useEffect(() => () => clearScanOutcome(), []);
   if (!outcome) return <Redirect href="/home" />;
   if (outcome.kind === 'success') return <Success o={outcome} />;
+  if (outcome.kind === 'round') return <Round o={outcome} />;
   if (outcome.kind === 'queued') return <Queued label={outcome.label} reason={outcome.reason} />;
   if (outcome.kind === 'rejected') return <Rejected code={outcome.rejection.code} title={outcome.rejection.title} hint={outcome.rejection.hint} detail={outcome.rejection.detail} />;
   return <Failure title={outcome.title} message={outcome.message} />;
@@ -29,6 +30,37 @@ function Halo({ tone, children }: { tone: 'green' | 'red' | 'amber'; children: R
       <View style={[styles.halo, { width: 104, height: 104, borderColor: t.line }]} />
       <View style={[styles.core, { backgroundColor: solid[0], shadowColor: solid[1] }]}>{children}</View>
     </View>
+  );
+}
+
+/** Layered scans: one round done — stay for the next one. */
+function Round({ o }: { o: Extract<ScanOutcome, { kind: 'round' }> }) {
+  const { res } = o;
+  const left = res.round.required - res.round.done;
+  return (
+    <Screen edges={['top', 'bottom']} contentStyle={{ paddingTop: 28, alignItems: 'stretch' }}>
+      <Halo tone="amber">
+        <Check color="#3b2303" size={34} strokeWidth={3} />
+      </Halo>
+      <Text variant="title" style={styles.center}>
+        {`Scan ${res.round.done} of ${res.round.required} recorded`}
+      </Text>
+      <Text variant="body" style={[styles.center, { marginTop: 6 }]}>
+        {`${res.courseCode} · ${res.courseTitle}`}
+      </Text>
+      <Card tone="amber" style={{ marginTop: 22, gap: 6 }}>
+        <Text variant="bodyStrong">{`Not marked present yet — ${left} more ${left === 1 ? 'scan' : 'scans'} to go`}</Text>
+        <Text variant="small" color={colors.text}>
+          Your professor asked for several scans during this class. Stay until the end: when the next round opens you’ll get a notification — scan the code on screen again. You’re present only after every round.
+        </Text>
+      </Card>
+      {res.offline ? (
+        <Text variant="small" style={[styles.center, { marginTop: 10 }]}>
+          Saved while offline — counted now.
+        </Text>
+      ) : null}
+      <Button title="Done" onPress={() => router.replace('/home')} style={{ marginTop: 22 }} />
+    </Screen>
   );
 }
 

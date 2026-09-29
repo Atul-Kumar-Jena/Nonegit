@@ -82,6 +82,21 @@ export const RootConsole = z.object({
   }),
   switches: z.array(SwitchState),
   recent: z.array(AuditEntry),
+  /** Instant notifications: is the server connected to Firebase, how many phones can receive, and what happened. */
+  push: z
+    .object({
+      configured: z.boolean(),
+      project: z.string().nullable(),
+      phones: z.number().int(),
+      sent: z.number().int(),
+      failed: z.number().int(),
+      deadTokens: z.number().int(),
+      lastSentAt: z.string().nullable(),
+      lastError: z.string().nullable(),
+      lastErrorAt: z.string().nullable(),
+    })
+    .nullable()
+    .default(null),
 });
 export type RootConsole = z.infer<typeof RootConsole>;
 
@@ -115,7 +130,7 @@ export const TenantSummary = z.object({
 });
 export type TenantSummary = z.infer<typeof TenantSummary>;
 
-export const TenantFlagKey = z.enum(['strict_geo', 'student_requests', 'manual_registers', 'hardware_binding', 'offline_scans_off']);
+export const TenantFlagKey = z.enum(['strict_geo', 'student_requests', 'manual_registers', 'offline_scans_off']);
 export type TenantFlagKey = z.infer<typeof TenantFlagKey>;
 
 export const FlagDefinition = z.object({ key: z.string(), label: z.string(), detail: z.string(), default: z.boolean(), enforced: z.boolean() });

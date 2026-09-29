@@ -161,6 +161,8 @@ export class TestDevice {
   /** A simulated security chip: attests at bind and signs every request (like the app does for marks). */
   chip: { ca: AttestCA; opts?: LeafOptions } | null = null;
   hwKey?: IssuedKey;
+  /** Like a real phone's Android ID: its own, unless the test says two share one phone. */
+  readonly androidId = `aid-${Math.random().toString(36).slice(2, 12)}`;
 
   withChip(ca: AttestCA, opts?: LeafOptions): this {
     this.chip = { ca, opts };
@@ -186,6 +188,7 @@ export class TestDevice {
       osVersion: '15',
       appVersion: '1.0.0',
       integrity: { rooted: false, emulator: false },
+      hardwareId: this.androidId,
       ...this.overrides,
     };
   }

@@ -110,7 +110,7 @@ Tokens: access tokens last 15 minutes; refresh tokens last 30 days and rotate on
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| POST | `/v1/attendance/mark` | Signed (student) | **The scan.** Body `MarkBody`: QR token, GPS samples, capture time, `clientRef` (offline). Returns `MarkResponse` with a server-signed receipt, or `REJECTED` + `E-*` |
+| POST | `/v1/attendance/mark` | Signed (student) | **The scan.** Body `MarkBody`: QR token, GPS samples, capture time, `clientRef` (offline). Returns `status: 'present'` with a server-signed receipt, `status: 'round'` (layered scans: `{done, required, current}`), or `REJECTED` + `E-*` |
 
 ## 5. Student (`student.ts`, `reports.ts`, `requests.ts`)
 
@@ -134,6 +134,7 @@ Tokens: access tokens last 15 minutes; refresh tokens last 30 days and rotate on
 | GET | `/v1/notifications/poll?after=` | **Key-signed** | Background check for new items; read-only |
 | POST | `/v1/notifications/read` | Signed | Mark some (`ids`) or `all` as read |
 | POST | `/v1/me/push-token` | Signed | Register this phone's Firebase token. Returns `push: true` when the server can send |
+| POST | `/v1/me/test-notification` | Signed | Sends a real test notification; returns `serverPush` and `phoneRegistered` |
 
 ## 7. Notices (`notices.ts`)
 
@@ -187,7 +188,9 @@ Tokens: access tokens last 15 minutes; refresh tokens last 30 days and rotate on
 | GET | `/v1/staff/sessions/:id` | Staff | One class, with the QR secret for its professor |
 | POST | `/v1/staff/sessions/:id/start` | Professor or admin | "I'm in class": `started_at`, lateness logged, students notified |
 | POST | `/v1/staff/sessions/:id/showing` | Professor | The QR is on screen ("attendance being taken") |
-| POST | `/v1/staff/sessions/:id/end` · `/cancel` | Professor or admin | End (QR dies everywhere) / cancel with a reason |
+| POST | `/v1/staff/sessions/:id/end` · `/cancel` | Professor or admin | End (QR dies everywhere) / cancel with a reason. A class also closes itself when everyone is marked (`autoEnded`) |
+| POST | `/v1/staff/sessions/:id/rounds` | Professor | Layered scans: `{rounds: 1–5}` (before anyone completes) |
+| POST | `/v1/staff/sessions/:id/next-round` | Professor | Open the next scan round; students are notified |
 | GET | `/v1/staff/sessions/:id/feed` | Professor | Live list of marks |
 | POST | `/v1/staff/sessions/:id/register` | Professor | Paper-style register: ticks, corrections with reasons (`clientRef` for offline) |
 | GET | `/v1/staff/offline-pack` | Staff | Today's and tomorrow's classes and QR secrets for offline use |
@@ -217,6 +220,7 @@ Tokens: access tokens last 15 minutes; refresh tokens last 30 days and rotate on
 |---|---|---|---|
 | GET | `/v1/staff/students/:id/report` | Staff | One student's report |
 | GET | `/v1/staff/reports/matrix` | Staff (`courses` for all) | Students × subjects matrix for PDF and Excel |
+| GET | `/v1/staff/reports/punctuality?days=&teacherId=` | Staff (everyone with `courses`/`planner`, else own) | Professors' punctuality: per professor and per class |
 
 ## 13. Developer console (`root.ts`, `root-support.ts`, `root-broadcast.ts`)
 

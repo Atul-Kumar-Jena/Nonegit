@@ -11,13 +11,14 @@ import { colors } from '@kit/theme';
 import { staffApi } from '@/api';
 import { Chips, DateField, Field, Header, Select, TimeField, ToggleRow, WEEKDAYS, WEEKDAY_NAME, confirmAction, firstIssue, fromMinutes, toMinutes } from '@/components/forms';
 import { useCourses, useOverview, useRooms, useTimetable } from '@/queries';
+import { BatchCoursePicker } from '@/components/BatchCoursePicker';
 import { ymdIn } from '@/time';
 
 const ROTATIONS = [
+  { value: 3, label: '3 s' },
   { value: 5, label: '5 s' },
   { value: 7, label: '7 s' },
   { value: 10, label: '10 s' },
-  { value: 15, label: '15 s' },
 ] as const;
 
 /** Add or edit a weekly timetable slot (admins). Saving updates every app within seconds. */
@@ -41,7 +42,7 @@ export default function SlotForm() {
   const [end, setEnd] = useState('10:00');
   const [roomId, setRoomId] = useState<string | null>(null);
   const [mode, setMode] = useState<SessionMode>('qr');
-  const [rotationS, setRotation] = useState(7);
+  const [rotationS, setRotation] = useState(5);
   const [validFrom, setValidFrom] = useState(() => ymdIn(api.serverNow(), tz));
   const [hasEnd, setHasEnd] = useState(false);
   const [validUntil, setValidUntil] = useState(() => ymdIn(api.serverNow() + 120 * 86_400_000, tz));
@@ -77,7 +78,7 @@ export default function SlotForm() {
 
   async function save() {
     setError(null);
-    if (!courseId) return setError('Choose a course.');
+    if (!courseId) return setError('Choose the batch and subject.');
     const parsed = SlotBody.safeParse({ courseId, weekday, start, end, roomId, mode, rotationS, validFrom, validUntil: hasEnd ? validUntil : null, active });
     if (!parsed.success) return setError(firstIssue(parsed.error));
     if (hasEnd && validUntil < validFrom) return setError('The last date must be after the first date.');
@@ -111,15 +112,7 @@ export default function SlotForm() {
   return (
     <Screen keyboard>
       <Header title={id ? 'Edit slot' : 'New weekly slot'} />
-      <Field label="Course">
-        <Select
-          title="Course"
-          value={courseId}
-          onChange={setCourseId}
-          options={(courses.data ?? []).map((c) => ({ value: c.id, label: `${c.code} · ${c.title}`, sub: c.instructor ? c.instructor.name : 'No teacher yet' }))}
-          placeholder={courses.isPending ? 'Loading…' : courses.data?.length === 0 ? 'Create a course first' : 'Choose a course'}
-        />
-      </Field>
+      <BatchCoursePicker courseId={courseId} onChange={(v) => setCourseId(v)} />
       <Field label="Day">
         <Chips value={weekday} options={WEEKDAYS} onChange={setWeekday} />
       </Field>

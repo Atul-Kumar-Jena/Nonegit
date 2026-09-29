@@ -33,6 +33,7 @@ import {
   BulkImportResponse,
   CourseReport,
   MatrixReport,
+  PunctualityReport,
   StudentReport,
   CourseSummary,
   DeviceRequestItem,
@@ -107,6 +108,8 @@ export const staffApi = {
   studentReport: (api: ApiClient, userId: string, courseId?: string) => api.authed('GET', `/v1/staff/students/${enc(userId)}/report${qs({ courseId })}`, StudentReport),
   /** Students × subjects for a batch / subject / everyone. */
   matrix: (api: ApiClient, f: { batchId?: string; courseId?: string }) => api.authed('GET', `/v1/staff/reports/matrix${qs(f)}`, MatrixReport),
+  punctuality: (api: ApiClient, f: { days: number; teacherId?: string }) =>
+    api.authed('GET', `/v1/staff/reports/punctuality${qs({ days: String(f.days), teacherId: f.teacherId })}`, PunctualityReport),
   courseSessions: (api: ApiClient, courseId: string) => api.authed('GET', `/v1/staff/courses/${enc(courseId)}/sessions`, z.array(StaffSession)),
 
   timetable: (api: ApiClient) => api.authed('GET', '/v1/staff/timetable', z.array(Slot)),
@@ -116,6 +119,8 @@ export const staffApi = {
   sessions: (api: ApiClient, f: { date?: string; days?: number; courseId?: string } = {}) => api.authed('GET', `/v1/staff/sessions${qs(f)}`, z.array(StaffSession)),
   createSession: (api: ApiClient, b: CreateSessionBody) => api.authed('POST', '/v1/staff/sessions', StaffSession, b),
   session: (api: ApiClient, id: string) => api.authed('GET', `/v1/staff/sessions/${enc(id)}`, SessionWithSecret),
+  scanRounds: (api: ApiClient, id: string, rounds: number) => api.authed('POST', `/v1/staff/sessions/${enc(id)}/rounds`, StaffSession, { rounds }),
+  nextRound: (api: ApiClient, id: string) => api.authed('POST', `/v1/staff/sessions/${enc(id)}/next-round`, StaffSession, {}),
   showing: (api: ApiClient, id: string) => api.authed('POST', `/v1/staff/sessions/${enc(id)}/showing`, OkResponse, {}),
   start: (api: ApiClient, id: string, b: StartSessionBody) => api.authed('POST', `/v1/staff/sessions/${enc(id)}/start`, SessionWithSecret, b),
   end: (api: ApiClient, id: string, b: EndSessionBody) => api.authed('POST', `/v1/staff/sessions/${enc(id)}/end`, StaffSession, b),

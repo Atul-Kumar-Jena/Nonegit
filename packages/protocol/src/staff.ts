@@ -238,7 +238,7 @@ export const SlotBody = z
     end: HHMM,
     roomId: uuid.nullable().optional(),
     mode: SessionMode.default('qr'),
-    rotationS: z.number().int().min(3).max(60).default(7),
+    rotationS: z.number().int().min(3).max(60).default(5),
     validFrom: YMD.optional(),
     validUntil: YMD.nullable().optional(),
     active: z.boolean().default(true),
@@ -282,8 +282,18 @@ export const StaffSession = z.object({
   lateMin: z.number().int().nullable().default(null),
   /** The class time ran out and the professor never started it. */
   missed: z.boolean().default(false),
+  /** Layered scans: students must scan this many times (1 = once); the round now open; scans per round. */
+  scanRounds: z.number().int().min(1).max(5).default(1),
+  roundNo: z.number().int().min(1).max(5).default(1),
+  roundCounts: z.array(z.number().int()).default([]),
+  /** The class closed itself because every enrolled student was marked. */
+  autoEnded: z.boolean().default(false),
 });
 export type StaffSession = z.infer<typeof StaffSession>;
+
+/** Layered scans: how many times students must scan (set before or during the class, only increasing while live). */
+export const ScanRoundsBody = z.object({ rounds: z.number().int().min(1).max(5) });
+export type ScanRoundsBody = z.infer<typeof ScanRoundsBody>;
 
 export const CreateSessionBody = z
   .object({
@@ -293,7 +303,7 @@ export const CreateSessionBody = z
     end: HHMM,
     roomId: uuid.nullable().optional(),
     mode: SessionMode.default('qr'),
-    rotationS: z.number().int().min(3).max(60).default(7),
+    rotationS: z.number().int().min(3).max(60).default(5),
   })
   .refine((s) => s.end > s.start, { message: 'End time must be after start time', path: ['end'] });
 export type CreateSessionBody = z.infer<typeof CreateSessionBody>;
@@ -306,6 +316,8 @@ export const StartSessionBody = z.object({
   centerAccuracyM: z.number().min(0).max(1000).nullable().optional(),
   radiusM: z.number().int().min(10).max(1000).optional(),
   rotationS: z.number().int().min(3).max(60).optional(),
+  /** Layered scans for this class (fests, webinars): 1–5. */
+  scanRounds: z.number().int().min(1).max(5).optional(),
   /** Set when a session was started offline and is being synced later (server-corrected ms). */
   startedAt: z.number().int().positive().optional(),
   clientRef: z.string().min(8).max(64).optional(),
@@ -383,6 +395,8 @@ export const DeviceRequestItem = z.object({
   to: z.object({ model: z.string(), platform: z.string(), fingerprint: z.string() }).nullable(),
   reason: z.string(),
   createdAt: IsoDate,
+  /** The student's batch mentors — they handle it; admins step in as backup. */
+  mentors: z.array(z.string()).default([]),
 });
 export type DeviceRequestItem = z.infer<typeof DeviceRequestItem>;
 export const DecisionBody = z.object({ decision: z.enum(['approve', 'deny']) });

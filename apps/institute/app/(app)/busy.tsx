@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
+import { CalendarPlus } from 'lucide-react-native';
 import type { BusyBlock } from '@attendly/protocol';
 import { Screen } from '@kit/components/Screen';
 import { Avatar, Badge, Button, Card, ErrorState, Loading, Segmented, Text } from '@kit/components/ui';
@@ -21,7 +22,8 @@ export default function Busy() {
   const [date, setDate] = useState(() => ymdIn(api.serverNow(), tz));
   const [view, setView] = useState<'teachers' | 'rooms'>('teachers');
   const [freeOnly, setFreeOnly] = useState(false);
-  const [at, setAt] = useState('10:00');
+  // Default to the next 5 minutes from now: "who's free right now" is the usual question.
+  const [at, setAt] = useState(() => fromMinutes(Math.min(Math.ceil(toMinutes(new Date().toTimeString().slice(0, 5)) / 5) * 5, 23 * 60 + 55)));
   const q = useAvailability(date);
   const [width, setWidth] = useState(0);
 
@@ -33,7 +35,11 @@ export default function Busy() {
         const sorted = [...r.busy].sort((a, b) => toMinutes(a.start) - toMinutes(b.start));
         const now = sorted.find((b) => toMinutes(b.start) <= t && t < toMinutes(b.end));
         const next = sorted.find((b) => toMinutes(b.start) > t);
-        return { ...r, busy: sorted, now, next };
+        const prev = [...sorted].reverse().find((b) => toMinutes(b.end) <= t);
+        // The free window around the chosen time (for scheduling from here).
+        const freeFrom = now ? null : prev ? prev.end : null;
+        const freeUntil = now ? null : next ? next.start : null;
+        return { ...r, busy: sorted, now, next, freeFrom, freeUntil };
       })
       .sort((a, b) => Number(!!a.now) - Number(!!b.now) || a.name.localeCompare(b.name));
   }, [q.data, view, at]);
@@ -109,6 +115,32 @@ export default function Busy() {
                   </View>
                   {r.now ? <Badge label="Busy" tone="amber" dot={false} /> : <Badge label="Free" tone="green" dot={false} />}
                 </View>
+                {!r.now ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <Text variant="small" style={{ flex: 1 }}>
+                      {`Free ${r.freeFrom ? `from ${hm12(r.freeFrom)}` : 'from the morning'} ${r.freeUntil ? `until ${hm12(r.freeUntil)}` : 'for the rest of the day'}`}
+                    </Text>
+                    <Button
+                      title={view === 'teachers' ? 'Schedule a class' : 'Book for a class'}
+                      compact
+                      icon={<CalendarPlus color={colors.bg} size={14} />}
+                      onPress={() => {
+                        const s = toMinutes(at);
+                        const until = r.freeUntil ? toMinutes(r.freeUntil) : 23 * 60 + 55;
+                        const e = Math.min(s + 60, until);
+                        router.push({
+                          pathname: '/extra-class',
+                          params: {
+                            date,
+                            start: at,
+                            end: fromMinutes(e > s ? e : Math.min(s + 30, 23 * 60 + 55)),
+                            ...(view === 'teachers' ? { teacherId: r.id, teacherName: r.name } : { roomId: r.id }),
+                          },
+                        });
+                      }}
+                    />
+                  </View>
+                ) : null}
                 <View style={[styles.track, { width }]}>
                   <View style={[styles.cursor, { left: x(at) }]} />
                   {r.busy.map((b) => (

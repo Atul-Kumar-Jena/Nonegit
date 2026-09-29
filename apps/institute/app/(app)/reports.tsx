@@ -55,7 +55,7 @@ export default function Reports() {
 
   return (
     <Screen onRefresh={() => void q.refetch()} refreshing={q.isRefetching} keyboard>
-      <Header title="Attendance reports" info="reports" />
+      <Header title="Attendance reports" info="reports" right={<Button title="Professors" kind="secondary" compact onPress={() => router.push('/professors')} />} />
 
       <SectionLabel>1 · Batch</SectionLabel>
       <Chips

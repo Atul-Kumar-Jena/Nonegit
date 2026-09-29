@@ -34,6 +34,10 @@ export interface StaffSessionRow {
   showing: boolean;
   due_at: Date | null;
   missed_at: Date | null;
+  scan_rounds: number;
+  round_no: number;
+  round_counts: number[] | null;
+  end_reason: string | null;
 }
 
 export const STAFF_SESSION_SELECT = `
@@ -46,7 +50,9 @@ export const STAFF_SESSION_SELECT = `
          c.instructor_id, iu.full_name as instructor_name, s.substitute_id, su.full_name as substitute_name,
          s.original_start, s.change_kind, s.change_note,
          coalesce(s.status = 'live' and s.qr_shown_at > now() - interval '90 seconds', false) as showing,
-         s.due_at, s.missed_at
+         s.due_at, s.missed_at, s.scan_rounds, s.round_no, s.end_reason,
+         case when s.scan_rounds > 1 then array(select (select count(*)::int from scan_round_marks m where m.session_id = s.id and m.round = g)
+                                                  from generate_series(1, s.scan_rounds) g) end as round_counts
     from class_sessions s
     join courses c on c.id = s.course_id
     left join rooms r on r.id = s.room_id
@@ -94,6 +100,10 @@ export function toStaffSession(r: StaffSessionRow): StaffSession {
     dueAt: r.due_at?.toISOString() ?? null,
     lateMin: lateMinutes(r.scheduled_start, r.started_at),
     missed: r.missed_at !== null && r.status === 'scheduled',
+    scanRounds: r.scan_rounds ?? 1,
+    roundNo: r.round_no ?? 1,
+    roundCounts: r.round_counts ?? [],
+    autoEnded: r.end_reason === 'all_marked',
   };
 }
 

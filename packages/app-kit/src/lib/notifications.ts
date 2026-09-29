@@ -19,6 +19,7 @@ import { z } from 'zod';
 import { NotificationsResponse, OkResponse, type AppNotification } from '@attendly/protocol';
 
 const PushTokenResponse = z.object({ ok: z.literal(true), push: z.boolean() });
+const TestNotificationResponse = z.object({ ok: z.literal(true), serverPush: z.boolean(), phoneRegistered: z.boolean() });
 import { ApiClient } from './api-core';
 import { deviceKeys } from './device-key';
 import { StorageKeys, getItem } from './storage';
@@ -164,11 +165,12 @@ export async function announceNew(items: AppNotification[], unread: number): Pro
     const maxId = Math.max(last ?? 0, ...items.map((i) => i.id));
     // First run on this phone: remember where we are instead of replaying history.
     if (maxId > (last ?? 0) || last === null) await vault.set(SEEN_KEY, maxId);
-    if (!fresh.length) return;
-    if (await vault.get<boolean>(PUSH_KEY, (v) => v === true)) return; // Firebase already buzzed the phone
+    // Only what Firebase didn't already deliver (if Google refused a send, the app still shows it).
+    const pending = fresh.filter((f) => !f.pushed);
+    if (!pending.length) return;
     if ((await Notifications.getPermissionsAsync()).status !== 'granted') return;
     // Several at once become one summary; a newer update about the same thing replaces the older one.
-    const shown = fresh.length > 3 ? [{ id: fresh.at(-1)!.id, title: `${fresh.length} new updates`, body: fresh.map((f) => f.title).join(' · ') }] : fresh;
+    const shown = pending.length > 3 ? [{ id: pending.at(-1)!.id, title: `${pending.length} new updates`, body: pending.map((f) => f.title).join(' · ') }] : pending;
     for (const n of shown) {
       const t = 'kind' in n ? targetOf(n as AppNotification) : null;
       const about = t?.noticeId ?? t?.requestId ?? t?.sessionId;
@@ -221,6 +223,17 @@ async function registerPush(api: ApiClient): Promise<void> {
   }
 }
 
+/**
+ * "Send me a test notification": registers this phone for instant notifications, then asks the
+ * server for a real one. Close the app right after — it should arrive within seconds.
+ */
+export async function sendTestNotification(api: ApiClient): Promise<{ serverPush: boolean; phoneRegistered: boolean; allowed: boolean }> {
+  const allowed = isWeb ? false : (await Notifications.getPermissionsAsync().catch(() => ({ status: 'denied' }))).status === 'granted';
+  await registerPush(api);
+  const r = await api.authed('POST', '/v1/me/test-notification', TestNotificationResponse, {});
+  return { serverPush: r.serverPush, phoneRegistered: r.phoneRegistered, allowed };
+}
+
 export function NotificationRunner() {
   const { phase, api, audience } = useSession();
   const qc = useQueryClient();
@@ -259,7 +272,14 @@ export function NotificationRunner() {
     return () => sub?.remove();
   }, [audience]);
   useEffect(() => {
-    if (phase === 'signed-in' && api) void registerPush(api);
+    if (phase !== 'signed-in' || !api) return;
+    void registerPush(api);
+    // Again whenever the app comes to the front: notifications may have been allowed since, or
+    // Firebase may have given the phone a new token.
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') void registerPush(api);
+    });
+    return () => sub.remove();
   }, [phase, api]);
   useEffect(() => {
     if (phase !== 'signed-in') return;

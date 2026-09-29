@@ -73,3 +73,17 @@ describe('rotating QR tokens', () => {
     expect(isQrSeqFresh(12, 10)).toBe(false);
   });
 });
+
+describe('isQrFreshAt — a code dies when it changes', async () => {
+  const { isQrFreshAt } = await import('../src/qr');
+  it('the current code is fine; the previous only within 1.5 s of the switch; the next only 1.5 s early', () => {
+    const P = 5000;
+    const base = 1000 * P; // start of window 1000
+    expect(isQrFreshAt(1000, base + 2500, 5)).toBe(true);
+    expect(isQrFreshAt(999, base + 1000, 5)).toBe(true);
+    expect(isQrFreshAt(999, base + 2000, 5)).toBe(false);
+    expect(isQrFreshAt(1001, base + P - 1000, 5)).toBe(true);
+    expect(isQrFreshAt(1001, base + 2000, 5)).toBe(false);
+    expect(isQrFreshAt(998, base + 100, 5)).toBe(false);
+  });
+});

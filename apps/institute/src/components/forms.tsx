@@ -412,13 +412,15 @@ export function RadiusField({ value, onChange }: { value: number; onChange: (m: 
   const custom = !(RADIUS_PICKS as readonly number[]).includes(value);
   const [text, setText] = useState(custom ? String(value) : '');
   const [bad, setBad] = useState(false);
-  const commit = () => {
-    const n = Number(text.replace(/[^0-9]/g, ''));
-    if (!text.trim()) return;
+  // Applied as it is typed (not only on leaving the box): tapping Save right after typing keeps it.
+  const apply = (t: string) => {
+    if (!t.trim()) return setBad(false);
+    const n = Number(t);
     if (!Number.isInteger(n) || n < 10 || n > 1000) return setBad(true);
     setBad(false);
     onChange(n);
   };
+  const commit = () => apply(text);
   return (
     <View style={{ gap: 8 }}>
       <View style={styles.radiusRow}>
@@ -446,8 +448,11 @@ export function RadiusField({ value, onChange }: { value: number; onChange: (m: 
           <TextInput
             value={text}
             onChangeText={(v) => {
-              setText(v.replace(/[^0-9]/g, '').slice(0, 4));
-              setBad(false);
+              const t = v.replace(/[^0-9]/g, '').slice(0, 4);
+              setText(t);
+              // Short values (e.g. "2" on the way to "25") aren't errors yet; they apply once valid.
+              if (t.length >= 2) apply(t);
+              else setBad(false);
             }}
             onBlur={commit}
             onSubmitEditing={commit}

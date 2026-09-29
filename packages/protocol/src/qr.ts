@@ -113,3 +113,21 @@ export function seqLabel(seq: number): string {
 export function isQrSeqFresh(seq: number, currentSeq: number): boolean {
   return seq >= currentSeq - 1 && seq <= currentSeq + 1;
 }
+
+/** How long a code outlives its window (and may appear early): only clock differences, never more. */
+export const QR_EDGE_GRACE_MS = 1500;
+
+/**
+ * Strict freshness at the moment of scanning: the code on screen then, or its neighbour only within
+ * 1.5 s of the switch (the professor's phone clock a moment off). A screenshot is useless seconds
+ * after the code changes — there is no "countdown" during which an old code still works.
+ */
+export function isQrFreshAt(seq: number, scanMs: number, rotationSeconds: number, graceMs = QR_EDGE_GRACE_MS): boolean {
+  const period = rotationSeconds * 1000;
+  const cur = currentQrSeq(scanMs, rotationSeconds);
+  if (seq === cur) return true;
+  const into = scanMs - cur * period;
+  if (seq === cur - 1) return into <= graceMs;
+  if (seq === cur + 1) return period - into <= graceMs;
+  return false;
+}

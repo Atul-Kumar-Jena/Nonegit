@@ -26,6 +26,9 @@ export function parseServiceAccount(raw: string | undefined): ServiceAccount | n
   }
 }
 
+/** Delivery counters since the server started (shown in the Developer console to find push problems). */
+export const pushStats = { sent: 0, failed: 0, deadTokens: 0, lastError: null as string | null, lastErrorAt: null as string | null, lastSentAt: null as string | null };
+
 const b64url = (b: Buffer | string) => Buffer.from(b).toString('base64').replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
 
 export function createPushSender(sa: ServiceAccount, log: (msg: string, extra?: unknown) => void) {
@@ -41,13 +44,19 @@ export function createPushSender(sa: ServiceAccount, log: (msg: string, extra?: 
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: `${header}.${claims}.${b64url(sig)}` }),
     });
-    if (!res.ok) throw new Error(`FCM auth failed: ${res.status}`);
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      pushStats.failed++;
+      pushStats.lastError = `Google sign-in for FCM failed (${res.status}) — check FCM_SERVICE_ACCOUNT: ${detail.slice(0, 200)}`;
+      pushStats.lastErrorAt = new Date().toISOString();
+      throw new Error(`FCM auth failed: ${res.status}`);
+    }
     const j = (await res.json()) as { access_token: string; expires_in: number };
     token = { value: j.access_token, exp: now + j.expires_in };
     return token.value;
   }
-  /** Returns false when the token is dead (app uninstalled) so it can be forgotten. */
-  async function send(to: string, n: { title: string; body: string; data: Record<string, string>; image?: string; tag?: string }): Promise<boolean> {
+  /** 'ok' = Google accepted it for the phone; 'dead' = the token is gone (app uninstalled): forget it; 'failed' = try later / app checks itself. */
+  async function send(to: string, n: { title: string; body: string; data: Record<string, string>; image?: string; tag?: string }): Promise<'ok' | 'dead' | 'failed'> {
     const res = await fetch(`https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`, {
       method: 'POST',
       headers: { authorization: `Bearer ${await accessToken()}`, 'content-type': 'application/json' },
@@ -75,9 +84,21 @@ export function createPushSender(sa: ServiceAccount, log: (msg: string, extra?: 
         },
       }),
     });
-    if (res.status === 404 || res.status === 400) return false;
-    if (!res.ok) log('FCM send failed', { status: res.status });
-    return true;
+    if (res.status === 404 || res.status === 400) {
+      pushStats.deadTokens++;
+      return 'dead';
+    }
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      pushStats.failed++;
+      pushStats.lastError = `FCM ${res.status}: ${detail.slice(0, 300)}`;
+      pushStats.lastErrorAt = new Date().toISOString();
+      log('FCM send failed', { status: res.status, detail: detail.slice(0, 300) });
+      return 'failed';
+    }
+    pushStats.sent++;
+    pushStats.lastSentAt = new Date().toISOString();
+    return 'ok';
   }
   return { send };
 }
@@ -109,6 +130,8 @@ export function startPushDispatcher(
     const byUser = new Map<string, { token: string; device_id: string }[]>();
     for (const t of tokens.rows) byUser.set(t.user_id, [...(byUser.get(t.user_id) ?? []), t]);
     const jobs: (() => Promise<void>)[] = [];
+    /** Notifications Google accepted for at least one of the person's phones: the app won't repeat them. */
+    const delivered = new Set<string>();
     for (const n of rows) {
       const first = (n.data.changes as { sessionId?: string | null; courseId?: string }[] | undefined)?.[0];
       const data: Record<string, string> = {
@@ -125,11 +148,13 @@ export function startPushDispatcher(
       const tag = about ? `${n.kind}:${about}` : undefined;
       for (const t of byUser.get(n.user_id) ?? [])
         jobs.push(async () => {
-          const alive = await sender.send(t.token, { title: n.title, body: n.body, data, image, tag }).catch((err: Error) => (log('FCM error', { err: err.message }), true));
-          if (!alive) await db.query('delete from push_tokens where device_id = $1', [t.device_id]);
+          const r = await sender.send(t.token, { title: n.title, body: n.body, data, image, tag }).catch((err: Error) => (log('FCM error', { err: err.message }), 'failed' as const));
+          if (r === 'dead') await db.query('delete from push_tokens where device_id = $1', [t.device_id]);
+          if (r === 'ok') delivered.add(n.id);
         });
     }
     for (let i = 0; i < jobs.length; i += PARALLEL) await Promise.all(jobs.slice(i, i + PARALLEL).map((j) => j()));
+    if (delivered.size) await db.query('update notifications set push_ok = true where id = any($1::bigint[])', [[...delivered]]);
     return rows.length;
   };
   const tick = async () => {

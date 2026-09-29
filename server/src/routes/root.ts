@@ -41,7 +41,7 @@ import { ApiError } from '../lib/errors';
 import { SWITCHES, TENANT_FLAGS, flagDefault, type SwitchKey, type TenantFlagKey } from '../lib/flags';
 import { requestStats } from '../lib/metrics';
 import { issueSetupCode } from '../lib/setup-codes';
-import { parseServiceAccount } from '../lib/push';
+import { parseServiceAccount, pushStats } from '../lib/push';
 import { randomBytes } from '@attendly/protocol';
 import { revokeActiveDevice } from './staff-admin';
 
@@ -254,6 +254,11 @@ export async function rootRoutes(app: FastifyInstance, deps: Deps) {
         .filter((s): s is typeof s & { key: SwitchKey } => s.key in SWITCHES)
         .map((s) => ({ key: s.key, label: SWITCHES[s.key].label, detail: SWITCHES[s.key].detail, enabled: s.enabled, reason: s.reason, updatedAt: s.updated_at.toISOString(), updatedBy: s.by })),
       recent: await recentAudit(deps.db, scope, 8),
+      push: await (async () => {
+        const sa = parseServiceAccount(process.env.FCM_SERVICE_ACCOUNT);
+        const phones = (await deps.db.query<{ n: number }>(`select count(*)::int as n from push_tokens p join devices d on d.id = p.device_id and d.status = 'active'`)).rows[0]!.n;
+        return { configured: !!sa, project: sa?.project_id ?? null, phones, ...pushStats };
+      })(),
     };
   });
 

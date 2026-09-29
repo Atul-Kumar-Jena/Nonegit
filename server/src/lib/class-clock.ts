@@ -25,8 +25,50 @@ interface DueRow {
   room: string | null;
 }
 
-export async function tickClasses(db: Db, now: Date): Promise<{ due: number; missed: number; closed: number }> {
+/** The server's own reminder goes out this long before a class (phones add their own, chosen ones). */
+export const SERVER_REMINDER_MS = 5 * 60_000;
+
+export async function tickClasses(db: Db, now: Date): Promise<{ due: number; missed: number; closed: number; reminded?: number }> {
   return withTx(db, async (tx) => {
+    // "Starts in 5 min": to the class's students and its professor, through instant push — correct
+    // even when the timetable changed after the phone last opened the app.
+    const soon = await tx.query<{ id: string; tenant_id: string; course_id: string; teacher_id: string | null; code: string; title: string; room: string | null; scheduled_start: Date }>(
+      `update class_sessions s set reminded_at = $1
+         from courses c
+        where c.id = s.course_id and s.status = 'scheduled' and s.reminded_at is null
+          and s.scheduled_start > $1 and s.scheduled_start <= $2
+        returning s.id, s.tenant_id, s.course_id, coalesce(s.substitute_id, c.instructor_id) as teacher_id, c.code, c.title,
+                  (select coalesce(r.name, s.room) from rooms r where r.id = s.room_id) as room, s.scheduled_start`,
+      [now, new Date(now.getTime() + SERVER_REMINDER_MS)],
+    );
+    for (const s of soon.rows) {
+      const mins = Math.max(1, Math.round((s.scheduled_start.getTime() - now.getTime()) / 60_000));
+      const students = await tx.query<{ user_id: string }>(
+        `select e.user_id from enrollments e join users u on u.id = e.user_id and u.status = 'active' and u.role = 'student' where e.course_id = $1`,
+        [s.course_id],
+      );
+      await insertNotifications(tx, s.tenant_id, [
+        ...students.rows.map((x) => ({
+          userId: x.user_id,
+          kind: 'reminder',
+          title: `⏰ ${s.code} starts in ${mins} min`,
+          body: `${s.title}${s.room ? ` · ${s.room}` : ''}`,
+          data: { sessionId: s.id, courseId: s.course_id },
+        })),
+        ...(s.teacher_id
+          ? [
+              {
+                userId: s.teacher_id,
+                kind: 'reminder',
+                title: `⏰ Your ${s.code} class starts in ${mins} min`,
+                body: `${s.room ? `${s.room} · ` : ''}Tap Start once you’re in class — students see it as live.`,
+                data: { sessionId: s.id },
+              },
+            ]
+          : []),
+      ]);
+    }
+
     // Log 1: the class time has started. Remind whoever teaches it to start it once they're in class.
     const due = await tx.query<DueRow>(
       `update class_sessions s set due_at = $1
@@ -68,7 +110,7 @@ export async function tickClasses(db: Db, now: Date): Promise<{ due: number; mis
         where status = 'live' and auto_started and scheduled_end <= $1`,
       [new Date(now.getTime() - AUTO_CLOSE_AFTER_MS)],
     );
-    return { due: due.rowCount ?? 0, missed: missed.rowCount ?? 0, closed: closed.rowCount ?? 0 };
+    return { due: due.rowCount ?? 0, missed: missed.rowCount ?? 0, closed: closed.rowCount ?? 0, reminded: soon.rowCount ?? 0 };
   });
 }
 

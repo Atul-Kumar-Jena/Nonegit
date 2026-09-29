@@ -4,12 +4,12 @@
  * in their institution (read-only).
  */
 import type { FastifyInstance } from 'fastify';
-import { MatrixQuery, StudentReportQuery, type MatrixReport, type StudentReport } from '@attendly/protocol';
+import { MatrixQuery, PunctualityQuery, StudentReportQuery, type MatrixReport, type PunctualityReport, type StudentReport } from '@attendly/protocol';
 import type { Deps } from '../deps';
-import { STAFF } from '../lib/access';
+import { STAFF, can } from '../lib/access';
 import { requireDevice } from '../lib/auth';
 import { z } from 'zod';
-import { buildMatrixReport, buildStudentReport } from '../lib/reports';
+import { buildMatrixReport, buildPunctualityReport, buildStudentReport } from '../lib/reports';
 
 const IdParam = z.object({ id: z.uuid() });
 
@@ -30,5 +30,13 @@ export async function reportRoutes(app: FastifyInstance, deps: Deps) {
   app.get('/v1/staff/reports/matrix', async (req): Promise<MatrixReport> => {
     const auth = await requireDevice(req, deps, STAFF);
     return buildMatrixReport(deps.db, auth.tenantId, deps.clock(), MatrixQuery.parse(req.query));
+  });
+
+  /** Professors' punctuality: admins (and coordinators) see everyone; a professor sees their own. */
+  app.get('/v1/staff/reports/punctuality', async (req): Promise<PunctualityReport> => {
+    const auth = await requireDevice(req, deps, STAFF);
+    const q = PunctualityQuery.parse(req.query);
+    const everyone = can(auth, 'courses') || can(auth, 'planner');
+    return buildPunctualityReport(deps.db, auth.tenantId, deps.clock(), { days: q.days, teacherId: everyone ? q.teacherId : auth.userId });
   });
 }

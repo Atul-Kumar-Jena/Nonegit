@@ -12,7 +12,8 @@ import { vault } from './vault';
 /** Pinned countdown alerts (Android): the phone supports them. */
 export const countdownAlertsAvailable = Platform.OS === 'android' && classAlerts.available;
 
-export const REMINDER_CHOICES = [5, 10, 15, 30, 60, 1440] as const;
+/** 5 min before is sent by the server (instant push) to everyone, so phones offer longer leads. */
+export const REMINDER_CHOICES = [10, 15, 30, 60, 1440] as const;
 export const reminderLabel = (m: number) => (m >= 1440 ? 'a day before' : m >= 60 ? `${m / 60} hour before` : `${m} min before`);
 
 export interface ReminderSettings {

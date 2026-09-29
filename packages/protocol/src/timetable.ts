@@ -175,6 +175,8 @@ export const AppNotification = z.object({
   data: z.record(z.string(), z.unknown()),
   createdAt: IsoDate,
   read: z.boolean(),
+  /** Firebase already delivered it to this person's phone: the app doesn't show it a second time. */
+  pushed: z.boolean().default(false),
 });
 export type AppNotification = z.infer<typeof AppNotification>;
 export const NotificationsResponse = z.object({ items: z.array(AppNotification), unread: z.number().int() });

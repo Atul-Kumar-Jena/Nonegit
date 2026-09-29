@@ -33,6 +33,7 @@ export const qk = {
   changeRequests: ['staff', 'change-requests'] as const,
   studentReport: (id: string, courseId?: string) => ['staff', 'student-report', id, courseId ?? 'all'] as const,
   matrix: (batchId?: string, courseId?: string) => ['staff', 'matrix', batchId ?? 'all', courseId ?? 'all'] as const,
+  punctuality: (days: number, teacherId?: string) => ['staff', 'punctuality', days, teacherId ?? 'all'] as const,
 };
 
 const isId = (id: string) => /^[0-9a-f-]{36}$/i.test(id);

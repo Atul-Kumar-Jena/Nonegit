@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import {
   CourseReport,
-  MarkResponse,
+  MarkPresent,
   OfflinePack,
   Overview,
   Person,
@@ -176,8 +176,8 @@ describe('running a class', () => {
   });
 
   it('a QR shown by an OFFLINE teacher phone works: the first valid scan takes the class live', async () => {
-    const qr = encodeQrToken(secret, sessionId, currentQrSeq(ctx.clock.now, 7));
-    const res = MarkResponse.parse(ok(await student.call('POST', '/v1/attendance/mark', { qr, location: loc() })));
+    const qr = encodeQrToken(secret, sessionId, currentQrSeq(ctx.clock.now, 5));
+    const res = MarkPresent.parse(ok(await student.call('POST', '/v1/attendance/mark', { qr, location: loc() })));
     expect(res.record.offline).toBe(false);
     const feed = SessionFeed.parse(ok(await teacher.call('GET', `/v1/staff/sessions/${sessionId}/feed`)));
     expect(feed.session.status).toBe('live');
@@ -194,15 +194,15 @@ describe('running a class', () => {
     const kid = new TestDevice(ctx);
     await kid.signIn('b1@iit.ac.in');
     const scannedAt = ctx.clock.now - 10 * 60_000;
-    const good = encodeQrToken(secret, sessionId, currentQrSeq(scannedAt, 7));
-    const wrong = encodeQrToken(secret, sessionId, currentQrSeq(ctx.clock.now, 7));
+    const good = encodeQrToken(secret, sessionId, currentQrSeq(scannedAt, 5));
+    const wrong = encodeQrToken(secret, sessionId, currentQrSeq(ctx.clock.now, 5));
     const bad = await kid.call('POST', '/v1/attendance/mark', { qr: wrong, scannedAt, location: loc({ capturedAt: scannedAt }) });
     expect(bad.json().error.rejection.code).toBe('E-EXPIRED');
     // Too old → refused.
     const ancient = ctx.clock.now - 25 * 3_600_000;
-    const r = await kid.call('POST', '/v1/attendance/mark', { qr: encodeQrToken(secret, sessionId, currentQrSeq(ancient, 7)), scannedAt: ancient, location: loc({ capturedAt: ancient }) });
+    const r = await kid.call('POST', '/v1/attendance/mark', { qr: encodeQrToken(secret, sessionId, currentQrSeq(ancient, 5)), scannedAt: ancient, location: loc({ capturedAt: ancient }) });
     expect(r.json().error.rejection.code).toBe('E-EXPIRED');
-    const res = MarkResponse.parse(ok(await kid.call('POST', '/v1/attendance/mark', { qr: good, scannedAt, location: loc({ capturedAt: scannedAt }) })));
+    const res = MarkPresent.parse(ok(await kid.call('POST', '/v1/attendance/mark', { qr: good, scannedAt, location: loc({ capturedAt: scannedAt }) })));
     expect(res.record.offline).toBe(true);
   });
 
@@ -229,7 +229,7 @@ describe('running a class', () => {
     expect(feed.entries.find((e) => e.userId === studentId)).toMatchObject({ present: false, revokedReason: 'Marked absent in register: Left after 5 minutes' });
 
     // The student can't re-add themselves by scanning again.
-    const qr = encodeQrToken(secret, sessionId, currentQrSeq(ctx.clock.now, 7));
+    const qr = encodeQrToken(secret, sessionId, currentQrSeq(ctx.clock.now, 5));
     const rescan = await student.call('POST', '/v1/attendance/mark', { qr, location: loc() });
     expect(rescan.json().error.rejection.code).toBe('E-REVOKED');
     // Their percentage reflects it.
@@ -254,7 +254,7 @@ describe('running a class', () => {
     const today = new Date(ctx.clock.now + 5.5 * 3_600_000).toISOString().slice(0, 10);
     const paper = StaffSession.parse(ok(await teacher.call('POST', '/v1/staff/sessions', { courseId, date: today, start: '00:02', end: '23:57', roomId, mode: 'manual' })));
     const leaked = (await ctx.db.query<{ qr_secret: Buffer }>('select qr_secret from class_sessions where id = $1', [paper.id])).rows[0]!.qr_secret;
-    const scan = await student.call('POST', '/v1/attendance/mark', { qr: encodeQrToken(new Uint8Array(leaked), paper.id, currentQrSeq(ctx.clock.now, 7)), location: loc() });
+    const scan = await student.call('POST', '/v1/attendance/mark', { qr: encodeQrToken(new Uint8Array(leaked), paper.id, currentQrSeq(ctx.clock.now, 5)), location: loc() });
     expect(scan.json().error.rejection).toMatchObject({ code: 'E-SESSION-CLOSED', detail: 'This class uses a paper/manual register.' });
   });
 
@@ -268,7 +268,7 @@ describe('running a class', () => {
     expect(byName['aarav']).toMatchObject({ attended: 0, held: 1, standing: 'at-risk' });
     expect(byName['New Kid']).toMatchObject({ attended: 1, percent: 100 });
     // Online scans after the class ended are refused.
-    const late = await student.call('POST', '/v1/attendance/mark', { qr: encodeQrToken(secret, sessionId, currentQrSeq(ctx.clock.now, 7)), location: loc() });
+    const late = await student.call('POST', '/v1/attendance/mark', { qr: encodeQrToken(secret, sessionId, currentQrSeq(ctx.clock.now, 5)), location: loc() });
     expect(late.statusCode).toBe(422);
   });
 });
@@ -279,7 +279,7 @@ describe('review and devices', () => {
       ok(await teacher.call('POST', '/v1/staff/sessions', { courseId, date: new Date(ctx.clock.now + 5.5 * 3_600_000).toISOString().slice(0, 10), start: '00:01', end: '23:58', roomId })),
     );
     const started = SessionWithSecret.parse(ok(await teacher.call('POST', `/v1/staff/sessions/${s.id}/start`, { mode: 'qr', lat: CENTER.lat, lng: CENTER.lng })));
-    const qr = encodeQrToken(fromB64url(started.secret!), s.id, currentQrSeq(ctx.clock.now, 7));
+    const qr = encodeQrToken(fromB64url(started.secret!), s.id, currentQrSeq(ctx.clock.now, 5));
     const rej = await student.call('POST', '/v1/attendance/mark', { qr, location: loc({ mocked: true }) });
     expect(rej.json().error.rejection.code).toBe('E-MOCK');
     const flags = ok(await teacher.call('GET', '/v1/staff/flags?status=open'));

@@ -29,7 +29,8 @@ beforeEach(async () => {
 });
 
 /** The institution turns on "Secure-hardware phones only". */
-const requireChips = () => ctx.db.query(`insert into tenant_flags(tenant_id, key, enabled) values ($1, 'hardware_binding', true) on conflict (tenant_id, key) do update set enabled = true`, [tenantId]);
+// Chip keys are never required by an institution; only the server operator can (REQUIRE_HARDWARE_KEYS).
+const requireChips = async () => void (ctx.deps.config.attestation.requireHardware = true);
 
 /** A new enrolled student and their phone. */
 async function student(hardwareId = `hw-${++n}-${Math.random()}`) {
@@ -45,7 +46,8 @@ async function bindResult(d: TestDevice, email: string) {
   if (v.status !== 'bind_required') return { status: v.status, v };
   return { res: await d.bind(v.ticket), v };
 }
-const requireHardware = () => ctx.db.query(`insert into tenant_flags(tenant_id, key, enabled) values ($1, 'hardware_binding', true)`, [tenantId]);
+const requireHardware = requireChips;
+beforeEach(() => void (ctx.deps.config.attestation.requireHardware = false));
 const mark = async (d: TestDevice, opts: { hw?: boolean } = {}) => {
   const s = await startLiveSession(ctx, { tenantId, courseId });
   return d.call('POST', '/v1/attendance/mark', { qr: liveToken(ctx, s), location: { ...at(5), accuracyM: 8, mocked: false, capturedAt: ctx.clock.now } }, opts);
@@ -148,15 +150,18 @@ describe('binding with the phone’s security chip', () => {
     expect((await d.phone.withChip(ca).signIn(d.email)).device.hardware).toBe('tee');
   });
 
-  it('no downgrade: once a student’s phone had a chip key, clearing app data can’t re-bind with a software key', async () => {
+  it('any phone works: the same phone re-binds after its app data is cleared, even without a chip key (recorded)', async () => {
+    const was = ctx.deps.config.attestation.requireHardware;
+    ctx.deps.config.attestation.requireHardware = false; // the default: no institution can require chips
     const s = await student('android-id-same-phone');
     await s.phone.withChip(ca).signIn(s.email);
     const cleared = new TestDevice(ctx, { hardwareId: 'android-id-same-phone' }); // same phone ID, no chip key sent
     const { res } = await bindResult(cleared, s.email);
-    expect(res!.statusCode).toBe(403);
+    expect(res!.statusCode).toBe(200);
     const honest = new TestDevice(ctx, { hardwareId: 'android-id-same-phone' }).withChip(ca);
     const again = await bindResult(honest, s.email);
     expect(again.res!.statusCode).toBe(200);
+    ctx.deps.config.attestation.requireHardware = was;
   });
 
   it('the emergency switch lets a wrongly refused phone model bind', async () => {

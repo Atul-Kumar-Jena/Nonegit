@@ -28,11 +28,6 @@ export type SwitchKey = keyof typeof SWITCHES;
 export const TENANT_FLAGS = {
   strict_geo: { label: 'Strict geofence', detail: 'No ±accuracy allowance: a scan must be inside the room’s radius itself.', default: false },
   student_requests: { label: 'Students can ask teachers', detail: 'The “Ask” button on the students’ timetable.', default: true },
-  hardware_binding: {
-    label: 'Secure-hardware phones only',
-    detail: 'Every Android phone must prove a key inside its security chip (Google key attestation) to be bound. Turn on once your phones pass (results are recorded either way).',
-    default: false,
-  },
   offline_scans_off: {
     label: 'Refuse offline scans',
     detail: 'Scans must reach the server within seconds. For campuses with reliable internet; stops any use of old QR codes.',
@@ -47,9 +42,9 @@ export async function switchOn(db: Queryable, key: SwitchKey): Promise<boolean> 
   return rows[0]?.enabled ?? false;
 }
 
-/** A flag's value where an institution hasn't set it. The security-chip rule's default is a server setting (on in production). */
-export function flagDefault(key: TenantFlagKey, config?: { attestation: { strictByDefault: boolean } }): boolean {
-  return key === 'hardware_binding' && config ? config.attestation.strictByDefault : TENANT_FLAGS[key].default;
+/** A flag's value where an institution hasn't set it. */
+export function flagDefault(key: TenantFlagKey, _config?: unknown): boolean {
+  return TENANT_FLAGS[key].default;
 }
 
 export async function tenantFlag(db: Queryable, tenantId: string, key: TenantFlagKey, config?: { attestation: { strictByDefault: boolean } }): Promise<boolean> {

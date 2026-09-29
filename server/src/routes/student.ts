@@ -58,9 +58,13 @@ export async function studentRoutes(app: FastifyInstance, deps: Deps) {
         taking: boolean;
         started_at: Date | null;
         missed_at: Date | null;
+        scan_rounds: number;
+        round_no: number;
+        rounds_done: number;
       }>(
         `select s.id, c.code, c.title, coalesce(s.status = 'live' and s.qr_shown_at > now() - interval '90 seconds', false) as taking, coalesce(r.name, s.room) as room, s.status, s.mode, s.scheduled_start, s.scheduled_end,
-                s.started_at, s.missed_at,
+                s.started_at, s.missed_at, s.scan_rounds, s.round_no,
+                (select count(*)::int from scan_round_marks m where m.session_id = s.id and m.user_id = $1) as rounds_done,
                 exists(select 1 from attendance_records a where a.session_id = s.id and a.user_id = $1 and a.revoked_at is null) as marked, s.change_kind, s.change_note, s.original_start, su.full_name as substitute_name
            from class_sessions s
            join courses c on c.id = s.course_id
@@ -107,6 +111,7 @@ export async function studentRoutes(app: FastifyInstance, deps: Deps) {
         waitingForProfessor: r.status === 'scheduled' && !r.missed_at && r.scheduled_start.getTime() <= deps.clock() && r.scheduled_end.getTime() > deps.clock(),
         lateMin: lateMinutes(r.scheduled_start, r.started_at),
         missed: r.status === 'scheduled' && r.missed_at !== null,
+        rounds: r.scan_rounds > 1 ? { required: r.scan_rounds, open: r.round_no, done: r.rounds_done } : null,
       })),
       timezone: term.timezone,
       serverTime: deps.clock(),

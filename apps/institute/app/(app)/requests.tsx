@@ -3,19 +3,27 @@ import { View } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowRight, Smartphone } from 'lucide-react-native';
 import { Screen } from '@kit/components/Screen';
-import { Badge, Button, Card, ErrorState, Loading, Notice, Text } from '@kit/components/ui';
+import { Badge, Button, Card, ErrorState, Loading, Notice, Segmented, Text } from '@kit/components/ui';
 import { timeAgo } from '@kit/lib/format';
 import { useApi } from '@kit/state/session';
 import { colors } from '@kit/theme';
 import { staffApi } from '@/api';
 import { Empty, Header, confirmAction } from '@/components/forms';
-import { useDeviceRequests } from '@/queries';
+import { useDeviceRequests, useMe } from '@/queries';
 
 /** Phone switches and resets waiting for approval. One person, one phone — nobody can approve their own. */
 export default function Requests() {
   const api = useApi();
   const qc = useQueryClient();
   const q = useDeviceRequests();
+  const me = useMe().data;
+  const myName = me?.user.fullName;
+  const [show, setShow] = useState<'mine' | 'all'>('mine');
+  // Mentors handle their batches' students; admins are the backup for everyone without a mentor.
+  const needsMe = (r: { mentors: string[] }) => r.mentors.length === 0 || (!!myName && r.mentors.includes(myName));
+  const all = q.data ?? [];
+  const list = show === 'mine' ? all.filter(needsMe) : all;
+  const handledByMentors = all.length - all.filter(needsMe).length;
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,6 +46,21 @@ export default function Requests() {
       <Text variant="small">
         Each account works on one phone. Approve only if you’re sure the request is genuine — e.g. the person told you they changed phones.
       </Text>
+      {handledByMentors > 0 || show === 'all' ? (
+        <View style={{ marginTop: 12 }}>
+          <Segmented
+            value={show}
+            options={[
+              { value: 'mine', label: `Needs you (${all.length - handledByMentors})` },
+              { value: 'all', label: `All (${all.length})` },
+            ]}
+            onChange={setShow}
+          />
+          <Text variant="small" style={{ marginTop: 6 }}>
+            {`${handledByMentors} ${handledByMentors === 1 ? 'request is' : 'requests are'} with the students’ batch mentors. You can still decide any of them.`}
+          </Text>
+        </View>
+      ) : null}
       {error ? (
         <View style={{ marginTop: 12 }}>
           <Notice tone="red" message={error} />
@@ -48,10 +71,10 @@ export default function Requests() {
           <Loading />
         ) : q.isError && !q.data ? (
           <ErrorState message={q.error.message} onRetry={() => void q.refetch()} />
-        ) : (q.data ?? []).length === 0 ? (
-          <Empty title="No pending requests" />
+        ) : list.length === 0 ? (
+          <Empty title={all.length ? 'Nothing needs you — mentors are on it' : 'No pending requests'} />
         ) : (
-          (q.data ?? []).map((r) => (
+          list.map((r) => (
             <Card key={r.id} style={{ gap: 10 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <Text variant="bodyStrong" style={{ flex: 1 }}>
@@ -75,6 +98,11 @@ export default function Requests() {
               <Text variant="body" color={colors.text}>
                 “{r.reason}”
               </Text>
+              {r.mentors.length ? (
+                <Text variant="small">{`Mentor: ${r.mentors.join(', ')}${myName && r.mentors.includes(myName) ? ' (you)' : ' handles this'}`}</Text>
+              ) : r.user.role === 'student' ? (
+                <Text variant="small">No batch mentor — admins decide.</Text>
+              ) : null}
               <View style={{ flexDirection: 'row', gap: 10 }}>
                 <Button title="Deny" kind="secondary" compact loading={busy === r.id + 'deny'} onPress={() => void decide(r.id, 'deny')} style={{ flex: 1 }} />
                 <Button

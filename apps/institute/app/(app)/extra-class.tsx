@@ -8,11 +8,14 @@ import { useApi } from '@kit/state/session';
 import { staffApi } from '@/api';
 import { Chips, DateField, Field, Header, Select, TimeField, firstIssue, fromMinutes, toMinutes } from '@/components/forms';
 import { useCourses, useOverview, useRooms } from '@/queries';
+import { BatchCoursePicker } from '@/components/BatchCoursePicker';
+import { ScheduleHints } from '@/components/ScheduleHints';
 import { ymdIn } from '@/time';
 
 /** A one-off class that isn't on the weekly timetable (extra lecture, make-up lab…). */
 export default function ExtraClass() {
-  const { courseId: initialCourse } = useLocalSearchParams<{ courseId?: string }>();
+  const params = useLocalSearchParams<{ courseId?: string; date?: string; start?: string; end?: string; roomId?: string; teacherId?: string; teacherName?: string }>();
+  const initialCourse = params.courseId;
   const api = useApi();
   const qc = useQueryClient();
   const courses = useCourses();
@@ -26,10 +29,11 @@ export default function ExtraClass() {
   })();
 
   const [courseId, setCourseId] = useState<string | null>(initialCourse ?? null);
-  const [date, setDate] = useState(() => ymdIn(api.serverNow(), tz));
-  const [start, setStart] = useState(() => fromMinutes(nowMin));
-  const [end, setEnd] = useState(() => fromMinutes(Math.min(nowMin + 60, 23 * 60 + 55)));
-  const [roomId, setRoomId] = useState<string | null>(null);
+  const [date, setDate] = useState(() => params.date ?? ymdIn(api.serverNow(), tz));
+  const [start, setStart] = useState(() => params.start ?? fromMinutes(nowMin));
+  const [end, setEnd] = useState(() => params.end ?? fromMinutes(Math.min(nowMin + 60, 23 * 60 + 55)));
+  const [roomId, setRoomId] = useState<string | null>(params.roomId ?? null);
+  const teacherId = params.teacherId ?? null;
   const [mode, setMode] = useState<SessionMode | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,7 +44,7 @@ export default function ExtraClass() {
   async function save() {
     setError(null);
     const parsed = CreateSessionBody.safeParse({ courseId, date, start, end, roomId, mode: m });
-    if (!courseId) return setError('Choose a course.');
+    if (!courseId) return setError('Choose the batch and subject.');
     if (!parsed.success) return setError(firstIssue(parsed.error));
     setBusy(true);
     try {
@@ -58,15 +62,8 @@ export default function ExtraClass() {
     <Screen keyboard>
       <Header title="Extra class" />
       <Text variant="small">For a class that isn’t on the weekly timetable. Students see it on their timetable straight away.</Text>
-      <Field label="Course">
-        <Select
-          title="Course"
-          value={courseId}
-          onChange={setCourseId}
-          options={(courses.data ?? []).filter((c) => c.active).map((c) => ({ value: c.id, label: `${c.code} · ${c.title}`, sub: `${c.studentCount} students${c.instructor ? ` · ${c.instructor.name}` : ''}` }))}
-          placeholder={courses.isPending ? 'Loading…' : 'Choose a course'}
-        />
-      </Field>
+      {teacherId ? <Notice tone="green" message={`Scheduling for ${params.teacherName ?? 'this professor'} — free at this time. Their subjects are listed.`} /> : null}
+      <BatchCoursePicker courseId={courseId} onChange={(v) => setCourseId(v)} activeOnly teacherId={teacherId} />
       <Field label="Date">
         <DateField value={date} onChange={setDate} />
       </Field>
@@ -79,6 +76,7 @@ export default function ExtraClass() {
       <Field label="Room" hint="QR classes use the room’s saved location if you don’t use your phone’s.">
         <Select title="Room" value={roomId} onChange={setRoomId} allowNone="No room" options={(rooms.data ?? []).filter((r) => r.active).map((r) => ({ value: r.id, label: r.name, sub: r.lat !== null ? `Location saved · ${r.radiusM} m` : 'No location saved' }))} />
       </Field>
+      <ScheduleHints date={date} start={start} end={end} teacherId={course?.instructor?.id ?? null} teacherName={course?.instructor?.name ?? null} roomId={roomId} onRoom={setRoomId} />
       <Field label="Attendance by">
         <Chips value={m} options={[{ value: 'qr', label: 'QR scan' }, { value: 'manual', label: 'Register' }]} onChange={setMode} />
       </Field>

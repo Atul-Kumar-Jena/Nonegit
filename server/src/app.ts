@@ -184,6 +184,10 @@ export function startJanitor(deps: Deps): () => void {
       await deps.db.query(`delete from otp_challenges where created_at < $1`, [new Date(now.getTime() - 24 * 3_600_000)]);
       await deps.db.query(`delete from auth_tickets where expires_at < $1`, [new Date(now.getTime() - 24 * 3_600_000)]);
       await deps.db.query(`delete from auth_sessions where refresh_expires_at < $1`, [new Date(now.getTime() - 24 * 3_600_000)]);
+      // Scale: the bell keeps 6 months of read notifications (unread ones stay until read).
+      await deps.db.query(`delete from notifications where read_at is not null and created_at < $1`, [new Date(now.getTime() - 180 * 86_400_000)]);
+      // Scan refusals older than a year are no longer reviewed (the audit log keeps the record).
+      await deps.db.query(`delete from scan_rejections where created_at < $1 and review_status <> 'open'`, [new Date(now.getTime() - 365 * 86_400_000)]);
       // Auto-close sessions that ran past their scheduled end by more than 30 minutes.
       await deps.db.query(
         `update class_sessions set status = 'closed', ended_at = greatest(scheduled_end, started_at) where status = 'live' and scheduled_end < $1`,

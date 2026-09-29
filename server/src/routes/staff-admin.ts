@@ -287,7 +287,8 @@ export async function staffAdminRoutes(app: FastifyInstance, deps: Deps) {
         if (!rows[0]) throw new ApiError(404, 'NOT_FOUND', 'Room not found.');
         // Upcoming classes in this room pick up the new geofence (live ones keep theirs).
         await tx.query(
-          `update class_sessions set lat = $2, lng = $3, radius_m = $4, room = $5 where room_id = $1 and status = 'scheduled'`,
+          // center_accuracy_m cleared: the scan check then uses the room's own (just measured) precision.
+          `update class_sessions set lat = $2, lng = $3, radius_m = $4, room = $5, center_accuracy_m = null where room_id = $1 and status = 'scheduled'`,
           [rows[0].id, b.lat ?? null, b.lng ?? null, b.radiusM, b.name],
         );
         await audit(tx, auth, id ? 'room.update' : 'room.create', `room:${rows[0].id}`, { name: b.name, located: b.lat != null, radiusM: b.radiusM });

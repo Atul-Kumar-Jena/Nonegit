@@ -480,7 +480,7 @@ const ApiOk = z.object({ ok: z.literal(true) });
  * pinned server key. A failure means the response did not come from the real
  * Attendly server (or was altered in transit).
  */
-export function verifyReceipt(res: MarkResponseT, pinned: { kid: string; publicKey: Uint8Array }): boolean {
+export function verifyReceipt(res: Extract<MarkResponseT, { status: 'present' }>, pinned: { kid: string; publicKey: Uint8Array }): boolean {
   if (res.receipt.serverKeyId !== pinned.kid) return false;
   const message = receiptSigningString({
     recordId: res.record.id,

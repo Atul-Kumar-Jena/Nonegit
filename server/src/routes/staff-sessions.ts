@@ -10,6 +10,7 @@ import {
   EndSessionBody,
   ManualBody,
   ReviewBody,
+  ScanRoundsBody,
   StartSessionBody,
   YMD,
   keyFingerprint,
@@ -177,7 +178,8 @@ export async function staffSessionRoutes(app: FastifyInstance, deps: Deps) {
           throw new ApiError(400, 'BAD_REQUEST', 'A QR class needs a location: allow location on this phone or save the room’s location first.');
         await tx.query(
           `update class_sessions set status = 'live', mode = $2, lat = $3, lng = $4, radius_m = $5, rotation_s = $6, started_at = $7, started_by = $8,
-                  center_accuracy_m = case when $9 then $10 else center_accuracy_m end
+                  center_accuracy_m = case when $9 then $10 else center_accuracy_m end,
+                  scan_rounds = coalesce($11, scan_rounds), round_no = 1, round_opened_at = '{}'
             where id = $1`,
           [
             id,
@@ -190,6 +192,7 @@ export async function staffSessionRoutes(app: FastifyInstance, deps: Deps) {
             auth.userId,
             b.lat != null,
             b.lat != null ? (b.centerAccuracyM ?? null) : null,
+            b.mode === 'qr' ? (b.scanRounds ?? null) : 1,
           ],
         );
         await assignLectureNo(tx, id);
@@ -223,6 +226,63 @@ export async function staffSessionRoutes(app: FastifyInstance, deps: Deps) {
         await staffAudit(tx, auth, 'session.end', `session:${id}`, { synced: b.endedAt !== undefined });
         return { already: false };
       });
+    });
+    return loadStaffSession(deps.db, id);
+  });
+
+  /**
+   * Layered scans (fests, webinars): students must scan this many times to count as present. Set
+   * before the class or while it runs, as long as nobody has completed it yet.
+   */
+  app.post('/v1/staff/sessions/:id/rounds', async (req): Promise<StaffSession> => {
+    const auth = await requireDevice(req, deps, STAFF);
+    const { id } = IdParam.parse(req.params);
+    const b = ScanRoundsBody.parse(req.body);
+    await withTx(deps.db, async (tx) => {
+      const s = await loadSessionFor(tx, auth, id, true);
+      if (s.status !== 'scheduled' && s.status !== 'live') throw new ApiError(409, 'CONFLICT', 'This class has ended.');
+      if (s.mode !== 'qr') throw new ApiError(409, 'CONFLICT', 'Layered scans need a QR class.');
+      const cur = (await tx.query<{ round_no: number }>('select round_no from class_sessions where id = $1 for update', [id])).rows[0]!;
+      if (b.rounds < cur.round_no) throw new ApiError(409, 'CONFLICT', `Round ${cur.round_no} is already open.`);
+      const done = await tx.query('select 1 from attendance_records where session_id = $1 and revoked_at is null limit 1', [id]);
+      if (done.rowCount) throw new ApiError(409, 'CONFLICT', 'Some students are already marked present — set the number of scans before the first scan.');
+      await tx.query('update class_sessions set scan_rounds = $2 where id = $1', [id, b.rounds]);
+      await staffAudit(tx, auth, 'session.rounds', `session:${id}`, { rounds: b.rounds });
+    });
+    return loadStaffSession(deps.db, id);
+  });
+
+  /** Open the next scan round: students scan the (same) live code again; they are told on their phones. */
+  app.post('/v1/staff/sessions/:id/next-round', async (req): Promise<StaffSession> => {
+    const auth = await requireDevice(req, deps, STAFF);
+    const { id } = IdParam.parse(req.params);
+    const t = new Date(now());
+    await withTx(deps.db, async (tx) => {
+      const s = await loadSessionFor(tx, auth, id, true);
+      if (s.status !== 'live') throw new ApiError(409, 'CONFLICT', 'Start the class first.');
+      const r = (await tx.query<{ round_no: number; scan_rounds: number; code: string }>(
+        `select s.round_no, s.scan_rounds, c.code from class_sessions s join courses c on c.id = s.course_id where s.id = $1 for update of s`,
+        [id],
+      )).rows[0]!;
+      if (r.round_no >= r.scan_rounds) throw new ApiError(409, 'CONFLICT', 'All scan rounds are already open.');
+      const next = r.round_no + 1;
+      await tx.query('update class_sessions set round_no = $2, round_opened_at = array_append(round_opened_at, $3) where id = $1', [id, next, t]);
+      await staffAudit(tx, auth, 'session.next_round', `session:${id}`, { round: next });
+      const students = await tx.query<{ user_id: string }>(
+        `select e.user_id from enrollments e join users u on u.id = e.user_id and u.status = 'active' and u.role = 'student' where e.course_id = $1`,
+        [s.course_id],
+      );
+      await insertNotifications(
+        tx,
+        auth.tenantId,
+        students.rows.map((x) => ({
+          userId: x.user_id,
+          kind: 'attendance',
+          title: `📷 Scan again · ${r.code} (round ${next} of ${r.scan_rounds})`,
+          body: 'Your professor opened the next attendance round. Scan the code on screen now — you’re marked present only after every round.',
+          data: { sessionId: id, courseId: s.course_id },
+        })),
+      );
     });
     return loadStaffSession(deps.db, id);
   });
@@ -537,9 +597,12 @@ export async function staffSessionRoutes(app: FastifyInstance, deps: Deps) {
       to_device_info: DeviceInfo | null;
       reason: string;
       created_at: Date;
+      mentors: string[] | null;
     }>(
       `select r.id, r.kind, u.id as user_id, u.full_name, u.roll_no, u.role, d.model as from_model, d.fingerprint as from_fp,
-              r.to_public_key, r.to_device_info, r.reason, r.created_at
+              r.to_public_key, r.to_device_info, r.reason, r.created_at,
+              (select array_agg(distinct mu.full_name) from batch_members bm join batches b on b.id = bm.batch_id and b.active
+                 join users mu on mu.id = b.mentor_id and mu.status = 'active' where bm.user_id = u.id) as mentors
          from device_requests r join users u on u.id = r.user_id left join devices d on d.id = r.from_device_id
         where u.tenant_id = $1 and r.status = 'pending' and ($2::uuid[] is null or u.id = any($2::uuid[])) order by r.created_at`,
       [auth.tenantId, only],
@@ -555,6 +618,7 @@ export async function staffSessionRoutes(app: FastifyInstance, deps: Deps) {
           : null,
       reason: r.reason,
       createdAt: r.created_at.toISOString(),
+      mentors: r.mentors ?? [],
     }));
   });
 

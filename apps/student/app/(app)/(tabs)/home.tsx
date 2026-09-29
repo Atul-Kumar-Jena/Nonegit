@@ -14,7 +14,7 @@ import { clock, dayLabel, greeting, initials, pct, timeRange } from '@kit/lib/fo
 import { integrityReport } from '@kit/lib/device-info';
 import { ensureLocationPermission, locationStatus } from '@kit/lib/location';
 import { ChangeNote } from '@/components/ChangeNote';
-import { useDashboard, useTimetable } from '@/state/queries';
+import { useDashboard, useSubjects, useTimetable } from '@/state/queries';
 import { useApi } from '@kit/state/session';
 import { colors, fonts, toneColor } from '@kit/theme';
 
@@ -49,6 +49,7 @@ export default function Home() {
     <Screen onRefresh={() => void q.refetch()} refreshing={q.isRefetching}>
       <Header d={d} />
       <TermCard d={d} offline={offline} updatedAt={q.dataUpdatedAt} />
+      <HeadsUp />
       <SyncBanner />
       {gps && gps !== 'ready' ? (
         <Pressable
@@ -163,6 +164,34 @@ function Header({ d }: { d: DashboardResponse }) {
   );
 }
 
+/**
+ * Recommendations from the student's own numbers: the subjects below the minimum (how many
+ * classes in a row get them back) and the ones with no margin left. Tap to open the subject.
+ */
+function HeadsUp() {
+  const subs = useSubjects().data;
+  if (!subs) return null;
+  const below = subs.subjects.filter((s) => s.standing === 'at-risk').sort((a, b) => b.needToReach - a.needToReach);
+  const edge = subs.subjects.filter((s) => s.standing === 'safe' && s.safeToMiss === 0);
+  if (!below.length && !edge.length) return null;
+  const tips = [
+    ...below.slice(0, 3).map((s) => ({ s, text: `${s.code} is at ${pct(s.percent)}% — attend the next ${s.needToReach} ${s.needToReach === 1 ? 'class' : 'classes'} in a row to get back to ${pct(subs.minPercent)}%.`, tone: colors.red })),
+    ...edge.slice(0, Math.max(0, 3 - below.length)).map((s) => ({ s, text: `${s.code}: no class can be missed right now without dropping below ${pct(subs.minPercent)}%.`, tone: colors.amber })),
+  ];
+  return (
+    <Card tone={below.length ? 'amber' : undefined} style={{ marginTop: 12, gap: 8 }}>
+      <Text variant="label">Heads-up</Text>
+      {tips.map(({ s, text, tone }) => (
+        <Pressable key={s.courseId} onPress={() => router.push({ pathname: '/subject/[id]', params: { id: s.courseId } })} accessibilityRole="button">
+          <Text variant="small" color={tone}>
+            {text}
+          </Text>
+        </Pressable>
+      ))}
+    </Card>
+  );
+}
+
 function TermCard({ d, offline, updatedAt }: { d: DashboardResponse; offline: boolean; updatedAt: number }) {
   const { term } = d;
   const risk = term.percent !== null && term.percent < term.minPercent;
@@ -241,8 +270,15 @@ function SessionCard({ s, tz, now }: { s: TodaySession; tz: string; now: number 
         {s.taking && !s.marked ? (
           <View style={styles.taking}>
             <View style={styles.takingDot} />
-            <Text style={styles.takingText}>Attendance being taken — scan now</Text>
+            <Text style={styles.takingText}>
+              {s.rounds && s.rounds.done < s.rounds.open ? `Round ${s.rounds.open} of ${s.rounds.required} — scan now` : 'Attendance being taken — scan now'}
+            </Text>
           </View>
+        ) : null}
+        {s.rounds && !s.marked && live ? (
+          <Text variant="small" color={colors.amber}>
+            {`${s.rounds.done} of ${s.rounds.required} scans done · present only after all ${s.rounds.required} — stay till the end`}
+          </Text>
         ) : null}
       </View>
       <View style={{ paddingRight: 14 }}>

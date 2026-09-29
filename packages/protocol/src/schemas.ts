@@ -233,6 +233,8 @@ export const TodaySession = z.object({
   lateMin: z.number().int().nullable().default(null),
   /** The class time ran out without the professor starting it. */
   missed: z.boolean().default(false),
+  /** Layered scans: scans required, the round open now, and how many this student has done. */
+  rounds: z.object({ required: z.number().int(), open: z.number().int(), done: z.number().int() }).nullable().default(null),
 });
 export type TodaySession = z.infer<typeof TodaySession>;
 
@@ -330,7 +332,18 @@ export const MarkBody = z.object({
 });
 export type MarkBody = z.infer<typeof MarkBody>;
 
-export const MarkResponse = z.object({
+/** Layered scans: this scan counted for one round; the student is present after the last one. */
+export const MarkRound = z.object({
+  status: z.literal('round'),
+  sessionId: z.uuid(),
+  courseCode: z.string(),
+  courseTitle: z.string(),
+  offline: z.boolean(),
+  round: z.object({ done: z.number().int(), required: z.number().int(), current: z.number().int() }),
+});
+export type MarkRound = z.infer<typeof MarkRound>;
+
+export const MarkPresent = z.object({
   status: z.literal('present'),
   alreadyMarked: z.boolean(),
   record: z.object({
@@ -354,6 +367,8 @@ export const MarkResponse = z.object({
   }),
   course: z.object({ before: z.number().nullable(), after: z.number().nullable() }),
 });
+export type MarkPresent = z.infer<typeof MarkPresent>;
+export const MarkResponse = z.discriminatedUnion('status', [MarkPresent, MarkRound]);
 export type MarkResponse = z.infer<typeof MarkResponse>;
 
 // ───────────────────────────── authenticator app ─────────────────────────────

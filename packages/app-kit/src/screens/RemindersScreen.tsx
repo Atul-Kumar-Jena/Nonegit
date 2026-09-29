@@ -40,6 +40,9 @@ export default function RemindersScreen() {
           : 'A notification (with sound) before each of your classes, with the time and room.'}{' '}
         They are set on this phone, so they arrive on time even without internet, and follow every timetable change.
       </Text>
+      <Text variant="small" style={{ marginTop: 8 }}>
+        Attendly also sends everyone a “starts in 5 min” reminder for each class — it follows last-minute changes even if you haven’t opened the app.
+      </Text>
 
       {phone === 'denied' ? (
         <Card tone="amber" style={{ marginTop: 16, gap: 10 }}>

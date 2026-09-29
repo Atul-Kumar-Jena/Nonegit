@@ -62,6 +62,26 @@ export default function ConsoleScreen() {
         </>
       ) : null}
 
+      {c.push ? (
+        <>
+          <SectionLabel right={<Badge label={c.push.configured ? (c.push.lastError && (!c.push.lastSentAt || c.push.lastErrorAt! > c.push.lastSentAt) ? 'Failing' : 'On') : 'Off'} tone={c.push.configured ? (c.push.lastError && (!c.push.lastSentAt || c.push.lastErrorAt! > c.push.lastSentAt) ? 'red' : 'green') : 'amber'} dot={false} />}>
+            Instant notifications
+          </SectionLabel>
+          <Card style={{ gap: 6 }}>
+            <Text variant="small" color={colors.text}>
+              {c.push.configured ? `Firebase project ${c.push.project} · ${c.push.phones} ${c.push.phones === 1 ? 'phone' : 'phones'} registered` : 'Not connected: add FCM_SERVICE_ACCOUNT (the whole Firebase service-account file) in Render → Environment.'}
+            </Text>
+            {c.push.configured ? <Text variant="small">{`Since the server started: ${c.push.sent} delivered to Google · ${c.push.failed} failed · ${c.push.deadTokens} old phones forgotten${c.push.lastSentAt ? ` · last ${new Date(c.push.lastSentAt).toLocaleTimeString()}` : ''}`}</Text> : null}
+            {c.push.lastError ? (
+              <Text variant="small" color={colors.red}>
+                {`Last error: ${c.push.lastError}`}
+              </Text>
+            ) : null}
+            {c.push.configured && c.push.phones === 0 ? <Text variant="small">No phone has registered yet: open the Student or Institute app (a build with Firebase) and allow notifications.</Text> : null}
+          </Card>
+        </>
+      ) : null}
+
       <SectionLabel right={<Badge label={c.health.db ? 'Nominal' : 'DB DOWN'} tone={c.health.db ? 'green' : 'red'} />}>{`System · ${c.environment.env}`}</SectionLabel>
       <View style={styles.grid}>
         <Stat label="Institutions" value={`${fmtNum(c.counts.tenants)}${c.counts.tenantsSuspended ? ` · ${c.counts.tenantsSuspended} off` : ''}`} />

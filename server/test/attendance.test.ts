@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
-  MarkResponse,
+  MarkPresent,
   DashboardResponse,
   SubjectsResponse,
   ProfileResponse,
@@ -52,7 +52,7 @@ describe('marking attendance', () => {
     ctx.clock.now += 3_000;
     const res = await mark(aarav, liveToken(ctx, s));
     expect(res.statusCode).toBe(200);
-    const body = MarkResponse.parse(res.json());
+    const body = MarkPresent.parse(res.json());
     expect(body.alreadyMarked).toBe(false);
     expect(body.record.distanceM).toBe(5);
     expect(body.course).toEqual({ before: null, after: 100 });
@@ -85,9 +85,14 @@ describe('marking attendance', () => {
     expect(retry.json().record.id).toBe(body.record.id);
   });
 
-  it('accepts the previous and next rotation but not older/newer', async () => {
+  it('a code dies the moment it changes: the previous one only within 1.5 s of the switch (clock skew), never older', async () => {
     const s = await startLiveSession(ctx, { tenantId: seed.tenantId, courseId: seed.courseId, rotationS: 5, startedAt: ctx.clock.now - 50_000 });
     for (const offset of [-2, 2]) expect(rejection(await mark(aarav, liveToken(ctx, s, 5, offset))).code).toBe('E-EXPIRED');
+    // 3 s into a new code: the previous one (a screenshot) is refused.
+    ctx.clock.now = Math.floor(ctx.clock.now / 5000) * 5000 + 3000;
+    expect(rejection(await mark(aarav, liveToken(ctx, s, 5, -1))).code).toBe('E-EXPIRED');
+    // 1 s after the switch (the professor's phone a moment behind): still fine.
+    ctx.clock.now = Math.floor(ctx.clock.now / 5000) * 5000 + 5000 + 1000;
     expect((await mark(aarav, liveToken(ctx, s, 5, -1))).statusCode).toBe(200);
   });
 
@@ -195,7 +200,7 @@ describe('student data', () => {
     const liveItem = dashBefore.today.find((t) => t.sessionId === live.id);
     expect(liveItem).toMatchObject({ status: 'live', marked: false, courseCode: 'CS-301' });
 
-    const m = MarkResponse.parse((await mark(p, liveToken(ctx, live))).json());
+    const m = MarkPresent.parse((await mark(p, liveToken(ctx, live))).json());
     expect(m.course.before).toBeCloseTo((2 / held) * 100, 0);
     expect(m.course.after).toBeCloseTo((3 / (held + 1)) * 100, 0);
 

@@ -31,6 +31,7 @@ const mark: OutboxHandler = async (api, item) => {
       await api.secureWithChip();
       res = await api.mark(withSendClock(body));
     }
+    if (res.status === 'round') return { ok: true, message: `scan ${res.round.done} of ${res.round.required} recorded · scan again when your professor opens the next round` };
     return { ok: true, message: `marked present${res.alreadyMarked ? ' (already recorded)' : ''}${res.record.offline ? ' · offline scan accepted' : ''}` };
   } catch (err) {
     if (err instanceof ApiRequestError && err.rejection) {

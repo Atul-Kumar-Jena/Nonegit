@@ -308,9 +308,26 @@ export function Board(p: BoardProps) {
     [colW, p.days, p.items, gridH, dayStart, ppm],
   );
 
+  /** A time that has already gone: nothing can be moved or added there (shown while dragging). */
+  const pastAt = useCallback(
+    (t: DropTarget): boolean => {
+      const d = new Date();
+      const nowMin = d.getHours() * 60 + d.getMinutes();
+      if (t.date < p.today) return true;
+      if (t.date > p.today) return false;
+      if (t.overKey) {
+        const over = p.items.find((i) => i.key === t.overKey);
+        return !!over && hmToMin(over.start) <= nowMin;
+      }
+      return t.startMin <= nowMin;
+    },
+    [p.today, p.items],
+  );
+
   /** Would dropping here clash? Same teacher or same room at an overlapping time (the server re-checks everything). */
   const clashAt = useCallback(
     (t: DropTarget, src: DragSource, dur: number): string | null => {
+      if (pastAt(t)) return 'That time has already passed';
       if (t.overKey) return null; // a swap: checked after the drop
       const teacherId = src.kind === 'item' ? src.item.teacherId : src.course.instructorId;
       const roomId = src.kind === 'item' ? src.item.roomId : null;
@@ -324,7 +341,7 @@ export function Board(p: BoardProps) {
       }
       return null;
     },
-    [p.items, p.courses, p.teachers, p.rooms],
+    [p.items, p.courses, p.teachers, p.rooms, pastAt],
   );
   const lastTargetKey = useRef('');
   const tick = (t: DropTarget | null) => {
@@ -393,11 +410,15 @@ export function Board(p: BoardProps) {
         lastTargetKey.current = '';
         if (!cur) return;
         const t = targetAt(x, y, cur.box, cur.src);
+        if (t && pastAt(t)) {
+          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => undefined);
+          return;
+        }
         if (t) p.onDrop(cur.src, t);
       },
       cancel: () => setDrag(null),
     }),
-    [measure, targetAt, byDay, colW, p, dayStart, ppm],
+    [measure, targetAt, byDay, colW, p, dayStart, ppm, pastAt],
   );
 
   const hours: number[] = [];
@@ -407,6 +428,7 @@ export function Board(p: BoardProps) {
   const targetDur = drag ? (drag.src.kind === 'item' ? hmToMin(drag.src.item.end) - hmToMin(drag.src.item.start) : 60) : 0;
   const clash = drag && target ? clashAt(target, drag.src, targetDur) : null;
   const tone = !target ? colors.textDim : clash ? colors.red : target.overKey ? colors.amber : colors.green;
+  const past = !!target && pastAt(target);
   const nowMin = (() => {
     const d = new Date();
     return d.getHours() * 60 + d.getMinutes();
@@ -483,7 +505,7 @@ export function Board(p: BoardProps) {
                     ]}
                   >
                     <Text style={[styles.dropText, { color: tone }]} numberOfLines={2}>
-                      {target.overKey ? '⇄ Swap' : clash ? '✕ Clash' : `✓ ${t12(target.startMin)}`}
+                      {pastAt(target) ? '✕ Past' : target.overKey ? '⇄ Swap' : clash ? '✕ Clash' : `✓ ${t12(target.startMin)}`}
                     </Text>
                   </View>
                 ) : null}
@@ -539,7 +561,9 @@ export function Board(p: BoardProps) {
           <Text style={[styles.dragLine, { color: tone }]} numberOfLines={2}>
             {!target
               ? 'Move over a day to choose the time'
-              : target.overKey
+              : past
+                ? '✕ That time has already passed — choose a later time'
+                : target.overKey
                 ? `Drop to swap with ${p.courses.get(p.items.find((i) => i.key === target.overKey)?.courseId ?? '')?.code ?? 'that class'}`
                 : clash
                   ? `✕ ${clash}`

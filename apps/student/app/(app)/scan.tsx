@@ -146,9 +146,15 @@ export default function Scan() {
         setStage('submitting');
         body = { qr: data, scannedAt, location, ...(bc ? { clock: { boot: bc.boot, scanMs: bc.ms } } : {}) };
         const res = await api.mark(withSendClock(body));
-        const receiptVerified = server ? verifyReceipt(res, pinnedKey(server)) : false;
-        setScanOutcome({ kind: 'success', res, receiptVerified });
-        void Haptics.notificationAsync(receiptVerified ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Warning).catch(() => undefined);
+        if (res.status === 'round') {
+          // Layered scans: this round counted; present after the last one.
+          setScanOutcome({ kind: 'round', res });
+          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
+        } else {
+          const receiptVerified = server ? verifyReceipt(res, pinnedKey(server)) : false;
+          setScanOutcome({ kind: 'success', res, receiptVerified });
+          void Haptics.notificationAsync(receiptVerified ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Warning).catch(() => undefined);
+        }
         for (const queryKey of studentQueryKeys) void qc.invalidateQueries({ queryKey });
       } catch (err) {
         const notStarted = err instanceof ApiRequestError && err.rejection?.code === 'E-NOT-STARTED';

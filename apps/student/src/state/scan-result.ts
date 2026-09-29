@@ -1,4 +1,4 @@
-import type { MarkResponse } from '@attendly/protocol';
+import type { MarkPresent, MarkRound } from '@attendly/protocol';
 import type { Rejection } from '@kit/lib/api-core';
 
 /**
@@ -6,7 +6,8 @@ import type { Rejection } from '@kit/lib/api-core';
  * params) so nothing about a mark can be forged through a deep link.
  */
 export type ScanOutcome =
-  | { kind: 'success'; res: MarkResponse; receiptVerified: boolean }
+  | { kind: 'success'; res: MarkPresent; receiptVerified: boolean }
+  | { kind: 'round'; res: MarkRound }
   | { kind: 'rejected'; rejection: Rejection }
   | { kind: 'queued'; label: string; reason: 'offline' | 'not-started' }
   | { kind: 'error'; title: string; message: string };

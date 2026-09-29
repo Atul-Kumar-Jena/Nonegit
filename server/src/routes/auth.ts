@@ -40,7 +40,7 @@ import { revokeActiveDevice } from './staff-admin';
 import { bindChallenge } from '../lib/attestation';
 import { checkAttestation, hardwareRequired, isTamperEvidence, type VerifiedHardware } from '../lib/device-trust';
 import { randomBytes } from 'node:crypto';
-import { assertPhoneFree, hardwareHash, loadActiveDevice, loadUser, toDeviceSummary, toUserSummary, type DeviceRow } from '../lib/users';
+import { assertPhoneFree, hardwareHash, requirePhoneId, loadActiveDevice, loadUser, toDeviceSummary, toUserSummary, type DeviceRow } from '../lib/users';
 
 export const OTP_TTL_MS = 5 * 60_000;
 export const OTP_MAX_ATTEMPTS = 5;
@@ -127,15 +127,6 @@ async function alertWrongCodes(tx: PoolClient, userId: string, count: number) {
   await appendAudit(tx, { tenantId: u.tenant_id, actorType: 'system', actorId: null, action: locked ? 'auth.locked' : 'auth.wrong_codes', subject: `user:${userId}`, data: { count } });
 }
 
-/** Did this user's last phone prove a hardware key? Then the next one must too (no downgrade to a software key). */
-async function hadHardwareKey(tx: PoolClient, userId: string): Promise<boolean> {
-  const { rows } = await tx.query<{ hw: boolean }>(
-    `select hw_key_spki is not null as hw from devices where user_id = $1 and platform = 'android' order by bound_at desc limit 1`,
-    [userId],
-  );
-  return rows[0]?.hw ?? false;
-}
-
 /**
  * Verifies the attestation a phone sent with its bind ticket. Failures are logged to the audit trail
  * (outside the transaction, so a refused phone is still on record).
@@ -157,7 +148,7 @@ async function attestForTicket(
       ).catch((err: Error) => deps.log.error({ err: err.message }, 'failed to audit an attestation failure'));
     });
   }
-  const required = (await hardwareRequired(tx, deps, user.tenant_id, platform)) || (platform === 'android' && (await hadHardwareKey(tx, user.id)));
+  const required = await hardwareRequired(tx, deps, user.tenant_id, platform);
   const relaxed = (await switchOn(tx, 'hardware_checks_relaxed')) || (await switchOn(tx, 'phone_rules_off'));
   return checkAttestation(deps, chain, bindChallenge(ticket), required && !relaxed, relaxed, (code, detail) => {
     // Its own transaction: the refusal is on record even though the binding is rolled back.
@@ -383,6 +374,7 @@ export async function authRoutes(app: FastifyInstance, deps: Deps) {
         if (!user || user.status !== 'active' || user.tenant_status !== 'active') throw new ApiError(403, 'ACCOUNT_SUSPENDED');
         if (await loadActiveDevice(tx, user.id)) throw new ApiError(409, 'CONFLICT', 'Another device was bound to this account in the meantime.');
         const info = t.device_info;
+        requirePhoneId(info, user);
         const hwEarly = hardwareHash(deps.hash, info);
         const demo = deps.config.demoInstantLogin && !(await switchOn(tx, 'demo_login_off'));
         if (demo && isDemoEmail(user.email)) {
@@ -456,6 +448,7 @@ export async function authRoutes(app: FastifyInstance, deps: Deps) {
     return withTx(deps.db, async (tx) => {
       const t = await consumeTicket(tx, deps, body.ticket, 'rebind', body.proof);
       const user = (await loadUser(tx, t.user_id))!;
+      requirePhoneId(t.device_info, user);
       const bound = await loadActiveDevice(tx, user.id);
       // The new phone proves its security chip now; the admin approves an already-verified phone.
       const chip = await attestForTicket(tx, deps, user, t.device_info.platform, body.ticket, body.attestation?.chain);

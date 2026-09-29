@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { useQueryClient } from '@tanstack/react-query';
 import { ClipboardList, CloudOff, Monitor, Users, X } from 'lucide-react-native';
-import { currentQrSeq, encodeQrToken, fromB64url, msUntilNextRotation, randomToken } from '@attendly/protocol';
+import { currentQrSeq, encodeQrToken, fromB64url, msUntilNextRotation, randomToken, type StaffSession } from '@attendly/protocol';
 import { Screen } from '@kit/components/Screen';
 import { Badge, Button, IconButton, Notice, Text } from '@kit/components/ui';
 import { ApiRequestError } from '@kit/lib/api-core';
@@ -45,8 +45,10 @@ export default function LiveQr() {
   const id = String(rawId ?? '');
   const api = useApi();
   const qc = useQueryClient();
-  const { session: s, secret } = useSessionView(id);
+  const { session: sv, secret } = useSessionView(id);
   const feed = useFeed(id, true);
+  // The live feed carries the freshest state (e.g. the class closed itself when everyone was marked).
+  const s = feed.data?.session && sv ? { ...sv, ...feed.data.session } : sv;
   const { width, height } = useWindowDimensions();
   const [now, setNow] = useState(() => api.serverNow());
   const [ending, setEnding] = useState(false);
@@ -142,7 +144,16 @@ export default function LiveQr() {
 
       {!s || s.status !== 'live' ? (
         <View style={styles.center}>
-          <Notice tone="amber" message={s?.status === 'closed' ? 'This class has ended.' : 'This class isn’t running. Start it from the class screen.'} />
+          <Notice
+            tone={s?.autoEnded ? 'green' : 'amber'}
+            message={
+              s?.autoEnded
+                ? `Everyone is marked (${s.marked} of ${s.enrolled}) — the class closed itself and the QR stopped working.`
+                : s?.status === 'closed'
+                  ? 'This class has ended.'
+                  : 'This class isn’t running. Start it from the class screen.'
+            }
+          />
           <Button title="Back" kind="secondary" onPress={close} style={{ marginTop: 16, alignSelf: 'stretch' }} />
         </View>
       ) : !token ? (
@@ -166,6 +177,7 @@ export default function LiveQr() {
               <Text variant="body"> / {enrolled} present</Text>
             </Text>
           </View>
+          <Rounds session={s} onChange={() => void qc.invalidateQueries({ queryKey: ['staff'] })} />
           {offlineNow ? (
             <Text variant="small" style={{ textAlign: 'center', marginTop: 6 }}>
               No internet — the code still works. Students’ scans are saved on their phones and upload later.
@@ -192,7 +204,71 @@ export default function LiveQr() {
   );
 }
 
+/**
+ * Layered scans (fests, webinars): students must scan in every round to be present, so nobody
+ * leaves after the first scan. Set the number before anyone completes; open each next round when you want.
+ */
+function Rounds({ session: s, onChange }: { session: StaffSession; onChange: () => void }) {
+  const api = useApi();
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const rounds = s.scanRounds ?? 1;
+  const roundNo = s.roundNo ?? 1;
+  const canSet = s.marked === 0 && roundNo === 1;
+  async function run(fn: () => Promise<unknown>) {
+    setErr(null);
+    setBusy(true);
+    try {
+      await fn();
+      onChange();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'That didn’t work.');
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <View style={styles.rounds}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'center' }}>
+        <Text variant="small">Scans per student</Text>
+        {[1, 2, 3].map((n) => (
+          <Pressable
+            key={n}
+            disabled={!canSet || busy || n === rounds}
+            onPress={() => void run(() => staffApi.scanRounds(api, s.id, n))}
+            style={[styles.roundChip, n === rounds && styles.roundChipOn, !canSet && n !== rounds && { opacity: 0.35 }]}
+            accessibilityRole="button"
+            accessibilityState={{ selected: n === rounds }}
+          >
+            <Text variant="small" color={n === rounds ? colors.bg : colors.text}>
+              {n === 1 ? 'Once' : `${n}×`}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+      {rounds > 1 ? (
+        <>
+          <Text variant="small" style={{ textAlign: 'center' }}>
+            {`Round ${roundNo} of ${rounds} open · scanned: ${(s.roundCounts ?? []).slice(0, roundNo).map((c, i) => `R${i + 1} ${c}`).join(' · ')}`}
+          </Text>
+          {roundNo < rounds ? (
+            <Button title={`Open round ${roundNo + 1}`} kind="secondary" compact loading={busy} onPress={() => void run(() => staffApi.nextRound(api, s.id))} />
+          ) : (
+            <Text variant="small" style={{ textAlign: 'center' }}>
+              Last round open — students who scanned every round are present.
+            </Text>
+          )}
+        </>
+      ) : null}
+      {err ? <Text variant="small" color={colors.red} style={{ textAlign: 'center' }}>{err}</Text> : null}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  rounds: { alignItems: 'center', gap: 8, marginTop: 12, alignSelf: 'stretch' },
+  roundChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: colors.border },
+  roundChipOn: { backgroundColor: colors.text, borderColor: colors.text },
   top: { flexDirection: 'row', alignItems: 'center', gap: 12, alignSelf: 'stretch' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', alignSelf: 'stretch' },
   progress: { height: 4, borderRadius: 2, backgroundColor: colors.border, marginTop: 14, overflow: 'hidden' },

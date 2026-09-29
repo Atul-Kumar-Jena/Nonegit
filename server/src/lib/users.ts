@@ -63,6 +63,16 @@ export interface DeviceRow {
 }
 
 /** Keyed hash of a phone's hardware ID (the raw ID is never stored). */
+/**
+ * Every Android phone reports its Android ID (stable per phone and app across reinstalls; a
+ * factory reset changes it). Binding without it would sidestep "one phone, one account", so a
+ * build that doesn't send it is asked to update. Developers are exempt.
+ */
+export function requirePhoneId(info: { platform: string; hardwareId?: string }, user: { role: string }): void {
+  if (info.platform === 'android' && !info.hardwareId && user.role !== 'developer')
+    throw new ApiError(400, 'BAD_REQUEST', 'Please update Attendly to the latest version to register this phone.');
+}
+
 export function hardwareHash(hash: (purpose: string, value: string) => Buffer, info: { platform: string; hardwareId?: string }): Buffer | null {
   return info.hardwareId ? hash('hw', `${info.platform}:${info.hardwareId}`) : null;
 }

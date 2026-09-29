@@ -19,13 +19,15 @@ import {
   seqLabel,
   toB64url,
   verifyQrMac,
+  isQrFreshAt,
+  type MarkPresent,
   type MarkResponse,
 } from '@attendly/protocol';
 import type { Deps } from '../deps';
 import { tenantFlag } from '../lib/flags';
 import { hardwareRequired } from '../lib/device-trust';
 import { insertNotifications } from '../lib/notify';
-import { isUniqueViolation, withTx } from '../db';
+import { isUniqueViolation, withTx, type Queryable } from '../db';
 import { appendAudit } from '../lib/audit';
 import { perDeviceKey, requireDevice, type AuthContext } from '../lib/auth';
 import { ApiError, ScanRejection } from '../lib/errors';
@@ -74,6 +76,32 @@ interface SessionRow {
   course_code: string;
   course_title: string;
   course_kind: 'theory' | 'lab';
+  scan_rounds: number;
+  round_no: number;
+  round_opened_at: Date[];
+}
+
+/** A scan must be made within this long of the class ending (only clock differences, no more). */
+const AFTER_END_GRACE_MS = 2_000;
+
+/** Which round a scan made at `at` belongs to: round 1 from the start, round k once it was opened. */
+function roundAt(s: SessionRow, at: number): number {
+  let r = 1;
+  for (const t of s.round_opened_at ?? []) if (t.getTime() <= at) r++;
+  return Math.min(r, s.round_no);
+}
+
+/** Every enrolled (active) student is present: the class has done its job, close it. */
+export async function closeIfEveryoneMarked(tx: Queryable, sessionId: string, courseId: string, at: Date): Promise<boolean> {
+  const { rows } = await tx.query<{ enrolled: number; present: number }>(
+    `select (select count(*)::int from enrollments e join users u on u.id = e.user_id and u.status = 'active' and u.role = 'student' where e.course_id = $2) as enrolled,
+            (select count(*)::int from attendance_records a join users u on u.id = a.user_id and u.status = 'active' where a.session_id = $1 and a.revoked_at is null) as present`,
+    [sessionId, courseId],
+  );
+  const c = rows[0]!;
+  if (c.enrolled === 0 || c.present < c.enrolled) return false;
+  const r = await tx.query(`update class_sessions set status = 'closed', ended_at = $2, end_reason = 'all_marked' where id = $1 and status = 'live'`, [sessionId, at]);
+  return (r.rowCount ?? 0) > 0;
 }
 
 interface RecordRow {
@@ -88,7 +116,7 @@ interface RecordRow {
   device_fingerprint: string;
 }
 
-function toResponse(s: SessionRow, userId: string, r: RecordRow, alreadyMarked: boolean, before: number | null, after: number | null): MarkResponse {
+function toResponse(s: SessionRow, userId: string, r: RecordRow, alreadyMarked: boolean, before: number | null, after: number | null): MarkPresent {
   return {
     status: 'present',
     alreadyMarked,
@@ -119,7 +147,7 @@ const RECORD_COLUMNS = 'id, marked_at, offline, revoked_at, qr_seq, distance_m, 
 
 export async function attendanceRoutes(app: FastifyInstance, deps: Deps) {
   /** The student's existing record for this session, if any, with their current course percentage. */
-  async function existingReceipt(session: SessionRow, auth: AuthContext): Promise<MarkResponse | null> {
+  async function existingReceipt(session: SessionRow, auth: AuthContext): Promise<MarkPresent | null> {
     const { rows } = await deps.db.query<RecordRow>(`select ${RECORD_COLUMNS} from attendance_records where session_id = $1 and user_id = $2`, [session.id, auth.userId]);
     if (!rows[0]) return null;
     if (rows[0].revoked_at) throw new ScanRejection('E-REVOKED');
@@ -235,7 +263,7 @@ export async function attendanceRoutes(app: FastifyInstance, deps: Deps) {
       if (session.status === 'cancelled') throw new ScanRejection('E-SESSION-CLOSED', 'This class was cancelled.', { status: session.status });
       const opens = (session.started_at ?? session.scheduled_start).getTime() - WINDOW_GRACE_MS;
       const closes =
-        session.status === 'live' ? Number.POSITIVE_INFINITY : (session.ended_at ?? session.scheduled_end).getTime() + (session.ended_at ? 60_000 : WINDOW_GRACE_MS);
+        session.status === 'live' ? Number.POSITIVE_INFINITY : (session.ended_at ?? session.scheduled_end).getTime() + (session.ended_at ? AFTER_END_GRACE_MS : WINDOW_GRACE_MS);
       if (scannedAt < opens || scannedAt > closes) throw new ScanRejection('E-SESSION-CLOSED', undefined, { status: session.status });
       if (session.status === 'closed' && !offline) throw new ScanRejection('E-SESSION-CLOSED', undefined, { status: session.status });
       if (session.lat === null || session.lng === null)
@@ -243,10 +271,15 @@ export async function attendanceRoutes(app: FastifyInstance, deps: Deps) {
       const enrolled = await deps.db.query('select 1 from enrollments where course_id = $1 and user_id = $2', [session.course_id, auth.userId]);
       if (enrolled.rowCount !== 1) throw new ScanRejection('E-NOT-ENROLLED', undefined, { course: session.course_code });
 
-      // 5. Freshness of the rotating token relative to the scan moment.
-      const cur = currentQrSeq(scannedAt, session.rotation_s);
-      if (!isQrSeqFresh(parsed.seq, cur))
+      // 5. Freshness of the rotating token at the moment it was scanned — strict: the code on screen
+      //    then (a neighbour only within 1.5 s of the switch). A forwarded screenshot is scanned later,
+      //    when that code is long gone. (The GPS fix after scanning may take a few seconds; that
+      //    delay is measured on the phone's since-boot clock and doesn't count against the student.)
+      const judgedAt = scannedAt;
+      const cur = currentQrSeq(judgedAt, session.rotation_s);
+      if (!isQrFreshAt(parsed.seq, judgedAt, session.rotation_s))
         throw new ScanRejection('E-EXPIRED', `Token ${seqLabel(parsed.seq)} expired — the live code was ${seqLabel(cur)}.`, { seq: parsed.seq, current: cur, offline });
+      void isQrSeqFresh;
 
       // 6. Location: genuine, fresh relative to the scan, precise and inside the geofence.
       //    The phone sends its raw fixes; the server fuses them itself rather than trusting a summary.
@@ -300,6 +333,25 @@ export async function attendanceRoutes(app: FastifyInstance, deps: Deps) {
             km: Math.round(gap / 100) / 10,
             minutes: Math.round(secs / 60),
           });
+      }
+
+      // 6b. Layered scans: each scan counts for the round open at that moment; present only after all.
+      if (session.scan_rounds > 1) {
+        const round = roundAt(session, scannedAt);
+        await deps.db.query(
+          `insert into scan_round_marks(session_id, user_id, round, device_id, marked_at) values ($1, $2, $3, $4, $5) on conflict do nothing`,
+          [session.id, auth.userId, round, auth.deviceId, new Date(scannedAt)],
+        );
+        const done = (await deps.db.query<{ n: number }>('select count(*)::int as n from scan_round_marks where session_id = $1 and user_id = $2', [session.id, auth.userId])).rows[0]!.n;
+        if (done < session.scan_rounds)
+          return {
+            status: 'round',
+            sessionId: session.id,
+            courseCode: session.course_code,
+            courseTitle: session.course_title,
+            offline,
+            round: { done, required: session.scan_rounds, current: round },
+          } satisfies MarkResponse;
       }
 
       // 7. Record + sign the receipt atomically. A scheduled class goes live on its first valid scan
@@ -377,6 +429,9 @@ export async function attendanceRoutes(app: FastifyInstance, deps: Deps) {
               },
             ]);
           }
+          // Everyone is here: the class closes itself (the QR stops working everywhere).
+          if (!offline && (await closeIfEveryoneMarked(tx, session.id, session.course_id, new Date(now))))
+            await appendAudit(tx, { tenantId: auth.tenantId, actorType: 'system', action: 'session.auto_end', subject: `session:${session.id}`, data: { reason: 'all_marked' } });
           return ins.rows[0]!;
         });
         return toResponse(session, auth.userId, record, false, before, after);
