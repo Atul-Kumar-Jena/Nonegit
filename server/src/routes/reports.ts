@@ -37,7 +37,7 @@ export async function reportRoutes(app: FastifyInstance, deps: Deps) {
     const auth = await requireDevice(req, deps, STAFF);
     const q = AnalyticsQuery.parse(req.query);
     const everyone = can(auth, 'courses') || can(auth, 'planner');
-    return buildAnalytics(deps.db, auth.tenantId, deps.clock(), q, everyone ? null : auth.userId);
+    return buildAnalytics(deps.db, auth.tenantId, deps.clock(), q, everyone ? (q.teacherId ?? null) : auth.userId, !everyone);
   });
 
   /** A student's week-by-week trend (Home chart). */

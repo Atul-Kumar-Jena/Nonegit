@@ -121,24 +121,34 @@ export type PunctualityReport = z.infer<typeof PunctualityReport>;
 
 // ───────────────────────────── analytics (charts) ─────────────────────────────
 
-export const AnalyticsQuery = z.object({
-  days: z.coerce.number().int().min(7).max(180).default(30),
-  batchId: uuid.optional(),
-  courseId: uuid.optional(),
-});
+const Ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+export const AnalyticsQuery = z
+  .object({
+    days: z.coerce.number().int().min(1).max(400).default(30),
+    /** A date range (institution's local dates, inclusive) instead of "the last N days": a month, a quarter… */
+    from: Ymd.optional(),
+    to: Ymd.optional(),
+    batchId: uuid.optional(),
+    courseId: uuid.optional(),
+    /** One professor's classes (admins and coordinators). */
+    teacherId: uuid.optional(),
+  })
+  .refine((q) => !q.from || !q.to || q.from <= q.to, { message: 'The start date must be before the end date', path: ['to'] });
 export type AnalyticsQuery = z.infer<typeof AnalyticsQuery>;
 
 const Share = z.object({ present: z.number().int(), expected: z.number().int(), percent: z.number().nullable() });
 
 /** Attendance over time for a scope (institution / batch / subject; a professor's own classes). */
 export const AttendanceAnalytics = ReportHeader.extend({
-  scope: z.object({ label: z.string(), batchId: uuid.nullable(), courseId: uuid.nullable(), mine: z.boolean() }),
+  scope: z.object({ label: z.string(), batchId: uuid.nullable(), courseId: uuid.nullable(), teacherId: uuid.nullable().default(null), mine: z.boolean() }),
   from: z.string(),
   to: z.string(),
   /** One row per local day that had classes: classes held, marks expected (enrolled × classes) and present. */
   days: z.array(Share.extend({ date: z.string(), classes: z.number().int() })),
   total: Share.extend({ classes: z.number().int() }),
   subjects: z.array(Share.extend({ courseId: uuid, code: z.string(), title: z.string(), classes: z.number().int() })),
+  /** Each professor's classes: how many of their students attended (admins' view; one professor: just them). */
+  teachers: z.array(Share.extend({ teacherId: uuid, name: z.string(), classes: z.number().int() })).default([]),
   /** Every active batch over the period (only without a batch filter). */
   batches: z.array(Share.extend({ batchId: uuid, name: z.string() })),
   /** Students by their percentage over the period, relative to the minimum. */

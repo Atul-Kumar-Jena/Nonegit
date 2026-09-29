@@ -53,3 +53,17 @@ describe('analytics', () => {
     expect((await aarav.call('GET', '/v1/staff/analytics')).statusCode).toBe(403);
   });
 });
+
+describe('reports for any dates, batch, subject or professor', () => {
+  it('a date range (e.g. this month) and one professor: how many of their students attended', async () => {
+    const today = new Date(ctx.clock.now).toISOString().slice(0, 10);
+    const profId = (await ctx.db.query<{ id: string }>(`select id from users where email = 'prof@iit.ac.in'`)).rows[0]!.id;
+    const a = ok(await admin.call('GET', `/v1/staff/analytics?from=${today.slice(0, 8)}01&to=${today}&teacherId=${profId}`));
+    expect(a.scope).toMatchObject({ teacherId: profId, mine: false });
+    expect(a.scope.label).toContain('Prof');
+    expect(a.teachers).toEqual([expect.objectContaining({ name: 'Prof', expected: 2, present: 1, percent: 50 })]);
+    // A range with no classes is empty, not an error; a backwards range is refused.
+    expect(ok(await admin.call('GET', '/v1/staff/analytics?from=2020-01-01&to=2020-03-31')).days).toEqual([]);
+    expect((await admin.call('GET', '/v1/staff/analytics?from=2026-05-01&to=2026-04-01')).statusCode).toBe(400);
+  });
+});

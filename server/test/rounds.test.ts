@@ -113,3 +113,15 @@ describe('professors’ punctuality', () => {
     expect(r.teachers.every((t: { name: string }) => t.name === 'Prof')).toBe(true);
   });
 });
+
+describe('offline register', () => {
+  it('taken without internet, uploaded later: saved once, and the professor is told it synced', async () => {
+    const s = await startLiveSession(ctx, { tenantId: seed.tenantId, courseId: seed.courseId, status: 'scheduled', startedAt: ctx.clock.now - 20 * 60_000 });
+    const body = { clientRef: `offline-${Date.now()}`, recordedAt: ctx.clock.now - 10 * 60_000, present: [seed.studentId], absent: [seed.student2Id], confirmed: true };
+    const r = ok(await prof.call('POST', `/v1/staff/sessions/${s.id}/register`, body));
+    expect(r).toMatchObject({ present: 1, absent: 1, duplicate: false });
+    expect(ok(await prof.call('POST', `/v1/staff/sessions/${s.id}/register`, body)).duplicate).toBe(true); // retried upload: no double count
+    const n = await ctx.db.query(`select 1 from notifications where title like '%Register synced%'`);
+    expect(n.rowCount).toBe(1);
+  });
+});

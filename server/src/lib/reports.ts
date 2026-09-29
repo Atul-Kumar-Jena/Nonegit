@@ -236,18 +236,28 @@ export async function buildAnalytics(
   db: Queryable,
   tenantId: string,
   now: number,
-  q: { days: number; batchId?: string; courseId?: string },
+  q: { days: number; from?: string; to?: string; batchId?: string; courseId?: string },
   teacherId: string | null,
+  /** A professor looking at their own classes (not an admin choosing one). */
+  mine = false,
 ): Promise<AttendanceAnalytics> {
   const { h, term } = await header(db, tenantId, now);
-  const from = new Date(now - q.days * 86_400_000);
-  const params = [tenantId, from, term.timezone, q.batchId ?? null, q.courseId ?? null, teacherId];
+  // A date range in the institution's own calendar (inclusive), else the last `days` days.
+  const range = (
+    await db.query<{ from: Date; to: Date }>(
+      `select coalesce(($1::date)::timestamp at time zone $3, $4::timestamptz) as from,
+              coalesce((($2::date) + 1)::timestamp at time zone $3, $5::timestamptz) as to`,
+      [q.from ?? null, q.to ?? null, term.timezone, new Date(now - q.days * 86_400_000), new Date(now + 60_000)],
+    )
+  ).rows[0]!;
+  const from = range.from;
+  const params = [tenantId, from, term.timezone, q.batchId ?? null, q.courseId ?? null, teacherId, range.to];
   // One row per (class, enrolled student) with whether they were present — the base of every figure.
   const base = `
     with sess as (
       select s.id, s.course_id, to_char((s.started_at at time zone $3)::date, 'YYYY-MM-DD') as day
         from class_sessions s join courses c on c.id = s.course_id
-       where s.tenant_id = $1 and s.started_at >= $2 and s.mode is not null
+       where s.tenant_id = $1 and s.started_at >= $2 and s.started_at < $7 and s.mode is not null
          and (s.status = 'closed' or (s.status = 'live' and exists(select 1 from attendance_records x where x.session_id = s.id and x.revoked_at is null)))
          and ($5::uuid is null or s.course_id = $5)
          and ($4::uuid is null or s.course_id in (select course_id from course_batches where batch_id = $4))
@@ -260,7 +270,7 @@ export async function buildAnalytics(
         join users u on u.id = e.user_id and u.status = 'active' and u.role = 'student'
        where ($4::uuid is null or e.user_id in (select user_id from batch_members where batch_id = $4))
     )`;
-  const [days, subjects, students, batches, batchDays, scope] = await Promise.all([
+  const [days, subjects, students, batches, batchDays, scope, teachers] = await Promise.all([
     db.query<{ day: string; classes: number; expected: number; present: number }>(
       `${base} select s.day, count(distinct s.id)::int as classes, count(r.user_id)::int as expected, count(r.user_id) filter (where r.present)::int as present
          from sess s left join roster r on r.session_id = s.id group by s.day order by s.day`,
@@ -295,9 +305,20 @@ export async function buildAnalytics(
         group by r.day, b.id order by r.day, b.id`,
       params,
     ),
-    db.query<{ batch: string | null; course: string | null }>(
-      `select (select name from batches where id = $1 and tenant_id = $3) as batch, (select code from courses where id = $2 and tenant_id = $3) as course`,
-      [q.batchId ?? null, q.courseId ?? null, tenantId],
+    db.query<{ batch: string | null; course: string | null; teacher: string | null }>(
+      `select (select name from batches where id = $1 and tenant_id = $3) as batch, (select code from courses where id = $2 and tenant_id = $3) as course,
+              (select full_name from users where id = $4 and tenant_id = $3) as teacher`,
+      [q.batchId ?? null, q.courseId ?? null, tenantId, teacherId],
+    ),
+    db.query<{ teacher_id: string; name: string; classes: number; expected: number; present: number }>(
+      `${base} select t.id as teacher_id, t.full_name as name, count(distinct s.id)::int as classes,
+              count(r.user_id)::int as expected, count(r.user_id) filter (where r.present)::int as present
+         from sess s
+         join class_sessions cs on cs.id = s.id join courses c on c.id = cs.course_id
+         join users t on t.id = coalesce(cs.substitute_id, c.instructor_id)
+         left join roster r on r.session_id = s.id
+        group by t.id, t.full_name order by t.full_name`,
+      params,
     ),
   ]);
   const min = term.min_attendance;
@@ -311,13 +332,14 @@ export async function buildAnalytics(
     else bands.far++;
   }
   const tot = days.rows.reduce((t, d) => ({ classes: t.classes + d.classes, expected: t.expected + d.expected, present: t.present + d.present }), { classes: 0, expected: 0, present: 0 });
-  const sc = scope.rows[0] ?? { batch: null, course: null };
-  const label = [sc.batch, sc.course].filter(Boolean).join(' · ') || (teacherId ? 'My classes' : 'Whole institution');
+  const sc = scope.rows[0] ?? { batch: null, course: null, teacher: null };
+  const label = mine ? ['My classes', sc.batch, sc.course].filter(Boolean).join(' · ') : [sc.teacher ? `Prof. ${sc.teacher.replace(/^(Prof\.?|Dr\.?)\s+/i, '')}` : null, sc.batch, sc.course].filter(Boolean).join(' · ') || 'Whole institution';
   return {
     ...h,
-    scope: { label, batchId: q.batchId ?? null, courseId: q.courseId ?? null, mine: !!teacherId },
+    scope: { label, batchId: q.batchId ?? null, courseId: q.courseId ?? null, teacherId, mine },
     from: from.toISOString(),
-    to: new Date(now).toISOString(),
+    to: new Date(Math.min(range.to.getTime(), now) - 1).toISOString(),
+    teachers: teachers.rows.map((t) => ({ teacherId: t.teacher_id, name: t.name, classes: t.classes, ...share(t.present, t.expected) })),
     days: days.rows.map((d) => ({ date: d.day, classes: d.classes, ...share(d.present, d.expected) })),
     total: { classes: tot.classes, ...share(tot.present, tot.expected) },
     subjects: subjects.rows.map((s) => ({ courseId: s.course_id, code: s.code, title: s.title, classes: s.classes, ...share(s.present, s.expected) })),

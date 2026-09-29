@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { StaffPermission } from '@attendly/protocol';
 import { useApi } from '@kit/state/session';
-import { staffApi } from './api';
+import { staffApi, type AnalyticsFilter } from './api';
 import { localSessions } from './local-sessions';
 
 export const qk = {
@@ -33,7 +33,7 @@ export const qk = {
   changeRequests: ['staff', 'change-requests'] as const,
   studentReport: (id: string, courseId?: string) => ['staff', 'student-report', id, courseId ?? 'all'] as const,
   matrix: (batchId?: string, courseId?: string) => ['staff', 'matrix', batchId ?? 'all', courseId ?? 'all'] as const,
-  analytics: (days: number, batchId?: string, courseId?: string) => ['staff', 'analytics', days, batchId ?? 'all', courseId ?? 'all'] as const,
+  analytics: (f: AnalyticsFilter) => ['staff', 'analytics', f.days ?? 0, f.from ?? '', f.to ?? '', f.batchId ?? 'all', f.courseId ?? 'all', f.teacherId ?? 'all'] as const,
   punctuality: (days: number, teacherId?: string) => ['staff', 'punctuality', days, teacherId ?? 'all'] as const,
 };
 
@@ -214,7 +214,7 @@ export function useStudentSearch(q: string, notInBatch?: string, enabled = true)
   return useQuery({ queryKey: ['staff', 'student-search', q, notInBatch ?? ''], queryFn: () => staffApi.searchStudents(api, q, notInBatch), enabled, placeholderData: (prev) => prev, staleTime: 30_000 });
 }
 
-export function useAnalytics(days: number, batchId?: string, courseId?: string) {
+export function useAnalytics(f: AnalyticsFilter) {
   const api = useApi();
-  return useQuery({ queryKey: qk.analytics(days, batchId, courseId), queryFn: () => staffApi.analytics(api, { days, batchId, courseId }), placeholderData: (prev) => prev, staleTime: 60_000 });
+  return useQuery({ queryKey: qk.analytics(f), queryFn: () => staffApi.analytics(api, f), placeholderData: (prev) => prev, staleTime: 60_000 });
 }

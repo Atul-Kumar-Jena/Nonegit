@@ -115,8 +115,8 @@ export async function isOwner(db: Queryable, userId: string): Promise<boolean> {
   const { rows } = await db.query<{ is_owner: boolean }>('select is_owner from users where id = $1', [userId]);
   return rows[0]?.is_owner === true;
 }
-export async function requireOwner(db: Queryable, auth: AuthContext): Promise<void> {
-  if (!(await isOwner(db, auth.userId))) throw new ApiError(403, 'FORBIDDEN', 'Only the main admin can add, change or remove admins.');
+export async function requireOwner(db: Queryable, auth: AuthContext, message = 'Only the main admin can add, change or remove admins.'): Promise<void> {
+  if (!(await isOwner(db, auth.userId))) throw new ApiError(403, 'FORBIDDEN', message);
 }
 
 export async function loadPerson(db: Queryable, tenantId: string, id: string): Promise<Person> {
@@ -228,6 +228,8 @@ export async function staffAdminRoutes(app: FastifyInstance, deps: Deps) {
   app.post('/v1/staff/institution', async (req): Promise<InstitutionSettings> => {
     const auth = await requireDevice(req, deps, STAFF);
     requireAdmin(auth);
+    // The institution's core settings (name, time zone, term, minimum %) belong to the main admin.
+    await requireOwner(deps.db, auth, 'Only the main admin can change the institution’s settings (name, time zone, term, minimum attendance).');
     const b = UpdateInstitutionBody.parse(req.body);
     if (b.timezone) {
       const tz = await deps.db.query('select 1 from pg_timezone_names where name = $1', [b.timezone]);

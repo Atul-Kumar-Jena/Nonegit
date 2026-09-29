@@ -220,7 +220,7 @@ Tokens: access tokens last 15 minutes; refresh tokens last 30 days and rotate on
 |---|---|---|---|
 | GET | `/v1/staff/students/:id/report` | Staff | One student's report |
 | GET | `/v1/staff/reports/matrix` | Staff (`courses` for all) | Students × subjects matrix for PDF and Excel |
-| GET | `/v1/staff/analytics?days=&batchId=&courseId=` | Staff (everyone with `courses`/`planner`, else own classes) | Charts: attendance per day, per subject, per batch, students by band, every batch × every day |
+| GET | `/v1/staff/analytics?days=|from=&to=&batchId=&courseId=&teacherId=` | Staff (everyone with `courses`/`planner`, else own classes) | Charts: attendance per day, per subject, per batch, students by band, every batch × every day |
 | GET | `/v1/me/trend` | Student | Week-by-week attendance (Home and Subjects charts) |
 | GET | `/v1/staff/reports/punctuality?days=&teacherId=` | Staff (everyone with `courses`/`planner`, else own) | Professors' punctuality: per professor and per class |
 

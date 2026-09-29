@@ -78,7 +78,7 @@ export default function Today() {
             {user?.fullName ?? '…'}
           </Text>
         </View>
-        {user ? <Badge label={admin ? 'Admin · Principal / HOD' : perms.length ? `Professor · +${perms.length}` : 'Professor'} tone={admin ? 'violet' : 'cyan'} dot={false} /> : null}
+        {user ? <Badge label={admin ? (me.data?.owner ? 'Main admin' : 'Admin') : perms.length ? `Professor · +${perms.length}` : 'Professor'} tone={admin ? 'violet' : 'cyan'} dot={false} /> : null}
         <NotificationBell />
       </View>
 

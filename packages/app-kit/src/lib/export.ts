@@ -178,6 +178,18 @@ export function analyticsDoc(r: AttendanceAnalytics, batchNames: Map<string, str
         return c ? pctOf(c.present, c.expected) : null;
       })]),
     });
+  if (r.teachers.length)
+    sections.push({
+      heading: 'Professors — students attending their classes',
+      columns: [
+        { label: 'Professor', width: 26 },
+        { label: 'Classes', kind: 'int', width: 9 },
+        { label: 'Present', kind: 'int', width: 9 },
+        { label: 'Expected', kind: 'int', width: 10 },
+        { label: 'Attendance %', kind: 'pct', width: 13 },
+      ],
+      rows: r.teachers.map((t) => [t.name, t.classes, t.present, t.expected, t.percent]),
+    });
   if (r.batches.length)
     sections.push({
       heading: 'Batches over the period',
@@ -215,7 +227,7 @@ export function analyticsDoc(r: AttendanceAnalytics, batchNames: Map<string, str
   });
   return {
     filename: `Attendly_Daily_${slug(r.scope.label)}_${stamp(r.generatedAt, r.timezone)}`,
-    title: `Daily attendance — ${r.scope.label}`,
+    title: `Attendance report — ${r.scope.label}`,
     subtitle: `${dateOnly(r.from, r.timezone)} to ${dateOnly(r.to, r.timezone)}`,
     meta: [...header(r), ['Overall', r.total.percent === null ? '—' : `${pct(r.total.percent)}% (${r.total.present} of ${r.total.expected})`]],
     sections,

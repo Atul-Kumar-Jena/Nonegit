@@ -68,6 +68,15 @@ import {
 import type { ApiClient } from '@kit/lib/api-core';
 
 const enc = encodeURIComponent;
+export interface AnalyticsFilter {
+  days?: number;
+  from?: string;
+  to?: string;
+  batchId?: string;
+  courseId?: string;
+  teacherId?: string;
+}
+
 const qs = (o: Record<string, string | number | undefined | null>) => {
   const parts = Object.entries(o)
     .filter(([, v]) => v !== undefined && v !== null && v !== '')
@@ -109,8 +118,8 @@ export const staffApi = {
   studentReport: (api: ApiClient, userId: string, courseId?: string) => api.authed('GET', `/v1/staff/students/${enc(userId)}/report${qs({ courseId })}`, StudentReport),
   /** Students × subjects for a batch / subject / everyone. */
   matrix: (api: ApiClient, f: { batchId?: string; courseId?: string }) => api.authed('GET', `/v1/staff/reports/matrix${qs(f)}`, MatrixReport),
-  analytics: (api: ApiClient, f: { days: number; batchId?: string; courseId?: string }) =>
-    api.authed('GET', `/v1/staff/analytics${qs({ days: String(f.days), batchId: f.batchId, courseId: f.courseId })}`, AttendanceAnalytics),
+  analytics: (api: ApiClient, f: AnalyticsFilter) =>
+    api.authed('GET', `/v1/staff/analytics${qs({ days: String(f.days ?? 30), from: f.from, to: f.to, batchId: f.batchId, courseId: f.courseId, teacherId: f.teacherId })}`, AttendanceAnalytics),
   punctuality: (api: ApiClient, f: { days: number; teacherId?: string }) =>
     api.authed('GET', `/v1/staff/reports/punctuality${qs({ days: String(f.days), teacherId: f.teacherId })}`, PunctualityReport),
   courseSessions: (api: ApiClient, courseId: string) => api.authed('GET', `/v1/staff/courses/${enc(courseId)}/sessions`, z.array(StaffSession)),

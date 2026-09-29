@@ -84,6 +84,7 @@ Each requirement has an ID so tests, issues and commits can refer to it.
 | FR-CL-8 | One attendance record per student per class. Scanning twice changes nothing. |
 | FR-CL-9 | The student gets a server-signed receipt. The phone verifies it against the server key it pinned on first connect. |
 | FR-CL-10 | Offline scans are sealed on the phone and uploaded later. They are judged against the moment of scanning and accepted up to 24 h later, unless the institution refuses offline scans. |
+| FR-CL-10b | A professor with no internet takes the paper-style register on the phone (class list from the offline pack); it uploads by itself when back online — exactly once — and the professor is notified that it synced. |
 | FR-CL-11 | The professor can add a missed student or remove a mark with a written reason. Professors can correct for 14 days, admins at any time. Every change is audited. |
 | FR-CL-12 | **Big screen:** a browser at `/present` shows a pairing code. The professor approves it in the app. The screen only ever receives the current QR picture, never the class secret. |
 | FR-CL-14 | A class closes itself as soon as every enrolled student is marked present (audited as `session.auto_end`); the professor sees why. |
@@ -130,6 +131,8 @@ Each requirement has an ID so tests, issues and commits can refer to it.
 | FR-RE-1 | Students see % per subject, "can miss N", "must attend N in a row", a plan-ahead calculator and full history. |
 | FR-RE-2 | Staff export per-student and per-course reports and an institution matrix as PDF and Excel. |
 | FR-RE-3 | **Professors' punctuality:** for every class, its time vs when the professor started it — on time, late (minutes), not held, cancelled — per professor, over 7/30/90 days; downloadable. Admins see everyone; a professor sees their own. |
+| FR-RE-6 | **Printable reports for any period:** 7/30 days, this month, last month, this quarter or any from–to dates; for any batch, subject or professor (how many students attend their classes); PDF to print or Excel. |
+| FR-PE-6 | Only the **main admin** adds, changes or removes admins, changes the institution's settings (name, time zone, term, minimum %) and can hand over the main role; other admins run everything else (people, classes, timetable, reports, approvals). |
 | FR-RE-5 | **Charts** in the existing screens: Reports → Trends (attendance each day / week, students by band, each batch, each subject; 7/30/90 days) with a downloadable daily report (every day, every batch); Today shows the last 7 days at a glance; Professors shows on-time per professor; students see a weekly trend on Home and each subject on Subjects. |
 | FR-NO-6 | Home shows the notice board as a swipeable strip (pinned first, unread marked); every notification opens in full with a way to what it's about. |
 | FR-RE-4 | Students see a heads-up on Home for subjects below the minimum (classes needed in a row) or with no margin left. |

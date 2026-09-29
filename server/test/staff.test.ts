@@ -331,7 +331,9 @@ describe('review and devices', () => {
 });
 
 describe('institution', () => {
-  it('admin updates settings with validation', async () => {
+  it('only the main admin changes the institution settings (with validation)', async () => {
+    expect((await admin.call('POST', '/v1/staff/institution', { minAttendance: 80 })).statusCode).toBe(403);
+    await ctx.db.query(`update users set is_owner = true where email = 'head@iit.ac.in'`);
     const s = ok(await admin.call('POST', '/v1/staff/institution', { minAttendance: 80, termName: 'Autumn 2026' }));
     expect(s).toMatchObject({ minAttendance: 80, termName: 'Autumn 2026' });
     expect(code(await admin.call('POST', '/v1/staff/institution', { timezone: 'Mars/Olympus' }))).toBe('BAD_REQUEST');

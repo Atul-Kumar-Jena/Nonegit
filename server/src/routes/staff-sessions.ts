@@ -492,6 +492,19 @@ export async function staffSessionRoutes(app: FastifyInstance, deps: Deps) {
           offline: t - b.recordedAt > 90_000,
         });
         const c = counts.rows[0]!;
+        // Taken without internet and uploaded now: tell the professor it reached the server.
+        if (t - b.recordedAt > 90_000) {
+          const code = (await tx.query<{ code: string }>('select code from courses where id = $1', [s.course_id])).rows[0]?.code ?? 'Class';
+          await insertNotifications(tx, auth.tenantId, [
+            {
+              userId: auth.userId,
+              kind: 'attendance',
+              title: `✅ Register synced · ${code}`,
+              body: `The register you took offline is now saved: ${c.present} present, ${Math.max(0, c.enrolled - c.present)} absent. Students see it in their attendance.`,
+              data: { sessionId: id, courseId: s.course_id },
+            },
+          ]);
+        }
         return { present: c.present, absent: Math.max(0, c.enrolled - c.present), changed, duplicate: false };
       });
       return { ...result, duplicate };

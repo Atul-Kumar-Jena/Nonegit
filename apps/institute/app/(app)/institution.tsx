@@ -7,7 +7,7 @@ import { Button, Card, InfoRow, Input, Loading, Notice, Text } from '@kit/compon
 import { useApi } from '@kit/state/session';
 import { staffApi } from '@/api';
 import { Chips, DateField, Field, Header, Select, firstIssue } from '@/components/forms';
-import { useInstitution, useIsAdmin } from '@/queries';
+import { useInstitution, useIsAdmin, useMe } from '@/queries';
 import { markInstitutionReviewed } from '@/setup';
 
 const ZONES = [
@@ -31,11 +31,13 @@ const ZONES = [
 const MINIMUMS = [60, 65, 70, 75, 80, 85, 90].map((v) => ({ value: v, label: `${v}%` }));
 const RESETS = [0, 1, 2, 3, 5].map((v) => ({ value: v, label: String(v) }));
 
-/** Institution-wide settings (admins edit; teachers can read). */
+/** Institution-wide settings (the main admin edits; everyone else can read). */
 export default function Institution() {
   const api = useApi();
   const qc = useQueryClient();
-  const admin = useIsAdmin();
+  const isAdmin = useIsAdmin();
+  const owner = useMe().data?.owner ?? false;
+  const admin = isAdmin && owner;
   const q = useInstitution();
   const [name, setName] = useState('');
   const [timezone, setTimezone] = useState('Asia/Kolkata');
@@ -76,7 +78,7 @@ export default function Institution() {
           <InfoRow label="MINIMUM" value={`${i.minAttendance}%`} />
         </Card>
         <Text variant="small" style={{ marginTop: 12 }}>
-          Only admins can change these.
+          {isAdmin ? 'Only the main admin can change these — ask them, or they can hand the main-admin role over.' : 'Only the main admin can change these.'}
         </Text>
       </Screen>
     );
