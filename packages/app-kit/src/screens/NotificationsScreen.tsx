@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
-import { ArrowLeft, BellRing, CalendarClock, CheckCheck, CircleCheckBig, Megaphone, MessageSquareText, ShieldAlert, Smartphone } from 'lucide-react-native';
-import { NOTIFICATION_CATEGORIES, notificationCategory, type NotificationCategory } from '@attendly/protocol';
+import { ArrowLeft, ArrowRight, BellRing, CalendarClock, CheckCheck, CircleCheckBig, Megaphone, MessageSquareText, ShieldAlert, Smartphone } from 'lucide-react-native';
+import { NOTIFICATION_CATEGORIES, notificationCategory, type AppNotification, type NotificationCategory } from '@attendly/protocol';
 import { Screen } from '../components/Screen';
 import { Button, Card, ErrorState, IconButton, Loading, Notice, Text } from '../components/ui';
 import { clock } from '../lib/format';
@@ -50,6 +50,13 @@ export default function NotificationsScreen() {
   const q = useNotifications();
   const markRead = useMarkRead();
   const [phone, setPhone] = useState<'granted' | 'denied' | 'unavailable' | null>(null);
+  const [open, setOpen] = useState<AppNotification | null>(null);
+  /** Where "Open" goes for a notification — nothing when it isn't about something that has a screen. */
+  const routeOf = (n: AppNotification): string | null => {
+    const t = targetOf(n);
+    const r = audience.routeFor?.(t) ?? (n.kind === 'request' || n.kind === 'cover' ? audience.requestsRoute : null);
+    return typeof r === 'string' ? r : null;
+  };
   const api = useApi();
   const [test, setTest] = useState<{ busy: boolean; msg: string | null; tone: 'green' | 'amber' | 'red' }>({ busy: false, msg: null, tone: 'green' });
   async function runTest() {
@@ -176,8 +183,7 @@ export default function NotificationsScreen() {
                         key={n.id}
                         onPress={() => {
                           if (!n.read) void markRead([n.id]);
-                          const t = targetOf(n);
-                          router.push((audience.routeFor?.(t) ?? (n.kind === 'request' ? audience.requestsRoute : null) ?? '/timetable') as never);
+                          setOpen(n);
                         }}
                         accessibilityRole="button"
                         accessibilityLabel={`${n.read ? '' : 'Unread. '}${n.title}. ${n.body}`}
@@ -198,6 +204,9 @@ export default function NotificationsScreen() {
                           <Text variant="small" numberOfLines={2}>
                             {n.body}
                           </Text>
+                          <Text variant="small" style={{ fontSize: 11.5 }} color={colors.textDim}>
+                            {look.label}
+                          </Text>
                         </View>
                         {!n.read ? <View style={styles.dot} /> : null}
                       </Pressable>
@@ -209,7 +218,52 @@ export default function NotificationsScreen() {
           )}
         </>
       )}
+      <Modal visible={!!open} transparent animationType="slide" onRequestClose={() => setOpen(null)}>
+        <Pressable style={styles.scrim} onPress={() => setOpen(null)} accessibilityLabel="Close" />
+        {open ? <Detail n={open} onClose={() => setOpen(null)} route={routeOf(open)} /> : null}
+      </Modal>
     </Screen>
+  );
+}
+
+/** One notification in full: what, when, the whole message, and a way to the thing it's about. */
+function Detail({ n, onClose, route }: { n: AppNotification; onClose: () => void; route: string | null }) {
+  const cat = notificationCategory(n.kind);
+  const look = NOTIFICATION_CATEGORIES[cat];
+  const Icon = CATEGORY_ICON[cat];
+  const d = new Date(n.createdAt);
+  return (
+    <View style={styles.sheet}>
+      <View style={styles.grab} />
+      <View style={[styles.row, { gap: 12 }]}>
+        <View style={[styles.thumb, { backgroundColor: `${look.color}22`, borderColor: `${look.color}55` }]}>
+          <Icon color={look.color} size={19} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text variant="small">{look.label}</Text>
+          <Text variant="small">{`${d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })} · ${clock(n.createdAt)}`}</Text>
+        </View>
+      </View>
+      <ScrollView style={{ maxHeight: 360, marginTop: 14 }} contentContainerStyle={{ gap: 8 }}>
+        <Text variant="heading">{n.title}</Text>
+        <Text variant="body" selectable style={{ lineHeight: 22 }}>
+          {n.body}
+        </Text>
+      </ScrollView>
+      <View style={{ gap: 10, marginTop: 18 }}>
+        {route ? (
+          <Button
+            title={cat === 'notice' ? 'Open the notice' : cat === 'request' ? 'Open requests' : cat === 'phone' ? 'Open phone requests' : cat === 'attendance' ? 'Open the subject' : 'Open the class'}
+            onPress={() => {
+              onClose();
+              router.push(route as never);
+            }}
+            icon={<ArrowRight color={colors.bg} size={16} />}
+          />
+        ) : null}
+        <Button title="Close" kind="secondary" onPress={onClose} />
+      </View>
+    </View>
   );
 }
 
@@ -224,4 +278,7 @@ const styles = StyleSheet.create({
   item: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14 },
   itemDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
   thumb: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+  scrim: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' },
+  sheet: { backgroundColor: colors.bgRaised, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 20, paddingBottom: 34, borderTopWidth: 1, borderColor: colors.border },
+  grab: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: colors.borderHi, marginBottom: 14 },
 });

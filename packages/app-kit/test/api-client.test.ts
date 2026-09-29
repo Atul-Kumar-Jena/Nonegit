@@ -40,7 +40,7 @@ const DEVICE = { platform: 'android' as const, model: 'Pixel 8', osVersion: 'And
 async function signIn(p: ReturnType<typeof phone>, email: string) {
   const r = await p.client.requestOtp({ channel: 'email', identifier: email });
   const code = [...ctx.sent].reverse().find((m) => m.to === email)!.code;
-  const v = await p.client.verifyOtp(r.challengeId, code, DEVICE);
+  const v = await p.client.verifyOtp(r.challengeId, code, { ...DEVICE, hardwareId: `aid-${Math.random().toString(36).slice(2, 12)}` });
   if (v.status === 'bind_required') await p.client.bind(v.ticket);
   return v;
 }

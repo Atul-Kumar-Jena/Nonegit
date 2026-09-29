@@ -34,6 +34,7 @@ import {
   CourseReport,
   MatrixReport,
   PunctualityReport,
+  AttendanceAnalytics,
   StudentReport,
   CourseSummary,
   DeviceRequestItem,
@@ -108,6 +109,8 @@ export const staffApi = {
   studentReport: (api: ApiClient, userId: string, courseId?: string) => api.authed('GET', `/v1/staff/students/${enc(userId)}/report${qs({ courseId })}`, StudentReport),
   /** Students × subjects for a batch / subject / everyone. */
   matrix: (api: ApiClient, f: { batchId?: string; courseId?: string }) => api.authed('GET', `/v1/staff/reports/matrix${qs(f)}`, MatrixReport),
+  analytics: (api: ApiClient, f: { days: number; batchId?: string; courseId?: string }) =>
+    api.authed('GET', `/v1/staff/analytics${qs({ days: String(f.days), batchId: f.batchId, courseId: f.courseId })}`, AttendanceAnalytics),
   punctuality: (api: ApiClient, f: { days: number; teacherId?: string }) =>
     api.authed('GET', `/v1/staff/reports/punctuality${qs({ days: String(f.days), teacherId: f.teacherId })}`, PunctualityReport),
   courseSessions: (api: ApiClient, courseId: string) => api.authed('GET', `/v1/staff/courses/${enc(courseId)}/sessions`, z.array(StaffSession)),

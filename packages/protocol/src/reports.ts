@@ -118,3 +118,39 @@ export const PunctualityReport = ReportHeader.extend({
   ),
 });
 export type PunctualityReport = z.infer<typeof PunctualityReport>;
+
+// ───────────────────────────── analytics (charts) ─────────────────────────────
+
+export const AnalyticsQuery = z.object({
+  days: z.coerce.number().int().min(7).max(180).default(30),
+  batchId: uuid.optional(),
+  courseId: uuid.optional(),
+});
+export type AnalyticsQuery = z.infer<typeof AnalyticsQuery>;
+
+const Share = z.object({ present: z.number().int(), expected: z.number().int(), percent: z.number().nullable() });
+
+/** Attendance over time for a scope (institution / batch / subject; a professor's own classes). */
+export const AttendanceAnalytics = ReportHeader.extend({
+  scope: z.object({ label: z.string(), batchId: uuid.nullable(), courseId: uuid.nullable(), mine: z.boolean() }),
+  from: z.string(),
+  to: z.string(),
+  /** One row per local day that had classes: classes held, marks expected (enrolled × classes) and present. */
+  days: z.array(Share.extend({ date: z.string(), classes: z.number().int() })),
+  total: Share.extend({ classes: z.number().int() }),
+  subjects: z.array(Share.extend({ courseId: uuid, code: z.string(), title: z.string(), classes: z.number().int() })),
+  /** Every active batch over the period (only without a batch filter). */
+  batches: z.array(Share.extend({ batchId: uuid, name: z.string() })),
+  /** Students by their percentage over the period, relative to the minimum. */
+  bands: z.object({ safe: z.number().int(), near: z.number().int(), below: z.number().int(), far: z.number().int() }),
+  /** Every day × batch (for the downloadable "every batch, every day" sheet). */
+  batchDays: z.array(z.object({ date: z.string(), batchId: uuid, present: z.number().int(), expected: z.number().int() })),
+});
+export type AttendanceAnalytics = z.infer<typeof AttendanceAnalytics>;
+
+/** A student's own trend: week by week. */
+export const StudentTrend = z.object({
+  minPercent: z.number(),
+  weeks: z.array(z.object({ weekStart: z.string(), attended: z.number().int(), held: z.number().int(), percent: z.number().nullable() })),
+});
+export type StudentTrend = z.infer<typeof StudentTrend>;

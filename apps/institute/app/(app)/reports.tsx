@@ -13,6 +13,7 @@ import { staffApi } from '@/api';
 import { Chips, Header } from '@/components/forms';
 import { qk, useBatches, useMatrix } from '@/queries';
 import { batchChip } from '@/batches';
+import { AnalyticsPanel } from '@/components/AnalyticsPanel';
 
 const PAGE = 150;
 
@@ -101,6 +102,8 @@ export default function Reports() {
               <Text variant="small">{`below ${pct(r.minPercent)}%`}</Text>
             </View>
           </Card>
+
+          <AnalyticsPanel batchId={batch || undefined} courseId={course || undefined} onBatch={(id) => { setBatch(id); setCourse(''); }} />
 
           <View style={{ marginTop: 12 }}>
             <DownloadCard

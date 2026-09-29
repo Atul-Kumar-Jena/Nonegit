@@ -4,12 +4,12 @@
  * in their institution (read-only).
  */
 import type { FastifyInstance } from 'fastify';
-import { MatrixQuery, PunctualityQuery, StudentReportQuery, type MatrixReport, type PunctualityReport, type StudentReport } from '@attendly/protocol';
+import { AnalyticsQuery, MatrixQuery, PunctualityQuery, StudentReportQuery, type AttendanceAnalytics, type MatrixReport, type PunctualityReport, type StudentTrend, type StudentReport } from '@attendly/protocol';
 import type { Deps } from '../deps';
 import { STAFF, can } from '../lib/access';
 import { requireDevice } from '../lib/auth';
 import { z } from 'zod';
-import { buildMatrixReport, buildPunctualityReport, buildStudentReport } from '../lib/reports';
+import { buildAnalytics, buildMatrixReport, buildPunctualityReport, buildStudentReport, buildStudentTrend } from '../lib/reports';
 
 const IdParam = z.object({ id: z.uuid() });
 
@@ -30,6 +30,20 @@ export async function reportRoutes(app: FastifyInstance, deps: Deps) {
   app.get('/v1/staff/reports/matrix', async (req): Promise<MatrixReport> => {
     const auth = await requireDevice(req, deps, STAFF);
     return buildMatrixReport(deps.db, auth.tenantId, deps.clock(), MatrixQuery.parse(req.query));
+  });
+
+  /** Charts: attendance per day / subject / batch and the spread of students (a professor: their own classes). */
+  app.get('/v1/staff/analytics', async (req): Promise<AttendanceAnalytics> => {
+    const auth = await requireDevice(req, deps, STAFF);
+    const q = AnalyticsQuery.parse(req.query);
+    const everyone = can(auth, 'courses') || can(auth, 'planner');
+    return buildAnalytics(deps.db, auth.tenantId, deps.clock(), q, everyone ? null : auth.userId);
+  });
+
+  /** A student's week-by-week trend (Home chart). */
+  app.get('/v1/me/trend', async (req): Promise<StudentTrend> => {
+    const auth = await requireDevice(req, deps, ['student']);
+    return buildStudentTrend(deps.db, auth.tenantId, auth.userId, 12);
   });
 
   /** Professors' punctuality: admins (and coordinators) see everyone; a professor sees their own. */

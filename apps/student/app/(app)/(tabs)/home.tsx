@@ -14,7 +14,8 @@ import { clock, dayLabel, greeting, initials, pct, timeRange } from '@kit/lib/fo
 import { integrityReport } from '@kit/lib/device-info';
 import { ensureLocationPermission, locationStatus } from '@kit/lib/location';
 import { ChangeNote } from '@/components/ChangeNote';
-import { useDashboard, useSubjects, useTimetable } from '@/state/queries';
+import { useDashboard, useSubjects, useTimetable, useTrend } from '@/state/queries';
+import { Sparkline } from '@kit/components/Charts';
 import { useApi } from '@kit/state/session';
 import { colors, fonts, toneColor } from '@kit/theme';
 
@@ -49,6 +50,7 @@ export default function Home() {
     <Screen onRefresh={() => void q.refetch()} refreshing={q.isRefetching}>
       <Header d={d} />
       <TermCard d={d} offline={offline} updatedAt={q.dataUpdatedAt} />
+      <NoticeHomeCard />
       <HeadsUp />
       <SyncBanner />
       {gps && gps !== 'ready' ? (
@@ -96,7 +98,6 @@ export default function Home() {
         </View>
       )}
       <BatteryCard />
-      <NoticeHomeCard />
       <ComingUp tz={d.timezone} today={dayLabel(d.serverTime, d.timezone)} />
       <Pressable onPress={() => router.push('/timetable')} accessibilityRole="button" style={{ marginTop: 10 }}>
         <Card style={styles.link}>
@@ -175,7 +176,14 @@ function HeadsUp() {
   const edge = subs.subjects.filter((s) => s.standing === 'safe' && s.safeToMiss === 0);
   if (!below.length && !edge.length) return null;
   const tips = [
-    ...below.slice(0, 3).map((s) => ({ s, text: `${s.code} is at ${pct(s.percent)}% — attend the next ${s.needToReach} ${s.needToReach === 1 ? 'class' : 'classes'} in a row to get back to ${pct(subs.minPercent)}%.`, tone: colors.red })),
+    ...below.slice(0, 3).map((s) => ({
+      s,
+      text:
+        s.needToReach >= 10_000
+          ? `${s.code} is at ${pct(s.percent)}% and can’t reach ${pct(subs.minPercent)}% this term — talk to your professor.`
+          : `${s.code} is at ${pct(s.percent)}% — attend the next ${s.needToReach} ${s.needToReach === 1 ? 'class' : 'classes'} in a row to get back to ${pct(subs.minPercent)}%.`,
+      tone: colors.red,
+    })),
     ...edge.slice(0, Math.max(0, 3 - below.length)).map((s) => ({ s, text: `${s.code}: no class can be missed right now without dropping below ${pct(subs.minPercent)}%.`, tone: colors.amber })),
   ];
   return (
@@ -189,6 +197,19 @@ function HeadsUp() {
         </Pressable>
       ))}
     </Card>
+  );
+}
+
+/** Last weeks at a glance under the term figure (tap Subjects for the full chart). */
+function WeekTrend({ min }: { min: number }) {
+  const t = useTrend().data;
+  if (!t || t.weeks.length < 2) return null;
+  const last = t.weeks.slice(-8);
+  return (
+    <Pressable onPress={() => router.push('/subjects')} accessibilityRole="button" accessibilityLabel="Weekly trend. Open subjects" style={[styles.between, { marginTop: 12, alignItems: 'center' }]}>
+      <Text variant="small">{`Last ${last.length} weeks · this week ${pct(last.at(-1)!.percent)}%`}</Text>
+      <Sparkline values={last.map((w) => w.percent)} min={min} width={120} height={34} />
+    </Pressable>
   );
 }
 
@@ -235,6 +256,7 @@ function TermCard({ d, offline, updatedAt }: { d: DashboardResponse; offline: bo
         </Text>
         <Text variant="monoSmall">min {pct(term.minPercent)}%</Text>
       </View>
+      <WeekTrend min={term.minPercent} />
     </Card>
   );
 }

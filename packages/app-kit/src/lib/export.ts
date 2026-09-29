@@ -5,7 +5,7 @@
  */
 import { Platform } from 'react-native';
 import { strToU8, zipSync } from 'fflate';
-import type { MatrixReport, PunctualityReport, StudentReport } from '@attendly/protocol';
+import type { AttendanceAnalytics, MatrixReport, PunctualityReport, StudentReport } from '@attendly/protocol';
 import { clock, pct, zoned } from './format';
 
 export const CREDIT = 'Attendly · Created by Atul Kumar Jena';
@@ -146,6 +146,80 @@ export function matrixReportDoc(r: MatrixReport): ExportDoc {
     meta: [...header(r), ['Below minimum', `${below} of ${r.students.length} students`]],
     sections,
     wide: r.courses.length > 3,
+  };
+}
+
+/** Every day, every batch: daily totals, each batch per day (%), subjects and batches over the period. */
+export function analyticsDoc(r: AttendanceAnalytics, batchNames: Map<string, string>): ExportDoc {
+  const pctOf = (p: number, e: number) => (e ? Math.round((p / e) * 1000) / 10 : null);
+  const batchIds = [...new Set(r.batchDays.map((b) => b.batchId))].sort((a, b) => (batchNames.get(a) ?? '').localeCompare(batchNames.get(b) ?? ''));
+  const dates = [...new Set(r.batchDays.map((b) => b.date))].sort();
+  const cell = new Map(r.batchDays.map((b) => [`${b.date}|${b.batchId}`, b]));
+  const sections: Section[] = [
+    {
+      heading: 'Every day',
+      columns: [
+        { label: 'Date', width: 12 },
+        { label: 'Classes', kind: 'int', width: 9 },
+        { label: 'Present', kind: 'int', width: 9 },
+        { label: 'Expected', kind: 'int', width: 10 },
+        { label: 'Attendance %', kind: 'pct', width: 13 },
+      ],
+      rows: [...r.days.map((d) => [d.date, d.classes, d.present, d.expected, d.percent]), ['Total', r.total.classes, r.total.present, r.total.expected, r.total.percent]],
+      strong: [r.days.length],
+    },
+  ];
+  if (batchIds.length && dates.length)
+    sections.push({
+      heading: 'Every batch, every day (%)',
+      columns: [{ label: 'Date', width: 12 }, ...batchIds.map((id) => ({ label: batchNames.get(id) ?? 'Batch', kind: 'pct' as const, width: Math.max(10, (batchNames.get(id) ?? '').length + 2) }))],
+      rows: dates.map((d) => [d, ...batchIds.map((id) => {
+        const c = cell.get(`${d}|${id}`);
+        return c ? pctOf(c.present, c.expected) : null;
+      })]),
+    });
+  if (r.batches.length)
+    sections.push({
+      heading: 'Batches over the period',
+      columns: [
+        { label: 'Batch', width: 24 },
+        { label: 'Present', kind: 'int', width: 9 },
+        { label: 'Expected', kind: 'int', width: 10 },
+        { label: 'Attendance %', kind: 'pct', width: 13 },
+      ],
+      rows: r.batches.map((b) => [b.name, b.present, b.expected, b.percent]),
+    });
+  if (r.subjects.length)
+    sections.push({
+      heading: 'Subjects over the period',
+      columns: [
+        { label: 'Code', width: 12 },
+        { label: 'Subject', width: 28 },
+        { label: 'Classes', kind: 'int', width: 9 },
+        { label: 'Attendance %', kind: 'pct', width: 13 },
+      ],
+      rows: r.subjects.map((s) => [s.code, s.title === s.code ? '' : s.title, s.classes, s.percent]),
+    });
+  sections.push({
+    heading: 'Students by attendance',
+    columns: [
+      { label: 'Band', width: 22 },
+      { label: 'Students', kind: 'int', width: 10 },
+    ],
+    rows: [
+      [`${r.minPercent + 10}% or more`, r.bands.safe],
+      [`${r.minPercent}–${r.minPercent + 10}%`, r.bands.near],
+      [`${r.minPercent - 15}–${r.minPercent}% (below minimum)`, r.bands.below],
+      [`under ${r.minPercent - 15}%`, r.bands.far],
+    ],
+  });
+  return {
+    filename: `Attendly_Daily_${slug(r.scope.label)}_${stamp(r.generatedAt, r.timezone)}`,
+    title: `Daily attendance — ${r.scope.label}`,
+    subtitle: `${dateOnly(r.from, r.timezone)} to ${dateOnly(r.to, r.timezone)}`,
+    meta: [...header(r), ['Overall', r.total.percent === null ? '—' : `${pct(r.total.percent)}% (${r.total.present} of ${r.total.expected})`]],
+    sections,
+    wide: batchIds.length > 4,
   };
 }
 

@@ -130,6 +130,8 @@ Each requirement has an ID so tests, issues and commits can refer to it.
 | FR-RE-1 | Students see % per subject, "can miss N", "must attend N in a row", a plan-ahead calculator and full history. |
 | FR-RE-2 | Staff export per-student and per-course reports and an institution matrix as PDF and Excel. |
 | FR-RE-3 | **Professors' punctuality:** for every class, its time vs when the professor started it — on time, late (minutes), not held, cancelled — per professor, over 7/30/90 days; downloadable. Admins see everyone; a professor sees their own. |
+| FR-RE-5 | **Charts** in the existing screens: Reports → Trends (attendance each day / week, students by band, each batch, each subject; 7/30/90 days) with a downloadable daily report (every day, every batch); Today shows the last 7 days at a glance; Professors shows on-time per professor; students see a weekly trend on Home and each subject on Subjects. |
+| FR-NO-6 | Home shows the notice board as a swipeable strip (pinned first, unread marked); every notification opens in full with a way to what it's about. |
 | FR-RE-4 | Students see a heads-up on Home for subjects below the minimum (classes needed in a row) or with no margin left. |
 
 ### 4.8 Developer console

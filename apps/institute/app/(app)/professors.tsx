@@ -8,6 +8,7 @@ import { Screen } from '@kit/components/Screen';
 import { DownloadCard } from '@kit/components/Download';
 import { Avatar, Badge, Card, ErrorState, Loading, SectionLabel, Text } from '@kit/components/ui';
 import { punctualityReportDoc } from '@kit/lib/export';
+import { HBars } from '@kit/components/Charts';
 import { clock, initials, pct, zoned } from '@kit/lib/format';
 import { useApi } from '@kit/state/session';
 import { colors, fonts, radius } from '@kit/theme';
@@ -61,6 +62,16 @@ export default function Professors() {
           </View>
           {!teacherId ? (
             <>
+              {r.teachers.length > 1 ? (
+                <Card style={{ gap: 10, marginTop: 14 }}>
+                  <Text variant="label">On time · marker at 80%</Text>
+                  <HBars
+                    rows={r.teachers.map((t) => ({ key: t.teacherId, label: t.name, sub: `${t.late} late · ${t.missed} not held`, value: t.onTimePercent }))}
+                    min={80}
+                    onPress={setTeacherId}
+                  />
+                </Card>
+              ) : null}
               <SectionLabel>{`${r.teachers.length} professors · lowest on-time first`}</SectionLabel>
               {r.teachers.length === 0 ? <Text variant="small">No classes in this period yet.</Text> : null}
               <View style={{ gap: 8 }}>

@@ -33,6 +33,7 @@ export const qk = {
   changeRequests: ['staff', 'change-requests'] as const,
   studentReport: (id: string, courseId?: string) => ['staff', 'student-report', id, courseId ?? 'all'] as const,
   matrix: (batchId?: string, courseId?: string) => ['staff', 'matrix', batchId ?? 'all', courseId ?? 'all'] as const,
+  analytics: (days: number, batchId?: string, courseId?: string) => ['staff', 'analytics', days, batchId ?? 'all', courseId ?? 'all'] as const,
   punctuality: (days: number, teacherId?: string) => ['staff', 'punctuality', days, teacherId ?? 'all'] as const,
 };
 
@@ -211,4 +212,9 @@ export function useAllCourses(enabled = true) {
 export function useStudentSearch(q: string, notInBatch?: string, enabled = true) {
   const api = useApi();
   return useQuery({ queryKey: ['staff', 'student-search', q, notInBatch ?? ''], queryFn: () => staffApi.searchStudents(api, q, notInBatch), enabled, placeholderData: (prev) => prev, staleTime: 30_000 });
+}
+
+export function useAnalytics(days: number, batchId?: string, courseId?: string) {
+  const api = useApi();
+  return useQuery({ queryKey: qk.analytics(days, batchId, courseId), queryFn: () => staffApi.analytics(api, { days, batchId, courseId }), placeholderData: (prev) => prev, staleTime: 60_000 });
 }

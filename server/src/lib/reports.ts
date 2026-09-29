@@ -1,4 +1,4 @@
-import { attendancePercent, standing, type MatrixReport, type PunctualityReport, type PunctualityStatus, type ReportHeader, type StudentReport } from '@attendly/protocol';
+import { attendancePercent, standing, type AttendanceAnalytics, type MatrixReport, type PunctualityReport, type StudentTrend, type PunctualityStatus, type ReportHeader, type StudentReport } from '@attendly/protocol';
 import type { Queryable } from '../db';
 import { ApiError } from './errors';
 import { courseStats, loadTenantTerm, type TenantTerm } from './stats';
@@ -223,4 +223,126 @@ export async function buildPunctualityReport(db: Queryable, tenantId: string, no
     })
     .sort((a, b) => (a.onTimePercent ?? 101) - (b.onTimePercent ?? 101) || a.name.localeCompare(b.name));
   return { ...h, from: from.toISOString(), to: to.toISOString(), teachers, classes };
+}
+
+const share = (present: number, expected: number) => ({ present, expected, percent: expected ? Math.round((present / expected) * 1000) / 10 : null });
+
+/**
+ * Attendance over time: per day, per subject, per batch, and how students are spread around the
+ * minimum. "Expected" = every enrolled student × every class held (closed, or live with marks).
+ * `teacherId` limits it to one professor's classes (a professor without the coordinator powers).
+ */
+export async function buildAnalytics(
+  db: Queryable,
+  tenantId: string,
+  now: number,
+  q: { days: number; batchId?: string; courseId?: string },
+  teacherId: string | null,
+): Promise<AttendanceAnalytics> {
+  const { h, term } = await header(db, tenantId, now);
+  const from = new Date(now - q.days * 86_400_000);
+  const params = [tenantId, from, term.timezone, q.batchId ?? null, q.courseId ?? null, teacherId];
+  // One row per (class, enrolled student) with whether they were present — the base of every figure.
+  const base = `
+    with sess as (
+      select s.id, s.course_id, to_char((s.started_at at time zone $3)::date, 'YYYY-MM-DD') as day
+        from class_sessions s join courses c on c.id = s.course_id
+       where s.tenant_id = $1 and s.started_at >= $2 and s.mode is not null
+         and (s.status = 'closed' or (s.status = 'live' and exists(select 1 from attendance_records x where x.session_id = s.id and x.revoked_at is null)))
+         and ($5::uuid is null or s.course_id = $5)
+         and ($4::uuid is null or s.course_id in (select course_id from course_batches where batch_id = $4))
+         and ($6::uuid is null or coalesce(s.substitute_id, c.instructor_id) = $6)
+    ), roster as (
+      select s.id as session_id, s.course_id, s.day, e.user_id,
+             exists(select 1 from attendance_records a where a.session_id = s.id and a.user_id = e.user_id and a.revoked_at is null) as present
+        from sess s
+        join enrollments e on e.course_id = s.course_id
+        join users u on u.id = e.user_id and u.status = 'active' and u.role = 'student'
+       where ($4::uuid is null or e.user_id in (select user_id from batch_members where batch_id = $4))
+    )`;
+  const [days, subjects, students, batches, batchDays, scope] = await Promise.all([
+    db.query<{ day: string; classes: number; expected: number; present: number }>(
+      `${base} select s.day, count(distinct s.id)::int as classes, count(r.user_id)::int as expected, count(r.user_id) filter (where r.present)::int as present
+         from sess s left join roster r on r.session_id = s.id group by s.day order by s.day`,
+      params,
+    ),
+    db.query<{ course_id: string; code: string; title: string; classes: number; expected: number; present: number }>(
+      `${base} select c.id as course_id, c.code, c.title, count(distinct s.id)::int as classes, count(r.user_id)::int as expected, count(r.user_id) filter (where r.present)::int as present
+         from sess s join courses c on c.id = s.course_id left join roster r on r.session_id = s.id group by c.id, c.code, c.title order by c.code`,
+      params,
+    ),
+    db.query<{ user_id: string; expected: number; present: number }>(
+      `${base} select user_id, count(*)::int as expected, count(*) filter (where present)::int as present from roster group by user_id`,
+      params,
+    ),
+    q.batchId
+      ? Promise.resolve({ rows: [] as { batch_id: string; name: string; expected: number; present: number }[] })
+      : db.query<{ batch_id: string; name: string; expected: number; present: number }>(
+          `${base} select b.id as batch_id, b.name, count(r.user_id)::int as expected, count(r.user_id) filter (where r.present)::int as present
+             from batches b
+             join batch_members m on m.batch_id = b.id
+             join roster r on r.user_id = m.user_id and r.course_id in (select course_id from course_batches where batch_id = b.id)
+            where b.tenant_id = $1 and b.active
+            group by b.id, b.name order by b.name`,
+          params,
+        ),
+    db.query<{ day: string; batch_id: string; expected: number; present: number }>(
+      `${base} select r.day, b.id as batch_id, count(*)::int as expected, count(*) filter (where r.present)::int as present
+         from roster r
+         join batch_members m on m.user_id = r.user_id
+         join batches b on b.id = m.batch_id and b.tenant_id = $1 and b.active and ($4::uuid is null or b.id = $4)
+        where r.course_id in (select course_id from course_batches where batch_id = b.id)
+        group by r.day, b.id order by r.day, b.id`,
+      params,
+    ),
+    db.query<{ batch: string | null; course: string | null }>(
+      `select (select name from batches where id = $1 and tenant_id = $3) as batch, (select code from courses where id = $2 and tenant_id = $3) as course`,
+      [q.batchId ?? null, q.courseId ?? null, tenantId],
+    ),
+  ]);
+  const min = term.min_attendance;
+  const bands = { safe: 0, near: 0, below: 0, far: 0 };
+  for (const s of students.rows) {
+    const p = s.expected ? (s.present / s.expected) * 100 : null;
+    if (p === null) continue;
+    if (p >= min + 10) bands.safe++;
+    else if (p >= min) bands.near++;
+    else if (p >= min - 15) bands.below++;
+    else bands.far++;
+  }
+  const tot = days.rows.reduce((t, d) => ({ classes: t.classes + d.classes, expected: t.expected + d.expected, present: t.present + d.present }), { classes: 0, expected: 0, present: 0 });
+  const sc = scope.rows[0] ?? { batch: null, course: null };
+  const label = [sc.batch, sc.course].filter(Boolean).join(' · ') || (teacherId ? 'My classes' : 'Whole institution');
+  return {
+    ...h,
+    scope: { label, batchId: q.batchId ?? null, courseId: q.courseId ?? null, mine: !!teacherId },
+    from: from.toISOString(),
+    to: new Date(now).toISOString(),
+    days: days.rows.map((d) => ({ date: d.day, classes: d.classes, ...share(d.present, d.expected) })),
+    total: { classes: tot.classes, ...share(tot.present, tot.expected) },
+    subjects: subjects.rows.map((s) => ({ courseId: s.course_id, code: s.code, title: s.title, classes: s.classes, ...share(s.present, s.expected) })),
+    batches: batches.rows.map((b) => ({ batchId: b.batch_id, name: b.name, ...share(b.present, b.expected) })),
+    bands,
+    batchDays: batchDays.rows.map((r) => ({ date: r.day, batchId: r.batch_id, present: r.present, expected: r.expected })),
+  };
+}
+
+/** A student's own attendance, week by week, over the last `weeks` weeks of the term. */
+export async function buildStudentTrend(db: Queryable, tenantId: string, userId: string, weeks: number): Promise<StudentTrend> {
+  const term = await loadTenantTerm(db, tenantId);
+  const { rows } = await db.query<{ week: string; held: number; attended: number }>(
+    `select to_char(date_trunc('week', s.started_at at time zone $3)::date, 'YYYY-MM-DD') as week,
+            count(*) filter (where s.status = 'closed' or a.id is not null)::int as held,
+            count(a.id)::int as attended
+       from enrollments e
+       join class_sessions s on s.course_id = e.course_id and s.status in ('live', 'closed')
+       left join attendance_records a on a.session_id = s.id and a.user_id = e.user_id and a.revoked_at is null
+      where e.user_id = $1 and s.started_at >= greatest($2::date::timestamp at time zone $3, now() - make_interval(weeks => $4))
+      group by 1 order by 1`,
+    [userId, term.term_start, term.timezone, weeks],
+  );
+  return {
+    minPercent: term.min_attendance,
+    weeks: rows.filter((r) => r.held > 0).map((r) => ({ weekStart: r.week, attended: r.attended, held: r.held, percent: Math.round((r.attended / r.held) * 1000) / 10 })),
+  };
 }

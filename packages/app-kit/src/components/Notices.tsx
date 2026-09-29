@@ -165,32 +165,67 @@ export function ReactionBar({ n }: { n: NoticeDetail }) {
   );
 }
 
-/** Home: the newest unread notices, with a link to the Notice centre. */
-export function NoticeHomeCard() {
+/**
+ * Home: the notice board, always visible — a swipeable strip of the latest notices (pinned first,
+ * unread marked, important in red), each opening its full text, plus a link to the Notice centre.
+ */
+export function NoticeHomeCard({ canPost = false }: { canPost?: boolean }) {
   const q = useNoticeInbox();
   const d = q.data;
   if (!d) return null;
-  const top = [...d.pinned.filter((n) => !n.read), ...d.items.filter((n) => !n.read)].slice(0, 2);
+  const seen = new Set<string>();
+  const list = [...d.pinned, ...d.items].filter((n) => (seen.has(n.id) ? false : (seen.add(n.id), true))).slice(0, 8);
   return (
     <View style={{ marginTop: 18 }}>
-      <Pressable onPress={() => router.push('/notices' as never)} accessibilityRole="button" style={styles.homeHead}>
+      <View style={styles.homeHead}>
         <Megaphone color={colors.text} size={16} />
         <Text variant="label" style={{ flex: 1 }}>
           {d.unread ? `Notices · ${d.unread} new` : 'Notices'}
         </Text>
-        <Text variant="small" color={colors.text}>
-          All
-        </Text>
-        <ChevronRight color={colors.textDim} size={16} />
-      </Pressable>
-      {top.length ? (
-        <View style={{ gap: 10 }}>
-          {top.map((n) => (
-            <NoticeCard key={n.id} n={n} />
+        {canPost ? (
+          <Pressable onPress={() => router.push('/notice-compose' as never)} accessibilityRole="button" hitSlop={8} style={styles.homeAction}>
+            <Text variant="small" color={colors.text}>
+              + New
+            </Text>
+          </Pressable>
+        ) : null}
+        <Pressable onPress={() => router.push('/notices' as never)} accessibilityRole="button" hitSlop={8} style={styles.homeAction}>
+          <Text variant="small" color={colors.text}>
+            All
+          </Text>
+          <ChevronRight color={colors.textDim} size={16} />
+        </Pressable>
+      </View>
+      {list.length ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingRight: 8 }} style={{ marginHorizontal: -2 }}>
+          {list.map((n) => (
+            <Pressable
+              key={n.id}
+              onPress={() => router.push({ pathname: '/notice/[id]', params: { id: n.id } } as never)}
+              accessibilityRole="button"
+              accessibilityLabel={`${n.read ? '' : 'Unread. '}${n.important ? 'Important. ' : ''}${n.title}`}
+              style={({ pressed }) => [styles.strip, n.important && styles.cardImportant, !n.read && styles.cardUnread, pressed && { opacity: 0.85 }]}
+            >
+              <View style={styles.cardTop}>
+                <CategoryPill category={n.category} important={n.important} />
+                <View style={{ flex: 1 }} />
+                {n.pinned ? <Pin color={colors.textMuted} size={13} /> : null}
+                {!n.read ? <View style={styles.dot} /> : null}
+              </View>
+              <Text style={[styles.title, { fontSize: 15 }, !n.read && { fontFamily: fonts.bold }]} numberOfLines={2}>
+                {n.title}
+              </Text>
+              <Text variant="small" numberOfLines={3} style={{ marginTop: 4, flex: 1 }}>
+                {n.preview}
+              </Text>
+              <Text variant="monoSmall" numberOfLines={1} style={{ marginTop: 8 }}>
+                {`${n.author.name} · ${timeAgo(n.createdAt)}`}
+              </Text>
+            </Pressable>
           ))}
-        </View>
+        </ScrollView>
       ) : (
-        <Text variant="small">You’re all caught up.</Text>
+        <Text variant="small">No notices yet.</Text>
       )}
     </View>
   );
@@ -231,6 +266,8 @@ const styles = StyleSheet.create({
   reactCount: { fontFamily: fonts.semibold, fontSize: 14, color: colors.textMuted },
   picker: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10, padding: 8, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
   pickItem: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'transparent' },
+  strip: { width: 250, minHeight: 150, padding: 14, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
+  homeAction: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 6, paddingVertical: 4 },
   homeHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
   chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border },
   chipOn: { backgroundColor: colors.text, borderColor: colors.text },

@@ -1,3 +1,5 @@
+import { HBars, TrendBars } from '@kit/components/Charts';
+import { useTrend } from '@/state/queries';
 import { useMemo, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { router } from "expo-router";
@@ -77,6 +79,8 @@ export default function Subjects() {
           icon={<Download color={colors.text} size={15} />}
         />
       </View>
+
+      <SubjectCharts subjects={d.subjects} min={d.minPercent} />
 
       {worst ? (
         <Card tone="amber" style={styles.alert}>
@@ -220,3 +224,32 @@ const styles = StyleSheet.create({
     marginLeft: 1,
   },
 });
+
+/** Every subject against the minimum, and the week-by-week trend of all of them together. */
+function SubjectCharts({ subjects, min }: { subjects: { courseId: string; code: string; title: string; percent: number | null; attended: number; held: number }[]; min: number }) {
+  const trend = useTrend().data;
+  if (!subjects.some((s) => s.held > 0)) return null;
+  return (
+    <Card style={{ marginTop: 14, gap: 12 }}>
+      <Text variant="label">Each subject</Text>
+      <HBars
+        rows={subjects.map((s) => ({ key: s.courseId, label: s.code, sub: `${s.attended} of ${s.held}`, value: s.percent }))}
+        min={min}
+        onPress={(id) => router.push({ pathname: "/subject/[id]", params: { id } })}
+      />
+      {trend && trend.weeks.length > 1 ? (
+        <>
+          <Text variant="label" style={{ marginTop: 6 }}>Week by week</Text>
+          <TrendBars
+            data={trend.weeks.map((w) => {
+              const d = new Date(`${w.weekStart}T00:00:00Z`);
+              return { key: w.weekStart, label: `${d.getUTCDate()}/${d.getUTCMonth() + 1}`, value: w.percent, detail: `Week of ${d.getUTCDate()}/${d.getUTCMonth() + 1} · ${w.attended} of ${w.held} classes` };
+            })}
+            min={min}
+            height={130}
+          />
+        </>
+      ) : null}
+    </Card>
+  );
+}

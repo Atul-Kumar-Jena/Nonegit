@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { RequestsResponse, SubjectDetailResponse, TimetableResponse } from '@attendly/protocol';
+import { RequestsResponse, StudentTrend, SubjectDetailResponse, TimetableResponse } from '@attendly/protocol';
 import { useApi } from '@kit/state/session';
 
 export const qk = {
@@ -10,7 +10,14 @@ export const qk = {
   subject: (id: string) => ['subject', id] as const,
   requests: ['requests'] as const,
   report: (courseId?: string) => ['report', courseId ?? 'all'] as const,
+  trend: ['trend'] as const,
 };
+
+/** Week-by-week attendance (charts on Home and Subjects). */
+export function useTrend() {
+  const api = useApi();
+  return useQuery({ queryKey: qk.trend, queryFn: () => api.authed('GET', '/v1/me/trend', StudentTrend), staleTime: 5 * 60_000 });
+}
 
 export function useDashboard() {
   const api = useApi();
