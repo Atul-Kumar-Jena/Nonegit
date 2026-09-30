@@ -189,7 +189,7 @@ Tokens: access tokens last 15 minutes; refresh tokens last 30 days and rotate on
 | POST | `/v1/staff/sessions/:id/start` | Professor or admin | "I'm in class": `started_at`, lateness logged, students notified |
 | POST | `/v1/staff/sessions/:id/showing` | Professor | The QR is on screen ("attendance being taken") |
 | POST | `/v1/staff/sessions/:id/end` · `/cancel` | Professor or admin | End (QR dies everywhere) / cancel with a reason. A class also closes itself when everyone is marked (`autoEnded`) |
-| POST | `/v1/staff/sessions/:id/rounds` | Professor | Layered scans: `{rounds: 1–5}` (before anyone completes) |
+| POST | `/v1/staff/sessions/:id/rounds` | Professor | Layered scans: `{rounds: 1–4}` — only before anyone has scanned (normally set on the slot / extra class: `scanRounds`) |
 | POST | `/v1/staff/sessions/:id/next-round` | Professor | Open the next scan round; students are notified |
 | GET | `/v1/staff/sessions/:id/feed` | Professor | Live list of marks |
 | POST | `/v1/staff/sessions/:id/register` | Professor | Paper-style register: ticks, corrections with reasons (`clientRef` for offline) |

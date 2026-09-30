@@ -77,6 +77,22 @@ export function parseQrToken(token: unknown): ParsedQrToken | null {
   }
 }
 
+/**
+ * Layered scans: every round has its own key, derived from the class secret, so a code from round 1
+ * can never count for round 2 (and a round's codes exist only once the professor opens it).
+ * Round 1 uses the class secret itself.
+ */
+export function qrRoundSecret(secret: Uint8Array, round: number): Uint8Array {
+  if (!Number.isInteger(round) || round < 1 || round > 9) throw new Error('qr: invalid round');
+  return round === 1 ? secret : hmacSha256(secret, `${QR_PREFIX}-ROUND|${round}`).slice(0, QR_SECRET_BYTES);
+}
+
+/** Which round (1..maxRound) a verified token belongs to, or null when it matches none. */
+export function qrRoundOf(secret: Uint8Array, parsed: ParsedQrToken, maxRound: number): number | null {
+  for (let r = Math.max(1, Math.min(9, maxRound)); r >= 1; r--) if (verifyQrMac(qrRoundSecret(secret, r), parsed)) return r;
+  return null;
+}
+
 export function verifyQrMac(secret: Uint8Array, parsed: ParsedQrToken): boolean {
   try {
     return timingSafeEqual(computeQrMac(secret, parsed.sessionId, parsed.seq), parsed.mac);

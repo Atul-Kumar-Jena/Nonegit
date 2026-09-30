@@ -48,6 +48,16 @@ async function main() {
     app.log.info(`instant push on for the ${a} app (Firebase project ${sa.project_id})`);
   }
   const stopPush = byProject.size ? startPushDispatcher(db, senders, (m, x) => app.log.warn(x, m), config.publicUrl) : () => {};
+  // Render's free plan puts the server to sleep after 15 quiet minutes — then class reminders and
+  // "class is live" pushes would wait for the next visitor. A light ping of our own public address every
+  // 10 minutes keeps it awake (fits the free plan's monthly hours for one service). KEEP_AWAKE=false turns it off.
+  const selfUrl = process.env.RENDER_EXTERNAL_URL ?? (process.env.KEEP_AWAKE === 'true' ? config.publicUrl : null);
+  const keepAwake =
+    selfUrl && process.env.KEEP_AWAKE !== 'false'
+      ? setInterval(() => void fetch(`${selfUrl.replace(/\/$/, '')}/v1/meta`, { signal: AbortSignal.timeout(10_000) }).catch(() => undefined), 10 * 60_000)
+      : null;
+  keepAwake?.unref();
+  if (keepAwake) app.log.info(`keep-awake ping on (${selfUrl})`);
   // Google's list of revoked phone attestation keys (leaked or compromised), refreshed in the background.
   const stopRevocations = startRevocationRefresh((m) => app.log.info(m));
   // Classes go live by themselves at their start time.
@@ -61,6 +71,7 @@ async function main() {
     stopPush();
     stopRevocations();
     stopClassClock();
+    if (keepAwake) clearInterval(keepAwake);
     const force = setTimeout(() => process.exit(1), 10_000);
     force.unref();
     try {

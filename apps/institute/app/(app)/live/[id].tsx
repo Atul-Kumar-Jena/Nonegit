@@ -4,7 +4,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { useQueryClient } from '@tanstack/react-query';
 import { ClipboardList, CloudOff, Monitor, Users, X } from 'lucide-react-native';
-import { currentQrSeq, encodeQrToken, fromB64url, msUntilNextRotation, randomToken, type StaffSession } from '@attendly/protocol';
+import { currentQrSeq, encodeQrToken, fromB64url, msUntilNextRotation, qrRoundSecret, randomToken, type StaffSession } from '@attendly/protocol';
 import { Screen } from '@kit/components/Screen';
 import { Badge, Button, IconButton, Notice, Text } from '@kit/components/ui';
 import { ApiRequestError } from '@kit/lib/api-core';
@@ -71,13 +71,15 @@ export default function LiveQr() {
     return () => clearInterval(t);
   }, [api, id, live]);
 
+  // Layered class: the code of the round that is open now (every round has its own key).
+  const roundNo = (s?.scanRounds ?? 1) > 1 ? (s?.roundNo ?? 1) : 1;
   const key = useMemo(() => {
     try {
-      return secret ? fromB64url(secret) : null;
+      return secret ? qrRoundSecret(fromB64url(secret), roundNo) : null;
     } catch {
       return null;
     }
-  }, [secret]);
+  }, [secret, roundNo]);
   const rotation = s?.rotationS ?? 7;
   const seq = currentQrSeq(now, rotation);
   const token = useMemo(() => (key && s ? encodeQrToken(key, s.id, seq) : null), [key, s, seq]);
@@ -161,8 +163,11 @@ export default function LiveQr() {
           <Notice tone="red" message="This phone doesn’t have this class’s QR key. Connect to the internet once, or use the register." />
           <Button title="Open the register" onPress={() => router.replace({ pathname: '/register/[id]', params: { id } })} style={{ marginTop: 16, alignSelf: 'stretch' }} />
         </View>
+      ) : (s.scanRounds ?? 1) > 1 && s.roundDone && roundNo < (s.scanRounds ?? 1) ? (
+        <RoundComplete session={s} onNext={() => void qc.invalidateQueries({ queryKey: ['staff'] })} />
       ) : (
         <View style={styles.center}>
+          {(s.scanRounds ?? 1) > 1 ? <Text style={styles.roundTag}>{`ROUND ${roundNo} OF ${s.scanRounds}`}</Text> : null}
           <QrCode value={token} size={size} />
           <View style={[styles.progress, { width: size }]}>
             <View style={[styles.progressFill, { width: `${Math.max(0, Math.min(100, (left / (rotation * 1000)) * 100))}%` }]} />
@@ -205,8 +210,8 @@ export default function LiveQr() {
 }
 
 /**
- * Layered scans (fests, webinars): students must scan in every round to be present, so nobody
- * leaves after the first scan. Set the number before anyone completes; open each next round when you want.
+ * Layered scans (set when the class was scheduled): where the rounds stand, and — any time the
+ * professor wants — the next round's code. Every round has its own code; students must scan them all.
  */
 function Rounds({ session: s, onChange }: { session: StaffSession; onChange: () => void }) {
   const api = useApi();
@@ -214,12 +219,13 @@ function Rounds({ session: s, onChange }: { session: StaffSession; onChange: () 
   const [err, setErr] = useState<string | null>(null);
   const rounds = s.scanRounds ?? 1;
   const roundNo = s.roundNo ?? 1;
-  const canSet = s.marked === 0 && roundNo === 1;
-  async function run(fn: () => Promise<unknown>) {
+  if (rounds <= 1) return null;
+  const counts = s.roundCounts ?? [];
+  async function next() {
     setErr(null);
     setBusy(true);
     try {
-      await fn();
+      await staffApi.nextRound(api, s.id);
       onChange();
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'That didn’t work.');
@@ -229,46 +235,73 @@ function Rounds({ session: s, onChange }: { session: StaffSession; onChange: () 
   }
   return (
     <View style={styles.rounds}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'center' }}>
-        <Text variant="small">Scans per student</Text>
-        {[1, 2, 3].map((n) => (
-          <Pressable
-            key={n}
-            disabled={!canSet || busy || n === rounds}
-            onPress={() => void run(() => staffApi.scanRounds(api, s.id, n))}
-            style={[styles.roundChip, n === rounds && styles.roundChipOn, !canSet && n !== rounds && { opacity: 0.35 }]}
-            accessibilityRole="button"
-            accessibilityState={{ selected: n === rounds }}
-          >
-            <Text variant="small" color={n === rounds ? colors.bg : colors.text}>
-              {n === 1 ? 'Once' : `${n}×`}
-            </Text>
-          </Pressable>
+      <View style={styles.roundDots}>
+        {Array.from({ length: rounds }, (_, i) => (
+          <View key={i} style={[styles.roundDot, i + 1 < roundNo && styles.roundDotDone, i + 1 === roundNo && styles.roundDotNow]}>
+            <Text style={[styles.roundDotText, i + 1 <= roundNo && { color: colors.ink }]}>{`${i + 1}`}</Text>
+          </View>
         ))}
       </View>
-      {rounds > 1 ? (
-        <>
-          <Text variant="small" style={{ textAlign: 'center' }}>
-            {`Round ${roundNo} of ${rounds} open · scanned: ${(s.roundCounts ?? []).slice(0, roundNo).map((c, i) => `R${i + 1} ${c}`).join(' · ')}`}
-          </Text>
-          {roundNo < rounds ? (
-            <Button title={`Open round ${roundNo + 1}`} kind="secondary" compact loading={busy} onPress={() => void run(() => staffApi.nextRound(api, s.id))} />
-          ) : (
-            <Text variant="small" style={{ textAlign: 'center' }}>
-              Last round open — students who scanned every round are present.
-            </Text>
-          )}
-        </>
+      <Text variant="small" style={{ textAlign: 'center' }}>
+        {`Round ${roundNo}: ${counts[roundNo - 1] ?? 0} of ${s.enrolled} scanned${roundNo < rounds ? '' : ' · last round'}`}
+      </Text>
+      {roundNo < rounds ? (
+        <Button title={`Show round ${roundNo + 1} code now`} kind="ghost" compact loading={busy} onPress={() => void next()} />
       ) : null}
       {err ? <Text variant="small" color={colors.red} style={{ textAlign: 'center' }}>{err}</Text> : null}
     </View>
   );
 }
 
+/** Everyone has the open round: the code steps aside and the next round is one tap away. */
+function RoundComplete({ session: s, onNext }: { session: StaffSession; onNext: () => void }) {
+  const api = useApi();
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const roundNo = s.roundNo ?? 1;
+  return (
+    <View style={styles.center}>
+      <View style={styles.doneBadge}>
+        <Text style={styles.doneTick}>✓</Text>
+      </View>
+      <Text variant="title" style={{ textAlign: 'center', marginTop: 16 }}>
+        {`Round ${roundNo} complete`}
+      </Text>
+      <Text variant="body" style={{ textAlign: 'center', marginTop: 8 }}>
+        {`Everyone has scanned round ${roundNo} of ${s.scanRounds}. When you’re ready, show round ${roundNo + 1}’s code — it’s a new code; the last one no longer counts.`}
+      </Text>
+      <Button
+        title={`Show round ${roundNo + 1} code`}
+        loading={busy}
+        onPress={async () => {
+          setErr(null);
+          setBusy(true);
+          try {
+            await staffApi.nextRound(api, s.id);
+            onNext();
+          } catch (e) {
+            setErr(e instanceof Error ? e.message : 'That didn’t work.');
+          } finally {
+            setBusy(false);
+          }
+        }}
+        style={{ alignSelf: 'stretch', marginTop: 22 }}
+      />
+      {err ? <Notice tone="red" message={err} /> : null}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   rounds: { alignItems: 'center', gap: 8, marginTop: 12, alignSelf: 'stretch' },
-  roundChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: colors.border },
-  roundChipOn: { backgroundColor: colors.text, borderColor: colors.text },
+  roundTag: { fontFamily: fonts.bold, fontSize: 12, letterSpacing: 1.4, color: colors.textMuted, marginBottom: 10 },
+  roundDots: { flexDirection: 'row', gap: 8 },
+  roundDot: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.borderHi, backgroundColor: colors.cardHi },
+  roundDotDone: { backgroundColor: colors.green, borderColor: colors.green },
+  roundDotNow: { backgroundColor: colors.text, borderColor: colors.text },
+  roundDotText: { fontFamily: fonts.bold, fontSize: 12, color: colors.textMuted },
+  doneBadge: { width: 76, height: 76, borderRadius: 26, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.greenSoft, borderWidth: 1, borderColor: 'rgba(74,222,128,0.4)' },
+  doneTick: { fontFamily: fonts.bold, fontSize: 34, color: colors.green },
   top: { flexDirection: 'row', alignItems: 'center', gap: 12, alignSelf: 'stretch' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', alignSelf: 'stretch' },
   progress: { height: 4, borderRadius: 2, backgroundColor: colors.border, marginTop: 14, overflow: 'hidden' },

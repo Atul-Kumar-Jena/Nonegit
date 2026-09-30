@@ -3,8 +3,8 @@ import { View } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowRight, Smartphone } from 'lucide-react-native';
 import { Screen } from '@kit/components/Screen';
-import { Badge, Button, Card, ErrorState, Loading, Notice, Segmented, Text } from '@kit/components/ui';
-import { timeAgo } from '@kit/lib/format';
+import { Avatar, Badge, Button, Card, ErrorState, Loading, Notice, Segmented, Text } from '@kit/components/ui';
+import { initials, timeAgo } from '@kit/lib/format';
 import { useApi } from '@kit/state/session';
 import { colors } from '@kit/theme';
 import { staffApi } from '@/api';
@@ -76,15 +76,18 @@ export default function Requests() {
         ) : (
           list.map((r) => (
             <Card key={r.id} style={{ gap: 10 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <Text variant="bodyStrong" style={{ flex: 1 }}>
-                  {r.user.fullName}
-                </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <Avatar text={initials(r.user.fullName) || '?'} size={40} />
+                <View style={{ flex: 1 }}>
+                  <Text variant="bodyStrong" numberOfLines={1}>
+                    {r.user.fullName}
+                  </Text>
+                  <Text variant="small" numberOfLines={1}>
+                    {[r.user.rollNo, r.user.role, timeAgo(r.createdAt)].filter(Boolean).join(' · ')}
+                  </Text>
+                </View>
                 <Badge label={r.kind === 'rebind' ? 'New phone' : 'Reset'} tone={r.kind === 'rebind' ? 'violet' : 'amber'} dot={false} />
               </View>
-              <Text variant="monoSmall">
-                {[r.user.rollNo, r.user.role, timeAgo(r.createdAt)].filter(Boolean).join(' · ')}
-              </Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <Smartphone color={colors.textDim} size={14} />
                 <Text variant="small" style={{ flexShrink: 1 }}>

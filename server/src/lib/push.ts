@@ -9,6 +9,7 @@ import { notificationCategory } from '@attendly/protocol';
 import { createSign } from 'node:crypto';
 import { switchOn } from './flags';
 import type { Db } from '../db';
+import { onNewNotifications } from './notify';
 
 interface ServiceAccount {
   project_id: string;
@@ -186,12 +187,20 @@ export function startPushDispatcher(
     if (delivered.size) await db.query('update notifications set push_ok = true where id = any($1::bigint[])', [[...delivered]]);
     return rows.length;
   };
+  let again = false;
   const tick = async () => {
-    if (running) return;
+    // Asked while a round is running: run once more right after it, so nothing waits for the next poll.
+    if (running) {
+      again = true;
+      return;
+    }
     running = true;
     try {
-      // Keep going until the queue is empty, so a broadcast to thousands goes out in seconds.
-      for (let i = 0; i < 40 && (await round()) === BATCH; i++);
+      do {
+        again = false;
+        // Keep going until the queue is empty, so a broadcast to thousands goes out in seconds.
+        for (let i = 0; i < 40 && (await round()) === BATCH; i++);
+      } while (again);
     } catch (err) {
       log('push dispatcher error', { err: (err as Error).message });
     } finally {
@@ -199,5 +208,20 @@ export function startPushDispatcher(
     }
   };
   const t = setInterval(() => void tick(), 2000);
-  return () => clearInterval(t);
+  // New notifications ask for a round right away — twice, since the writing transaction commits a moment later.
+  const soon = new Set<ReturnType<typeof setTimeout>>();
+  onNewNotifications(() => {
+    for (const ms of [120, 700]) {
+      const h = setTimeout(() => {
+        soon.delete(h);
+        void tick();
+      }, ms);
+      soon.add(h);
+    }
+  });
+  return () => {
+    clearInterval(t);
+    onNewNotifications(null);
+    for (const h of soon) clearTimeout(h);
+  };
 }

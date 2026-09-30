@@ -88,7 +88,9 @@ Each requirement has an ID so tests, issues and commits can refer to it.
 | FR-CL-11 | The professor can add a missed student or remove a mark with a written reason. Professors can correct for 14 days, admins at any time. Every change is audited. |
 | FR-CL-12 | **Big screen:** a browser at `/present` shows a pairing code. The professor approves it in the app. The screen only ever receives the current QR picture, never the class secret. |
 | FR-CL-14 | A class closes itself as soon as every enrolled student is marked present (audited as `session.auto_end`); the professor sees why. |
-| FR-CL-15 | **Layered scans** (fests, webinars): the professor sets 1–5 scans per class and opens each round; a student is present only after scanning in every round, and is notified when a round opens. |
+| FR-CL-15 | **Layered scans** (fests, webinars): 1–4 scans per student, set when scheduling (weekly slot, extra class, or the class page before it starts — fixed once anyone scans). Each round has its own QR key; a student's rounds must be scanned in order from the same phone and form a hash chain that is re-verified before they are marked present. When everyone has the open round, the professor's screen shows "Round k complete → Show round k+1 code"; students are notified when a round opens. |
+| FR-CL-16 | A register that leaves everyone present, or the last round of a layered class completed by everyone, closes a running class by itself. A fresh register starts with nobody ticked (only existing scans). |
+| FR-CL-17 | Cover: "Assign now" (applied at once; teacher and students notified with the notes) or "Ask first" (the teacher accepts, then students are told). Who's free frees a teacher from the moment a class ended early. |
 | FR-CL-13 | **Attendance credit:** staff can credit a missed class (medical, fest, other) with a note. Credits count towards the percentage and can be undone. |
 
 ### 4.4 Timetable, planner and cover

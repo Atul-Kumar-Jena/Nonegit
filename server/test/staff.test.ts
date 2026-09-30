@@ -218,6 +218,9 @@ describe('running a class', () => {
 
     const first = ok(await teacher.call('POST', `/v1/staff/sessions/${sessionId}/register`, body));
     expect(first).toMatchObject({ present: 3, absent: 0, changed: 1, duplicate: false });
+    // With everyone now present, the running class closed itself (the QR stops working).
+    const after = StaffSession.parse(SessionWithSecret.parse(ok(await teacher.call('GET', `/v1/staff/sessions/${sessionId}`))).session);
+    expect(after).toMatchObject({ status: 'closed', autoEnded: true });
     const again = ok(await teacher.call('POST', `/v1/staff/sessions/${sessionId}/register`, body));
     expect(again.duplicate).toBe(true);
 
@@ -231,12 +234,11 @@ describe('running a class', () => {
     // The student can't re-add themselves by scanning again.
     const qr = encodeQrToken(secret, sessionId, currentQrSeq(ctx.clock.now, 5));
     const rescan = await student.call('POST', '/v1/attendance/mark', { qr, location: loc() });
-    expect(rescan.json().error.rejection.code).toBe('E-REVOKED');
+    expect(['E-REVOKED', 'E-SESSION-CLOSED']).toContain(rescan.json().error.rejection.code);
     // Their percentage reflects it.
     const detail = SubjectDetailResponse.parse(ok(await student.call('GET', `/v1/me/subjects/${courseId}`)));
-    // While the class is still running it isn't counted as held yet (it is once it ends — see the report test).
-    expect(detail.subject).toMatchObject({ attended: 0, held: 0 });
-    expect(detail.history.find((h) => h.sessionId === sessionId)).toMatchObject({ status: 'live' });
+    // The class closed itself when the register had everyone, so it counts as held.
+    expect(detail.subject).toMatchObject({ attended: 0, held: 1 });
     expect(detail.history.some((h) => h.status === 'upcoming')).toBe(true);
   });
 
@@ -360,7 +362,7 @@ describe('institution', () => {
 
   it('every staff action is in the tamper-evident audit log', async () => {
     const actions = (await ctx.db.query<{ action: string }>(`select distinct action from audit_log`)).rows.map((r) => r.action);
-    for (const a of ['room.create', 'course.create', 'person.create', 'timetable.create', 'register.save', 'session.end', 'flag.review', 'device_request.approve', 'offline_pack.issued'])
+    for (const a of ['room.create', 'course.create', 'person.create', 'timetable.create', 'register.save', 'session.auto_end', 'flag.review', 'device_request.approve', 'offline_pack.issued'])
       expect(actions).toContain(a);
     expect((await verifyAuditChain(ctx.db)).ok).toBe(true);
   });

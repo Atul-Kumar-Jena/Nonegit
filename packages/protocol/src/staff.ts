@@ -224,6 +224,8 @@ export const Slot = z.object({
   room: z.object({ id: uuid, name: z.string() }).nullable(),
   mode: SessionMode,
   rotationS: z.number().int(),
+  /** Layered scans: students scan this many times in each class (1 = once). */
+  scanRounds: z.number().int().min(1).max(5).default(1),
   validFrom: YMD,
   validUntil: YMD.nullable(),
   active: z.boolean(),
@@ -239,6 +241,7 @@ export const SlotBody = z
     roomId: uuid.nullable().optional(),
     mode: SessionMode.default('qr'),
     rotationS: z.number().int().min(3).max(60).default(5),
+    scanRounds: z.number().int().min(1).max(4).default(1),
     validFrom: YMD.optional(),
     validUntil: YMD.nullable().optional(),
     active: z.boolean().default(true),
@@ -286,6 +289,8 @@ export const StaffSession = z.object({
   scanRounds: z.number().int().min(1).max(5).default(1),
   roundNo: z.number().int().min(1).max(5).default(1),
   roundCounts: z.array(z.number().int()).default([]),
+  /** Everyone still expected has scanned the round now open: time to show the next round's code. */
+  roundDone: z.boolean().default(false),
   /** The class closed itself because every enrolled student was marked. */
   autoEnded: z.boolean().default(false),
 });
@@ -304,6 +309,7 @@ export const CreateSessionBody = z
     roomId: uuid.nullable().optional(),
     mode: SessionMode.default('qr'),
     rotationS: z.number().int().min(3).max(60).default(5),
+    scanRounds: z.number().int().min(1).max(4).default(1),
   })
   .refine((s) => s.end > s.start, { message: 'End time must be after start time', path: ['end'] });
 export type CreateSessionBody = z.infer<typeof CreateSessionBody>;

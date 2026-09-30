@@ -3,10 +3,11 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { CalendarRange, ChevronRight, ClipboardList, Clock4, Plus, QrCode, UserPlus } from 'lucide-react-native';
 import { Screen } from '@kit/components/Screen';
-import { Badge, Button, Card, ErrorState, Loading, SectionLabel, Text } from '@kit/components/ui';
+import { Badge, Card, ErrorState, Loading, SectionLabel, Text } from '@kit/components/ui';
+import { ActionTiles } from '@kit/components/Features';
 import { dayLabel } from '@kit/lib/format';
 import { useApi } from '@kit/state/session';
-import { colors, fonts, radius } from '@kit/theme';
+import { colors, fonts } from '@kit/theme';
 import { Empty, WEEKDAYS } from '@/components/forms';
 import { SessionCard } from '@/components/SessionCard';
 import { useLocalSessions, withLocal } from '@/local-sessions';
@@ -61,36 +62,32 @@ export default function Timetable() {
         void week.refetch();
       }}
       refreshing={q.isRefetching}
+      fab={admin ? { label: 'Add slot', icon: <Plus color={colors.ink} size={18} />, onPress: () => router.push({ pathname: '/slot-form', params: { weekday: String(day) } }), tabbed: true } : null}
     >
-      <Text variant="label" style={{ marginTop: 4 }}>
-        Weekly
+      <Text variant="title" style={{ marginTop: 4 }}>
+        Timetable
       </Text>
-      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <Text variant="title" style={{ flex: 1, marginTop: 4 }}>
-          Timetable
-        </Text>
-        {admin ? <Button title="Add slot" compact kind="secondary" onPress={() => router.push({ pathname: '/slot-form', params: { weekday: String(day) } })} icon={<Plus color={colors.text} size={16} />} /> : null}
-      </View>
       <Text variant="small" style={{ marginTop: 4 }}>
-        {admin ? 'Slots repeat every week and create classes 14 days ahead — for every teacher and student app.' : 'Your weekly classes. Ask an admin to change a slot.'}
+        {admin ? 'Weekly slots repeat every week and create classes 14 days ahead.' : 'Your weekly classes. Ask an admin to change a slot.'}
       </Text>
 
-      {planner ? (
-        <Button title="Open the planner (drag & drop)" onPress={() => router.push('/planner')} icon={<CalendarRange color="#0a0a0a" size={16} />} style={{ marginTop: 12 }} />
-      ) : null}
-      <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
-        <Button title="Who’s free" kind="ghost" compact onPress={() => router.push('/busy')} icon={<Clock4 color={colors.text} size={14} />} />
-        {planner ? <Button title="Cover a class (drag a free teacher)" kind="ghost" compact onPress={() => router.push('/cover')} icon={<UserPlus color={colors.text} size={14} />} /> : null}
-      </View>
+      <ActionTiles
+        items={[
+          ...(planner ? [{ icon: <CalendarRange color={colors.text} size={18} />, label: 'Planner', onPress: () => router.push('/planner') }] : []),
+          { icon: <Clock4 color={colors.text} size={18} />, label: 'Who’s free', onPress: () => router.push('/busy') },
+          ...(planner ? [{ icon: <UserPlus color={colors.text} size={18} />, label: 'Cover a class', onPress: () => router.push('/cover') }] : []),
+        ]}
+      />
 
-      <ScrollView horizontal showsHorizontalScrollIndicator persistentScrollbar indicatorStyle="white" contentContainerStyle={styles.days} style={{ marginTop: 16, marginHorizontal: -20 }}>
+      <SectionLabel>Weekly slots</SectionLabel>
+      <ScrollView horizontal showsHorizontalScrollIndicator persistentScrollbar indicatorStyle="white" contentContainerStyle={styles.days} style={{ marginHorizontal: -20 }}>
         {WEEKDAYS.map(({ value: d, label }) => {
           const on = d === day;
           const count = byDay.get(d)?.length ?? 0;
           return (
             <Pressable key={d} onPress={() => setDay(d)} accessibilityRole="tab" accessibilityState={{ selected: on }} style={[styles.day, on && styles.dayOn]}>
-              <Text style={[styles.dayText, on && { color: colors.text }]}>{label}</Text>
-              <Text style={[styles.dayCount, on && { color: colors.cyan }]}>{count || '–'}</Text>
+              <Text style={[styles.dayText, on && { color: colors.ink }]}>{label}</Text>
+              <Text style={[styles.dayCount, on && { color: colors.ink }]}>{count || '–'}</Text>
             </Pressable>
           );
         })}
@@ -98,7 +95,7 @@ export default function Timetable() {
 
       <View style={{ gap: 10, marginTop: 14 }}>
         {slots.length === 0 ? (
-          <Empty title="Nothing on this day" message={admin ? 'Tap “Add slot” to schedule a weekly class.' : undefined} />
+          <Empty title="Nothing on this day" message={admin ? 'Tap “Add slot” below to schedule a weekly class.' : undefined} />
         ) : (
           slots.map((s) => (
             <Pressable
@@ -154,9 +151,9 @@ export default function Timetable() {
 
 const styles = StyleSheet.create({
   days: { paddingHorizontal: 20, gap: 8 },
-  day: { width: 54, paddingVertical: 10, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, alignItems: 'center', gap: 2 },
-  dayOn: { borderColor: 'rgba(255, 255, 255, 0.5)', backgroundColor: 'rgba(255, 255, 255, 0.08)' },
-  dayText: { fontFamily: fonts.medium, fontSize: 13, color: colors.textMuted },
+  day: { width: 54, paddingVertical: 10, borderRadius: 16, borderWidth: 1, borderColor: colors.borderHi, backgroundColor: colors.cardHi, alignItems: 'center', gap: 2 },
+  dayOn: { borderColor: colors.text, backgroundColor: colors.text },
+  dayText: { fontFamily: fonts.semibold, fontSize: 13, color: colors.textMuted },
   dayCount: { fontFamily: fonts.mono, fontSize: 11, color: colors.textDim },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   time: { fontFamily: fonts.monoMedium, fontSize: 14, color: colors.text },

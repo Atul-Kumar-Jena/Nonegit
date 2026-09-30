@@ -26,7 +26,11 @@ export default function NoticesScreen({ canCompose = false }: { canCompose?: boo
   const unread = pages[0]?.unread ?? 0;
 
   return (
-    <Screen onRefresh={() => void q.refetch()} refreshing={q.isRefetching}>
+    <Screen
+      onRefresh={() => void q.refetch()}
+      refreshing={q.isRefetching}
+      fab={canCompose ? { label: 'New notice', icon: <PenSquare color={colors.ink} size={17} />, onPress: () => router.push('/notice-compose' as never) } : null}
+    >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
         <IconButton label="Back" onPress={() => (router.canGoBack() ? router.back() : router.replace('/home'))}>
           <ArrowLeft color={colors.text} size={18} />
@@ -50,7 +54,6 @@ export default function NoticesScreen({ canCompose = false }: { canCompose?: boo
         ) : null}
       </View>
 
-      {canCompose ? <Button title="New notice" onPress={() => router.push('/notice-compose' as never)} icon={<PenSquare color={colors.bg} size={16} />} style={{ marginTop: 16 }} /> : null}
 
       <View style={{ marginTop: 16, gap: 10 }}>
         <ChipRow
@@ -90,7 +93,7 @@ export default function NoticesScreen({ canCompose = false }: { canCompose?: boo
               <Card>
                 <Text variant="bodyStrong">{filter === 'unread' ? 'Nothing unread.' : 'No notices yet.'}</Text>
                 <Text variant="small" style={{ marginTop: 4 }}>
-                  {canCompose ? 'Tap “New notice” to send one to a batch, your subjects, or (with permission) everyone.' : 'Announcements from your institution and professors appear here, with a notification.'}
+                  {canCompose ? 'Tap “New notice” below to send one to a batch, your subjects, or (with permission) everyone.' : 'Announcements from your institution and professors appear here, with a notification.'}
                 </Text>
               </Card>
             ) : (

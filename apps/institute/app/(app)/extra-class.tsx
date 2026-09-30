@@ -6,7 +6,7 @@ import { Screen } from '@kit/components/Screen';
 import { Button, Notice, Text } from '@kit/components/ui';
 import { useApi } from '@kit/state/session';
 import { staffApi } from '@/api';
-import { Chips, DateField, Field, Header, Select, TimeField, firstIssue, fromMinutes, toMinutes } from '@/components/forms';
+import { Chips, DateField, Field, Header, ScansField, Select, TimeField, firstIssue, fromMinutes, toMinutes } from '@/components/forms';
 import { useCourses, useOverview, useRooms } from '@/queries';
 import { BatchCoursePicker } from '@/components/BatchCoursePicker';
 import { ScheduleHints } from '@/components/ScheduleHints';
@@ -35,6 +35,7 @@ export default function ExtraClass() {
   const [roomId, setRoomId] = useState<string | null>(params.roomId ?? null);
   const teacherId = params.teacherId ?? null;
   const [mode, setMode] = useState<SessionMode | null>(null);
+  const [scanRounds, setScanRounds] = useState(1);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,7 +44,7 @@ export default function ExtraClass() {
 
   async function save() {
     setError(null);
-    const parsed = CreateSessionBody.safeParse({ courseId, date, start, end, roomId, mode: m });
+    const parsed = CreateSessionBody.safeParse({ courseId, date, start, end, roomId, mode: m, scanRounds: m === 'qr' ? scanRounds : 1 });
     if (!courseId) return setError('Choose the batch and subject.');
     if (!parsed.success) return setError(firstIssue(parsed.error));
     setBusy(true);
@@ -80,6 +81,7 @@ export default function ExtraClass() {
       <Field label="Attendance by">
         <Chips value={m} options={[{ value: 'qr', label: 'QR scan' }, { value: 'manual', label: 'Register' }]} onChange={setMode} />
       </Field>
+      {m === 'qr' ? <ScansField value={scanRounds} onChange={setScanRounds} /> : null}
       {error ? <Notice tone="red" message={error} /> : null}
       <Button title="Add class" onPress={() => void save()} loading={busy} style={{ marginTop: 20 }} />
     </Screen>

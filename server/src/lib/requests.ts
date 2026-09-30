@@ -159,14 +159,9 @@ export async function createCoverRequest(tx: PoolClient, deps: Deps, auth: AuthC
   const check = await publishOps(tx, deps, auth, [op], { dryRun: true, acceptWarnings: body.acceptWarnings });
   if (blocked(check.conflicts, check.errors, body.acceptWarnings)) return { status: 'refused', request: null, conflicts: check.conflicts, errors: check.errors, notified: 0 };
 
-  // No one to ask: you take it yourself, or it goes back to its own teacher.
-  if (target.id === auth.userId || target.id === s.instructor_id) {
-    const r = await publishOps(tx, deps, auth, [op], { acceptWarnings: true, note: body.noteToStudents ?? null });
-    return { status: 'applied', request: null, conflicts: r.conflicts, errors: r.errors, notified: r.notified };
-  }
-
   const now = new Date(deps.clock());
-  // A newer request replaces an older one for the same class (its teacher is told).
+  // A newer request (or a direct assignment) replaces an older one for the same class (its teacher is told).
+  const direct = target.id === auth.userId || target.id === s.instructor_id || body.mode === 'assign';
   const prev = await tx.query<{ id: string; target_id: string }>(
     `update change_requests set status = 'cancelled', decided_at = $2, decided_by = $3
       where session_id = $1 and kind = 'cover' and status = 'pending' returning id, target_id`,
@@ -181,6 +176,18 @@ export async function createCoverRequest(tx: PoolClient, deps: Deps, auth: AuthC
       await insertNotifications(tx, auth.tenantId, [
         { userId: p.target_id, kind: 'request', title: `Request withdrawn · ${course.code}`, body: `${me} no longer needs you for ${course.code} on ${when}.`, data: { requestId: p.id, sessionId: s.id } },
       ]);
+
+  // No one to ask: you take it yourself, it goes back to its own teacher, or you assign it outright.
+  if (direct) {
+    const r = await publishOps(tx, deps, auth, [op], { acceptWarnings: true, note: body.noteToStudents ?? null });
+    if (body.mode === 'assign' && target.id !== auth.userId && body.noteToTeacher) {
+      await insertNotifications(tx, auth.tenantId, [
+        { userId: target.id, kind: 'request', title: `Note from ${me} · ${course.code}`, body: `“${body.noteToTeacher}”`, data: { sessionId: s.id } },
+      ]);
+    }
+    if (body.mode === 'assign') await staffAudit(tx, auth, 'cover.assign', `session:${s.id}`, { teacher: target.id });
+    return { status: 'applied', request: null, conflicts: r.conflicts, errors: r.errors, notified: r.notified };
+  }
 
   const { rows } = await tx.query<{ id: string }>(
     `insert into change_requests(tenant_id, kind, topic, session_id, requested_by, target_id, note_to_teacher, note_to_students, created_at)
@@ -341,7 +348,7 @@ export async function createStudentRequest(tx: PoolClient, deps: Deps, auth: Aut
  * yourself or give it back to the course's own teacher: nobody gets a class without saying yes.
  */
 export async function needsApproval(db: Queryable, auth: AuthContext, op: DraftOp): Promise<boolean> {
-  if (op.op !== 'substitute' || !op.teacherId || op.teacherId === auth.userId) return false;
+  if (op.op !== 'substitute' || !op.teacherId || op.teacherId === auth.userId || op.assign) return false;
   const { rows } = await db.query<{ instructor_id: string | null }>(
     'select c.instructor_id from class_sessions s join courses c on c.id = s.course_id where s.id = $1 and s.tenant_id = $2',
     [op.sessionId, auth.tenantId],

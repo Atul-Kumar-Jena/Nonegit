@@ -19,6 +19,11 @@ export const CoverRequestBody = z.object({
   noteToStudents: RequestNote.optional(),
   /** The admin saw a "students have another class then" warning and goes ahead. */
   acceptWarnings: z.boolean().default(false),
+  /**
+   * 'assign': the class is theirs at once and the students are told now (with the note);
+   * 'ask': the teacher accepts first, and only then are the students told.
+   */
+  mode: z.enum(['assign', 'ask']).default('ask'),
 });
 export type CoverRequestBody = z.infer<typeof CoverRequestBody>;
 

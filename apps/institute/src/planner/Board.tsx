@@ -297,6 +297,8 @@ export function Board(p: BoardProps) {
 
   const targetAt = useCallback(
     (x: number, y: number, box: { w: number; h: number; fx: number; fy: number }, src: DragSource): DropTarget | null => {
+      // Only over the visible grid: a finger still on the tray below (or on the headers) aims at nothing.
+      if (y < origin.current.grid.y - 4 || y > origin.current.grid.y + vpH - HEADER_H + 4) return null;
       const gx = x - origin.current.grid.x + scroll.current.x - GUTTER;
       const gy = y - origin.current.grid.y + scroll.current.y;
       const dayIdx = Math.floor(gx / colW);
@@ -313,7 +315,7 @@ export function Board(p: BoardProps) {
       );
       return { date, startMin, overKey: over?.key ?? null };
     },
-    [colW, p.days, p.items, gridH, dayStart, ppm],
+    [colW, p.days, p.items, gridH, dayStart, ppm, vpH],
   );
 
   /** A time that has already gone: nothing can be moved or added there (shown while dragging). */
@@ -368,12 +370,15 @@ export function Board(p: BoardProps) {
       const gy0 = origin.current.grid.y;
       let dx = 0;
       let dy = 0;
-      if (gridW > vpW + 1) {
+      const gyEnd = gy0 + (vpH - HEADER_H);
+      // Scroll only while the finger is on the grid, close to one of its edges — never from the tray below it.
+      const onGrid = y >= gy0 && y <= gyEnd;
+      if (onGrid && gridW > vpW + 1) {
         if (x < gx0 + 36) dx = -14;
         else if (x > gx0 + vpW - 36) dx = 14;
       }
-      if (y < gy0 + 30) dy = -14;
-      else if (y > gy0 + (vpH - HEADER_H) - 30) dy = 14;
+      if (onGrid && y < gy0 + 30) dy = -14;
+      else if (onGrid && y > gyEnd - 30) dy = 14;
       if (!dx && !dy) return;
       const nx = Math.max(0, Math.min(gridW - vpW, scroll.current.x + dx));
       const ny = Math.max(0, Math.min(gridH - (vpH - HEADER_H), scroll.current.y + dy));

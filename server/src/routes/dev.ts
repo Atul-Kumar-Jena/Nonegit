@@ -9,7 +9,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import QRCode from 'qrcode';
 import { z } from 'zod';
-import { currentQrSeq, encodeQrToken, msUntilNextRotation, timingSafeEqual, utf8ToBytes } from '@attendly/protocol';
+import { currentQrSeq, encodeQrToken, msUntilNextRotation, qrRoundSecret, timingSafeEqual, utf8ToBytes } from '@attendly/protocol';
 import type { Deps } from '../deps';
 import { withTx } from '../db';
 import { appendAudit } from '../lib/audit';
@@ -158,6 +158,8 @@ export async function devRoutes(app: FastifyInstance, deps: Deps) {
     const { id } = z.object({ id: z.uuid() }).parse(req.params);
     const { rows } = await deps.db.query<{
       qr_secret: Buffer;
+      scan_rounds: number;
+      round_no: number;
       started_at: Date;
       rotation_s: number;
       status: string;
@@ -169,7 +171,7 @@ export async function devRoutes(app: FastifyInstance, deps: Deps) {
       marked: number;
       enrolled: number;
     }>(
-      `select s.qr_secret, s.started_at, s.rotation_s, s.status, s.short_code, s.room, s.radius_m, c.code, c.title,
+      `select s.qr_secret, s.started_at, s.rotation_s, s.scan_rounds, s.round_no, s.status, s.short_code, s.room, s.radius_m, c.code, c.title,
               (select count(*) from attendance_records a where a.session_id = s.id) as marked,
               (select count(*) from enrollments e where e.course_id = s.course_id) as enrolled
          from class_sessions s join courses c on c.id = s.course_id where s.id = $1`,
@@ -179,7 +181,7 @@ export async function devRoutes(app: FastifyInstance, deps: Deps) {
     if (!s || s.status !== 'live') throw new ApiError(404, 'NOT_FOUND', 'Session is not live');
     const now = deps.clock();
     const seq = currentQrSeq(now, s.rotation_s);
-    const token = encodeQrToken(s.qr_secret, id, seq);
+    const token = encodeQrToken(qrRoundSecret(s.qr_secret, s.scan_rounds > 1 ? s.round_no : 1), id, seq);
     const svg = await QRCode.toString(token, { type: 'svg', errorCorrectionLevel: 'M', margin: 1, color: { dark: '#050814', light: '#ffffff' } });
     return {
       seq,

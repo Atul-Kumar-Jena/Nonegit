@@ -64,6 +64,23 @@ beforeAll(async () => {
 afterAll(async () => ctx?.close());
 
 describe('cover requests (admin drags a free teacher onto a class)', () => {
+  it('assign now: the class is theirs at once and the students get the note straight away', async () => {
+    const s = await scheduled(seed.courseId, 3, '12:00');
+    const aaravBefore = await lastNoteId(aarav);
+    const t3Before = await lastNoteId(t3);
+    const r = ok(
+      await admin.call('POST', '/v1/staff/cover-requests', { sessionId: s.id, teacherId: t3Id, mode: 'assign', noteToTeacher: 'Cover unit 3 please', noteToStudents: 'Bring your lab records' }),
+    );
+    expect(r.status).toBe('applied');
+    expect(await substituteOf(s.id)).toEqual({ substitute_id: t3Id, change_note: 'Bring your lab records' });
+    const studentNote = (await newNotes(aarav, aaravBefore))[0]!;
+    expect(studentNote.title).toBe('Different teacher · CS-301');
+    expect(studentNote.body).toContain('“Bring your lab records”');
+    const teacherNotes = await newNotes(t3, t3Before);
+    expect(teacherNotes.some((n) => n.body.includes('You’re taking CS-301'))).toBe(true);
+    expect(teacherNotes.some((n) => n.body.includes('“Cover unit 3 please”'))).toBe(true);
+  });
+
   it('asks the teacher with a note; nothing changes and no student hears anything until they accept', async () => {
     const s = await scheduled(seed.courseId, 2, '10:00');
     const aaravBefore = await lastNoteId(aarav);

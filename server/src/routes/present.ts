@@ -21,6 +21,7 @@ import {
   PresentCodeBody,
   currentQrSeq,
   encodeQrToken,
+  qrRoundSecret,
   hmacSha256,
   msUntilNextRotation,
   randomBytes,
@@ -189,6 +190,8 @@ export async function presentRoutes(app: FastifyInstance, deps: Deps) {
       mode: string;
       qr_secret: Buffer;
       rotation_s: number;
+      scan_rounds: number;
+      round_no: number;
       short_code: string;
       lecture_no: number | null;
       code: string;
@@ -197,7 +200,7 @@ export async function presentRoutes(app: FastifyInstance, deps: Deps) {
       marked: number;
       enrolled: number;
     }>(
-      `select s.status, s.mode, s.qr_secret, s.rotation_s, s.short_code, s.lecture_no, c.code, c.title, coalesce(r.name, s.room) as room,
+      `select s.status, s.mode, s.qr_secret, s.rotation_s, s.scan_rounds, s.round_no, s.short_code, s.lecture_no, c.code, c.title, coalesce(r.name, s.room) as room,
               (select count(*)::int from attendance_records a where a.session_id = s.id and a.revoked_at is null) as marked,
               (select count(*)::int from enrollments e join users u on u.id = e.user_id and u.status = 'active' and u.role = 'student' where e.course_id = s.course_id) as enrolled
          from class_sessions s join courses c on c.id = s.course_id left join rooms r on r.id = s.room_id
@@ -208,7 +211,8 @@ export async function presentRoutes(app: FastifyInstance, deps: Deps) {
     const cls = c ? { courseCode: c.code, courseTitle: c.title, room: c.room, lectureNo: c.lecture_no, sessionCode: c.short_code } : null;
     if (!c || c.status !== 'live' || c.mode !== 'qr') return { status: 'ended' as const, class: cls };
     const seq = currentQrSeq(t, c.rotation_s);
-    const token = encodeQrToken(new Uint8Array(c.qr_secret), p.session_id, seq);
+    // Layered class: the code of the round that is open now (each round has its own key).
+    const token = encodeQrToken(qrRoundSecret(new Uint8Array(c.qr_secret), c.scan_rounds > 1 ? c.round_no : 1), p.session_id, seq);
     const svg = await QRCode.toString(token, { type: 'svg', errorCorrectionLevel: 'M', margin: 1, color: { dark: '#000000', light: '#ffffff' } });
     return {
       status: 'live' as const,

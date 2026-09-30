@@ -11,6 +11,7 @@ interface Occurrence {
   course_id: string;
   mode: 'qr' | 'manual';
   rotation_s: number;
+  scan_rounds: number;
   room_id: string | null;
   room_name: string | null;
   lat: number | null;
@@ -46,7 +47,7 @@ export async function materializeTimetable(db: Db, opts: { tenantId?: string; sl
         where extract(dow from d) = s.weekday
           and d::date >= s.valid_from and (s.valid_until is null or d::date <= s.valid_until)
      )
-     select o.id as slot_id, o.tenant_id, o.course_id, o.mode, o.rotation_s, o.room_id, o.room_name, o.lat, o.lng, o.radius_m, o.created_by,
+     select o.id as slot_id, o.tenant_id, o.course_id, o.mode, o.rotation_s, o.scan_rounds, o.room_id, o.room_name, o.lat, o.lng, o.radius_m, o.created_by,
             ((o.day + o.start_time) at time zone o.timezone) as starts,
             ((o.day + o.end_time) at time zone o.timezone) as ends,
             to_char(o.day, 'YYYY-MM-DD') as day
@@ -71,6 +72,7 @@ export async function materializeTimetable(db: Db, opts: { tenantId?: string; sl
           lng: o.lng,
           radiusM: o.radius_m ?? 50,
           rotationS: o.rotation_s,
+          scanRounds: o.scan_rounds,
           status: 'scheduled',
           scheduledStart: o.starts,
           scheduledEnd: o.ends,

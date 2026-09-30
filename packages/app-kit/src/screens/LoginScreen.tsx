@@ -1,15 +1,14 @@
 import { useState } from 'react';
-import { ActivityIndicator, Pressable, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { Redirect, router } from 'expo-router';
-import { ArrowRight, BadgeCheck, Building2, Mail, Phone } from 'lucide-react-native';
+import { ArrowRight, BadgeCheck, Building2, KeyRound, Mail, Phone } from 'lucide-react-native';
 import { EmailIdentifier, PhoneIdentifier, formatInstitutionCode, type Channel } from '@attendly/protocol';
 import { LogoMark } from '../components/Logo';
 import { Screen } from '../components/Screen';
-import { Badge, Button, Card, Input, Notice, Segmented, Text } from '../components/ui';
+import { Button, Card, Input, Notice, Segmented, Text } from '../components/ui';
 import { ApiRequestError } from '../lib/api-core';
-import { displayHost } from '../lib/server-config';
 import { useSession } from '../state/session';
-import { colors } from '../theme';
+import { colors, fonts } from '../theme';
 
 const CHANNELS = [
   { value: 'email', label: 'Email' },
@@ -87,11 +86,16 @@ export default function Login() {
 
   return (
     <Screen keyboard contentStyle={{ paddingTop: 28 }}>
-      <LogoMark size={30} withName />
+      {/* Long-press the logo to see or change the server (for IT staff; nobody else needs it). */}
+      <Pressable onLongPress={() => router.push('/server')} delayLongPress={1200} accessibilityLabel={audience.appName} style={{ alignSelf: 'flex-start' }}>
+        <LogoMark size={30} withName />
+      </Pressable>
       <View style={{ gap: 6, marginTop: 22 }}>
         <Text variant="title">Sign in</Text>
         <Text variant="body">
-          {audience.allowedRoles.includes('student') ? 'Use your institution-issued ID.' : `${audience.appName} — for teachers and administrators. Use the email your institution registered.`}
+          {audience.allowedRoles.includes('student')
+            ? 'Use the email your institution gave you — the one on your college records.'
+            : `${audience.appName} is for professors and admins. Use the email your institution registered for you.`}
         </Text>
       </View>
       {audience.institutionGate && institution ? (
@@ -132,7 +136,7 @@ export default function Login() {
         </View>
       ) : null}
       <Text variant="label" style={{ marginTop: 22, marginBottom: 8 }}>
-        {channel === 'email' ? 'Institution email' : 'Registered mobile number'}
+        {channel === 'email' ? 'Your institution email' : 'Your registered mobile number'}
       </Text>
       <Input
         value={value}
@@ -140,7 +144,7 @@ export default function Login() {
           setValue(t);
           if (error) setError(null);
         }}
-        placeholder={channel === 'email' ? 'you@iit.ac.in' : '+91 98765 43210'}
+        placeholder={channel === 'email' ? 'name@yourcollege.edu' : '+91 98765 43210'}
         autoCapitalize="none"
         autoCorrect={false}
         autoComplete={channel === 'email' ? 'email' : 'tel'}
@@ -152,19 +156,44 @@ export default function Login() {
         invalid={!!error}
         accessibilityLabel={channel === 'email' ? 'Institution email' : 'Mobile number'}
       />
-      <View style={{ marginTop: 12 }}>
-        <Badge label="Verified institutions only" tone="cyan" />
-      </View>
       {error ? (
         <View style={{ marginTop: 14 }}>
           <Notice message={error} tone="red" />
         </View>
       ) : null}
-      <Button title="Send OTP" onPress={() => void submit()} loading={busy} disabled={!value.trim()} style={{ marginTop: 22 }} icon={<ArrowRight color="#0a0a0a" size={18} />} />
-      <Pressable onPress={() => router.push('/setup')} accessibilityRole="button" hitSlop={8} style={{ marginTop: 16, alignSelf: 'flex-start' }}>
-        <Text variant="small" color={colors.text}>
-          First time? Sign in with a setup code and Google Authenticator
-        </Text>
+      <Button title="Continue" onPress={() => void submit()} loading={busy} disabled={!value.trim()} style={{ marginTop: 20 }} icon={<ArrowRight color={colors.ink} size={18} />} />
+
+      {/* What really happens, in three plain steps. */}
+      <Card style={{ marginTop: 22, gap: 12 }}>
+        <Text variant="label">How signing in works</Text>
+        {[
+          ['1', 'Your institution email', 'The address your college registered for you — not a personal one, unless that’s the one they have.'],
+          ['2', 'A 6-digit code', 'From Google Authenticator once you’ve linked it; until then it’s emailed to you.'],
+          ['3', 'This phone becomes yours', 'Your account works on this one phone. Changing phones needs your institution’s OK.'],
+        ].map(([n, title, text]) => (
+          <View key={n} style={{ flexDirection: 'row', gap: 12 }}>
+            <View style={styles.step}>
+              <Text style={styles.stepText}>{n}</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text variant="bodyStrong" style={{ fontSize: 14 }}>
+                {title}
+              </Text>
+              <Text variant="small">{text}</Text>
+            </View>
+          </View>
+        ))}
+      </Card>
+
+      <Pressable onPress={() => router.push('/setup')} accessibilityRole="button" style={({ pressed }) => [styles.firstTime, pressed && { backgroundColor: colors.cardHi }]}>
+        <KeyRound color={colors.text} size={18} />
+        <View style={{ flex: 1 }}>
+          <Text variant="bodyStrong" style={{ fontSize: 14 }}>
+            First time? Use your setup code
+          </Text>
+          <Text variant="small">Got a code from your admin? Link Google Authenticator in a minute — no email needed after that.</Text>
+        </View>
+        <ArrowRight color={colors.textDim} size={16} />
       </Pressable>
       {demoAccounts.length ? (
         <View style={{ marginTop: 26, gap: 8 }}>
@@ -199,14 +228,15 @@ export default function Login() {
           ))}
         </View>
       ) : null}
-      <Text variant="body" style={{ marginTop: 22, color: colors.text }}>
+      <Text variant="small" style={{ marginTop: 22 }}>
         By continuing you agree to your institution’s attendance policy and privacy terms.
       </Text>
-      <Pressable onPress={() => router.push('/server')} accessibilityRole="button" style={{ marginTop: 28, alignSelf: 'flex-start' }} hitSlop={8}>
-        <Text variant="monoSmall">
-          Server: {displayHost(server.url)} · <Text variant="monoSmall" color={colors.cyan}>change</Text>
-        </Text>
-      </Pressable>
     </Screen>
   );
 }
+
+const styles = StyleSheet.create({
+  step: { width: 26, height: 26, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.cardHi, borderWidth: 1, borderColor: colors.borderHi },
+  stepText: { fontFamily: fonts.bold, fontSize: 12, color: colors.text },
+  firstTime: { marginTop: 12, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 16, borderWidth: 1, borderColor: colors.borderHi, backgroundColor: colors.card },
+});

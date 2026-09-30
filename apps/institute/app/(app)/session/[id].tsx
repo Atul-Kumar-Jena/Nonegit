@@ -16,7 +16,7 @@ import { staffApi } from '@/api';
 import { AdjustSheet } from '@/components/Adjust';
 import { CoverSheet } from '@/components/Requests';
 import { BigScreenSheet } from '@/components/BigScreen';
-import { Chips, Field, Header, confirmAction, RadiusField } from '@/components/forms';
+import { Chips, Field, Header, ScansField, confirmAction, RadiusField } from '@/components/forms';
 import { StatusBadge } from '@/components/SessionCard';
 import { localSessions } from '@/local-sessions';
 import { qk, useFeed, useCan, useIsAdmin, useMe } from '@/queries';
@@ -47,6 +47,7 @@ export default function SessionScreen() {
   const [where, setWhere] = useState<'phone' | 'room' | null>(null);
   const [radius, setRadius] = useState<number | null>(null);
   const [rotation, setRotation] = useState<number | null>(null);
+  const [scans, setScans] = useState<number | null>(null);
   const [busy, setBusy] = useState<null | 'start' | 'end'>(null);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -101,7 +102,7 @@ export default function SessionScreen() {
           setInfo('Couldn’t get this phone’s location — using the room’s saved location instead.');
         }
       }
-      const body: StartSessionBody = { mode: m, ...(lat !== null ? { lat, lng, centerAccuracyM } : {}), radiusM: r, rotationS: rot, clientRef };
+      const body: StartSessionBody = { mode: m, ...(lat !== null ? { lat, lng, centerAccuracyM } : {}), radiusM: r, rotationS: rot, clientRef, ...(m === 'qr' ? { scanRounds: scans ?? s!.scanRounds ?? 1 } : {}) };
       try {
         const res = await staffApi.start(api, s!.id, body);
         qc.setQueryData(qk.session(s!.id), res);
@@ -240,6 +241,17 @@ export default function SessionScreen() {
               <Field label="QR changes every" hint="Faster = harder to share a photo of the code.">
                 <Chips value={rot} options={ROTATIONS} onChange={setRotation} />
               </Field>
+              <ScansField
+                value={scans ?? s.scanRounds ?? 1}
+                onChange={(n) => {
+                  setScans(n);
+                  // Saved on the class right away (fixed once anyone scans).
+                  void staffApi
+                    .scanRounds(api, s.id, n)
+                    .then(() => refresh())
+                    .catch((e: unknown) => (setScans(null), setError(e instanceof Error ? e.message : 'Couldn’t change the number of scans.')));
+                }}
+              />
             </Card>
           ) : (
             <Card tone="amber" style={{ marginTop: 12, flexDirection: 'row', gap: 12 }}>

@@ -39,6 +39,29 @@ export function FeatureGrid({ items }: { items: Feature[] }) {
   );
 }
 
+/** Two to four big, equal shortcut tiles in a row — for a screen's most-used jumps. */
+export function ActionTiles({ items }: { items: { icon: ReactNode; label: string; onPress: () => void }[] }) {
+  return (
+    <View style={styles.tiles}>
+      {items.map((a) => (
+        <Pressable
+          key={a.label}
+          onPress={a.onPress}
+          accessibilityRole="button"
+          accessibilityLabel={a.label}
+          style={({ pressed }) => [styles.tile2, pressed && { backgroundColor: colors.border, transform: [{ scale: 0.98 }] }]}
+        >
+          <Edge />
+          <View style={styles.rowIcon}>{a.icon}</View>
+          <Text variant="small" color={colors.text} style={styles.tileLabel} numberOfLines={2}>
+            {a.label}
+          </Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
 /** A titled group of one-line rows — calmer than a grid when there are many options. */
 export function FeatureList({ title, items }: { title: string; items: Feature[] }) {
   if (!items.length) return null;
@@ -111,6 +134,9 @@ export function InfoButton({ title, text }: { title: string; text: string | stri
 const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, overflow: 'hidden', backgroundColor: colors.card },
   tile: { width: '33.333%', minHeight: 96, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 10, borderColor: colors.border, borderRightWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth },
+  tiles: { flexDirection: 'row', gap: 10, marginTop: 14 },
+  tile2: { flex: 1, minHeight: 86, padding: 12, gap: 10, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, overflow: 'hidden', justifyContent: 'space-between' },
+  tileLabel: { fontFamily: fonts.semibold, fontSize: 13 },
   list: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, overflow: 'hidden', backgroundColor: colors.card },
   item: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 14, paddingVertical: 12 },
   rowIcon: { width: 36, height: 36, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },

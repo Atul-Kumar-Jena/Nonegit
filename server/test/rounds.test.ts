@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { qrRoundSecret } from '@attendly/protocol';
 import { at, createTestApp, liveToken, seedBasic, startLiveSession, TestDevice, type Seeded, type TestCtx } from './harness';
 
 let ctx: TestCtx;
@@ -42,35 +43,80 @@ describe('the class closes itself when everyone is marked', () => {
 });
 
 describe('layered scans (fests, webinars)', () => {
-  it('present only after every round; each round needs the professor to open it', async () => {
+  // Each round has its own key: the professor's screen shows round k's code only once round k is open.
+  const scanRound = (d: TestDevice, s: { id: string; secret: Uint8Array }, round: number) =>
+    d.call('POST', '/v1/attendance/mark', { qr: liveToken(ctx, { id: s.id, secret: qrRoundSecret(s.secret, round) }, 5), location: loc() });
+  const rejection = (r: { body: string }) => JSON.parse(r.body).error?.rejection?.code;
+  /** The class clock jumps ahead in these tests: keep everyone signed in like the apps do. */
+  const fresh = async () => {
+    for (const d of [aarav, priya, prof]) {
+      const r = await d.refresh();
+      if (r.statusCode === 200) d.adopt(r.json().auth ?? r.json());
+    }
+  };
+
+  it('present only after every round, scanned in order from one phone; each round has its own code', async () => {
     ctx.clock.now += 60_000;
     const s = await startLiveSession(ctx, { tenantId: seed.tenantId, courseId: seed.courseId, rotationS: 5 });
     expect(ok(await prof.call('POST', `/v1/staff/sessions/${s.id}/rounds`, { rounds: 3 })).scanRounds).toBe(3);
     // Round 1
-    const r1 = ok(await scan(aarav, s));
+    const r1 = ok(await scanRound(aarav, s, 1));
     expect(r1).toMatchObject({ status: 'round', round: { done: 1, required: 3, current: 1 } });
     // Scanning again in the same round changes nothing.
-    expect(ok(await scan(aarav, s)).round.done).toBe(1);
-    // Round 2 opens: students are told, and a new scan counts.
+    expect(ok(await scanRound(aarav, s, 1)).round.done).toBe(1);
+    // Round 2's code doesn't exist yet: nobody can get ahead.
+    expect(rejection(await scanRound(aarav, s, 2))).toBe('E-QR-INVALID');
+    // The number of scans is fixed once scanning has started.
+    expect((await prof.call('POST', `/v1/staff/sessions/${s.id}/rounds`, { rounds: 2 })).statusCode).toBe(409);
+    // Round 2 opens: students are told, and only the new code counts for it.
     ctx.clock.now += 6 * 60_000;
     const st = ok(await prof.call('POST', `/v1/staff/sessions/${s.id}/next-round`, {}));
-    expect(st).toMatchObject({ roundNo: 2, roundCounts: [1, 0, 0] });
+    expect(st).toMatchObject({ roundNo: 2, roundCounts: [1, 0, 0], roundDone: false });
     expect((await ctx.db.query(`select 1 from notifications where title like '%Scan again%' and user_id = $1`, [seed.studentId])).rowCount).toBe(1);
-    expect(ok(await scan(aarav, s)).round.done).toBe(2);
-    // Priya ran away after round 1? She joins only now: 1 of 3.
-    expect(ok(await scan(priya, s)).round).toMatchObject({ done: 1, current: 2 });
-    // Round 3: Aarav completes → present with a receipt; Priya can't catch up (round 1 is gone).
+    expect(ok(await scanRound(aarav, s, 2)).round.done).toBe(2);
+    // Priya skipped round 1: round 2 can't count for her — the chain has a gap.
+    expect(rejection(await scanRound(priya, s, 2))).toBe('E-ROUND');
+    // Round 3: Aarav completes → present with a receipt, and his chain head is kept with the record.
     ctx.clock.now += 6 * 60_000;
     ok(await prof.call('POST', `/v1/staff/sessions/${s.id}/next-round`, {}));
-    const done = ok(await scan(aarav, s));
+    const done = ok(await scanRound(aarav, s, 3));
     expect(done.status).toBe('present');
     expect(done.receipt.signature).toBeTruthy();
-    expect(ok(await scan(priya, s)).round).toMatchObject({ done: 2, required: 3 });
+    const rec = await ctx.db.query<{ round_chain: Buffer | null }>('select round_chain from attendance_records where session_id = $1 and user_id = $2', [s.id, seed.studentId]);
+    expect(rec.rows[0]!.round_chain?.length).toBe(32);
     const fin = ok(await prof.call('GET', `/v1/staff/sessions/${s.id}`)).session;
-    expect(fin).toMatchObject({ marked: 1, status: 'live' }); // not everyone completed: stays open
-    // No more rounds than set; can't change the count once someone is present.
+    expect(fin).toMatchObject({ marked: 1, status: 'live' }); // Priya isn't present: stays open
     expect((await prof.call('POST', `/v1/staff/sessions/${s.id}/next-round`, {})).statusCode).toBe(409);
-    expect((await prof.call('POST', `/v1/staff/sessions/${s.id}/rounds`, { rounds: 4 })).statusCode).toBe(409);
+  });
+
+  it('a round is “done” when everyone has it; after the last round everyone present closes the class', async () => {
+    ctx.clock.now += 60_000;
+    await fresh();
+    const s = await startLiveSession(ctx, { tenantId: seed.tenantId, courseId: seed.courseId, rotationS: 5 });
+    ok(await prof.call('POST', `/v1/staff/sessions/${s.id}/rounds`, { rounds: 2 }));
+    ok(await scanRound(aarav, s, 1));
+    expect(ok(await prof.call('GET', `/v1/staff/sessions/${s.id}`)).session.roundDone).toBe(false);
+    ok(await scanRound(priya, s, 1));
+    expect(ok(await prof.call('GET', `/v1/staff/sessions/${s.id}`)).session.roundDone).toBe(true);
+    ctx.clock.now += 6 * 60_000;
+    ok(await prof.call('POST', `/v1/staff/sessions/${s.id}/next-round`, {}));
+    expect(ok(await scanRound(aarav, s, 2)).status).toBe('present');
+    expect(ok(await scanRound(priya, s, 2)).status).toBe('present');
+    expect(ok(await prof.call('GET', `/v1/staff/sessions/${s.id}`)).session).toMatchObject({ status: 'closed', autoEnded: true, marked: 2 });
+  });
+
+  it('a tampered link breaks the chain: the student is not marked', async () => {
+    ctx.clock.now += 60_000;
+    await fresh();
+    const s = await startLiveSession(ctx, { tenantId: seed.tenantId, courseId: seed.courseId, rotationS: 5 });
+    ok(await prof.call('POST', `/v1/staff/sessions/${s.id}/rounds`, { rounds: 2 }));
+    ok(await scanRound(aarav, s, 1));
+    // Someone edits the stored round-1 scan (e.g. straight in the database).
+    await ctx.db.query('update scan_round_marks set qr_seq = qr_seq - 1 where session_id = $1 and user_id = $2', [s.id, seed.studentId]);
+    ctx.clock.now += 6 * 60_000;
+    ok(await prof.call('POST', `/v1/staff/sessions/${s.id}/next-round`, {}));
+    expect(rejection(await scanRound(aarav, s, 2))).toBe('E-ROUND');
+    expect((await ctx.db.query('select 1 from attendance_records where session_id = $1', [s.id])).rowCount).toBe(0);
   });
 });
 

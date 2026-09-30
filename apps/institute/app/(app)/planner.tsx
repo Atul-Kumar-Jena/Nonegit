@@ -461,6 +461,7 @@ function ClassSheet({
   const existingSub = ops.find((o) => o.op === 'substitute' && o.sessionId === item.sessionId) as Extract<DraftOp, { op: 'substitute' }> | undefined;
   const [noteToTeacher, setNoteToTeacher] = useState(existingSub?.noteToTeacher ?? '');
   const [noteToStudents, setNoteToStudents] = useState(existingSub?.noteToStudents ?? '');
+  const [assign, setAssign] = useState(existingSub?.assign ?? true);
   const dur = hmToMin(item.end) - hmToMin(item.start);
   const weeklyOnly = scope === 'weekly' && !!item.slotId;
 
@@ -543,9 +544,21 @@ function ClassSheet({
           />
           {!newOp && teacherId && teacherId !== course?.instructorId ? (
             <>
+              <Segmented
+                value={assign ? 'assign' : 'ask'}
+                options={[
+                  { value: 'assign', label: 'Assign now' },
+                  { value: 'ask', label: 'Ask first' },
+                ]}
+                onChange={(v) => setAssign(v === 'assign')}
+              />
               <Input value={noteToTeacher} onChangeText={setNoteToTeacher} placeholder="Note to the teacher (optional)" maxLength={300} />
               <Input value={noteToStudents} onChangeText={setNoteToStudents} placeholder="Note to the students (optional)" maxLength={300} />
-              <Text variant="small">On publish, the teacher is asked first. The class becomes theirs, and the students are told, when they accept.</Text>
+              <Text variant="small">
+                {assign
+                  ? 'On publish the class is theirs, and the teacher and every student are notified with your notes.'
+                  : 'On publish the teacher is asked first. The class becomes theirs, and the students are told, when they accept.'}
+              </Text>
             </>
           ) : null}
           <Button
@@ -560,6 +573,7 @@ function ClassSheet({
                     teacherId,
                     ...(noteToTeacher.trim() ? { noteToTeacher: noteToTeacher.trim() } : {}),
                     ...(noteToStudents.trim() ? { noteToStudents: noteToStudents.trim() } : {}),
+                    ...(assign && teacherId && teacherId !== course?.instructorId ? { assign: true } : {}),
                   }),
                 );
               onClose();

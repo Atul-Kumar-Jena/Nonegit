@@ -1,8 +1,10 @@
 import { useEffect, useRef, type ReactNode } from 'react';
+import { Pressable, Text as RNText } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { Dimensions, Keyboard, KeyboardAvoidingView, Platform, RefreshControl, ScrollView, StyleSheet, TextInput, View, type StyleProp, type ViewStyle } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets, type Edge } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { colors } from '../theme';
+import { colors, fonts } from '../theme';
 
 /** Near-black canvas with one soft grey glow, like attendly's site. */
 export function Backdrop() {
@@ -22,6 +24,7 @@ export function Screen({
   contentStyle,
   footer,
   keyboard = false,
+  fab,
 }: {
   children: ReactNode;
   scroll?: boolean;
@@ -32,6 +35,8 @@ export function Screen({
   footer?: ReactNode;
   /** @deprecated Every screen keeps the field being typed in above the keyboard now. */
   keyboard?: boolean;
+  /** The screen's main "add" action, floating at thumb height bottom-right. `tabbed`: the screen sits above the tab bar. */
+  fab?: { label: string; icon?: ReactNode; onPress: () => void; tabbed?: boolean } | null;
 }) {
   void keyboard;
   const insets = useSafeAreaInsets();
@@ -73,6 +78,22 @@ export function Screen({
             {footer ? <View style={{ paddingBottom: insets.bottom }}>{footer}</View> : null}
           </KeyboardAvoidingView>
         )}
+        {fab ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={fab.label}
+            onPress={() => {
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
+              fab.onPress();
+            }}
+            style={({ pressed }) => [styles.fab, { bottom: (fab.tabbed ? 0 : insets.bottom) + 18 }, pressed && { transform: [{ scale: 0.96 }], opacity: 0.92 }]}
+          >
+            {fab.icon}
+            <RNText style={styles.fabText} maxFontSizeMultiplier={1.2}>
+              {fab.label}
+            </RNText>
+          </Pressable>
+        ) : null}
       </SafeAreaView>
     </View>
   );
@@ -131,4 +152,21 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   // Bottom padding clears the tab bar, so the last item always scrolls fully into view.
   content: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 140 },
+  fab: {
+    position: 'absolute',
+    right: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    height: 54,
+    paddingHorizontal: 22,
+    borderRadius: 18,
+    backgroundColor: colors.text,
+    shadowColor: '#000',
+    shadowOpacity: 0.5,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 10,
+  },
+  fabText: { fontFamily: fonts.bold, fontSize: 15, color: colors.ink },
 });

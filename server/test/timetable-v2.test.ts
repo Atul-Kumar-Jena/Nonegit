@@ -169,6 +169,15 @@ describe('one-off adjustments by a teacher', () => {
     expect(avail.teachers.find((t: { id: string }) => t.id === t2Id).busy.some((b: { sessionId: string; substitute: boolean }) => b.sessionId === free.id && b.substitute)).toBe(true);
   });
 
+  it('who’s free: a class that ended early frees its teacher from the moment it ended', async () => {
+    const s = await scheduled(seed.courseId, 8, '10:00');
+    const ymd = (await ctx.db.query<{ d: string }>(`select to_char(scheduled_start at time zone 'Asia/Kolkata', 'YYYY-MM-DD') as d from class_sessions where id = $1`, [s.id])).rows[0]!.d;
+    await ctx.db.query(`update class_sessions set status = 'closed', started_at = scheduled_start, ended_at = scheduled_start + interval '20 minutes' where id = $1`, [s.id]);
+    const avail = ok(await admin.call('GET', `/v1/staff/availability?date=${ymd}`));
+    const b = avail.teachers.flatMap((t: { busy: { sessionId: string; start: string; end: string }[] }) => t.busy).find((x: { sessionId: string }) => x.sessionId === s.id);
+    expect(b).toMatchObject({ start: '10:00', end: '10:20' });
+  });
+
   it('cancelling with a reason tells students why; a class with attendance can’t be cancelled', async () => {
     const s = await scheduled(seed.courseId, 7, '12:00');
     const before = (await notificationsOf(aarav)).items.length;

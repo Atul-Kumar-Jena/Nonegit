@@ -59,6 +59,18 @@ describe('Firebase per app', () => {
       expect(ok.rows[0]!.n).toBe(2);
     });
 
+    it('a new notification is pushed at once, not at the next 2-second poll', async () => {
+      const got: number[] = [];
+      const stop = startPushDispatcher(ctx.db, { student: { send: async () => (got.push(Date.now()), 'ok') }, institute: { send: async () => 'ok' } }, () => undefined);
+      await new Promise((r) => setTimeout(r, 300)); // let the first poll pass
+      const t0 = Date.now();
+      await insertNotifications(ctx.db, seed.tenantId, [{ userId: seed.studentId, kind: 'notice', title: 'Now', body: 'b', data: {} }]);
+      for (let i = 0; i < 40 && !got.length; i++) await new Promise((r) => setTimeout(r, 50));
+      stop();
+      expect(got.length).toBe(1);
+      expect(got[0]! - t0).toBeLessThan(1000);
+    });
+
     it('an app without Firebase is skipped (its phones check for news themselves)', async () => {
       const got: string[] = [];
       await insertNotifications(ctx.db, seed.tenantId, [

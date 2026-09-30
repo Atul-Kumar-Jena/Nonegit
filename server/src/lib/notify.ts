@@ -34,6 +34,15 @@ export async function studentsOf(db: Queryable, courseIds: string[]): Promise<Ma
   return out;
 }
 
+let kicker: (() => void) | null = null;
+/** Set by the push dispatcher: called after new notifications are written. */
+export function onNewNotifications(fn: (() => void) | null): void {
+  kicker = fn;
+}
+function kickPush(): void {
+  kicker?.();
+}
+
 export async function insertNotifications(
   db: Queryable,
   tenantId: string,
@@ -45,6 +54,8 @@ export async function insertNotifications(
      select $1, u, k, t, b, d::jsonb from unnest($2::uuid[], $3::text[], $4::text[], $5::text[], $6::text[]) as x(u, k, t, b, d)`,
     [tenantId, list.map((n) => n.userId), list.map((n) => n.kind), list.map((n) => n.title), list.map((n) => n.body), list.map((n) => JSON.stringify(n.data))],
   );
+  // Wake the push dispatcher now instead of at its next poll (it only sees rows once their transaction commits).
+  kickPush();
   return list.length;
 }
 

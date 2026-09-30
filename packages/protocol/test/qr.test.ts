@@ -10,6 +10,8 @@ import {
   randomBytes,
   uuidToBytes,
   verifyQrMac,
+  qrRoundOf,
+  qrRoundSecret,
   QR_MAX_LENGTH,
   seqLabel,
 } from '../src';
@@ -89,3 +91,21 @@ describe('isQrFreshAt — a code dies when it changes', async () => {
     expect(isQrFreshAt(998, base + 100, 5)).toBe(false);
   });
 });
+
+describe('layered scans: one key per round', () => {
+  it('round 1 is the class key; later rounds get their own; a code says which round it is', () => {
+    const secret = randomBytes(32);
+    const sid = randomUUID();
+    expect(qrRoundSecret(secret, 1)).toBe(secret);
+    const k2 = qrRoundSecret(secret, 2);
+    expect(k2.length).toBe(32);
+    expect(Buffer.from(k2).equals(Buffer.from(secret))).toBe(false);
+    expect(Buffer.from(qrRoundSecret(secret, 3)).equals(Buffer.from(k2))).toBe(false);
+    const r2 = parseQrToken(encodeQrToken(k2, sid, 9))!;
+    expect(qrRoundOf(secret, r2, 3)).toBe(2);
+    // Round 2 not open yet (only round 1 is): its code matches nothing.
+    expect(qrRoundOf(secret, r2, 1)).toBeNull();
+    expect(qrRoundOf(randomBytes(32), r2, 3)).toBeNull();
+  });
+});
+

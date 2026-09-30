@@ -63,6 +63,7 @@ export interface SlotRow {
   room_name: string | null;
   mode: 'qr' | 'manual';
   rotation_s: number;
+  scan_rounds: number;
   valid_from: string;
   valid_until: string | null;
   active: boolean;
@@ -71,7 +72,7 @@ export interface SlotRow {
 export const SLOT_SELECT = `
   select sl.id, sl.course_id, c.code as course_code, c.title as course_title, i.full_name as instructor, sl.weekday,
          to_char(sl.start_time, 'HH24:MI') as start_time, to_char(sl.end_time, 'HH24:MI') as end_time,
-         sl.room_id, r.name as room_name, sl.mode, sl.rotation_s,
+         sl.room_id, r.name as room_name, sl.mode, sl.rotation_s, sl.scan_rounds,
          to_char(sl.valid_from, 'YYYY-MM-DD') as valid_from, to_char(sl.valid_until, 'YYYY-MM-DD') as valid_until, sl.active
     from timetable_slots sl join courses c on c.id = sl.course_id
     left join users i on i.id = c.instructor_id left join rooms r on r.id = sl.room_id`;
@@ -88,6 +89,7 @@ export const toSlot = (r: SlotRow): Slot => ({
   room: r.room_id && r.room_name ? { id: r.room_id, name: r.room_name } : null,
   mode: r.mode,
   rotationS: r.rotation_s,
+  scanRounds: r.scan_rounds,
   validFrom: r.valid_from,
   validUntil: r.valid_until,
   active: r.active,
@@ -295,17 +297,17 @@ export async function staffAcademicRoutes(app: FastifyInstance, deps: Deps) {
     }
     const slotId = await withTx(deps.db, async (tx) => {
       const before = id ? (await tx.query<SlotRow>(`${SLOT_SELECT} where sl.id = $1 and sl.tenant_id = $2`, [id, auth.tenantId])).rows[0] : undefined;
-      const params = [auth.tenantId, b.courseId, b.weekday, b.start, b.end, b.roomId ?? null, b.mode, b.rotationS, b.validFrom ?? null, b.validUntil ?? null, b.active];
+      const params = [auth.tenantId, b.courseId, b.weekday, b.start, b.end, b.roomId ?? null, b.mode, b.rotationS, b.validFrom ?? null, b.validUntil ?? null, b.active, b.mode === 'qr' ? b.scanRounds : 1];
       const { rows } = id
         ? await tx.query<{ id: string }>(
             `update timetable_slots set course_id = $2, weekday = $3, start_time = $4, end_time = $5, room_id = $6, mode = $7, rotation_s = $8,
-                    valid_from = coalesce($9::date, valid_from), valid_until = $10::date, active = $11, updated_at = now()
-              where id = $12 and tenant_id = $1 returning id`,
+                    valid_from = coalesce($9::date, valid_from), valid_until = $10::date, active = $11, scan_rounds = $12, updated_at = now()
+              where id = $13 and tenant_id = $1 returning id`,
             [...params, id],
           )
         : await tx.query<{ id: string }>(
-            `insert into timetable_slots(tenant_id, course_id, weekday, start_time, end_time, room_id, mode, rotation_s, valid_from, valid_until, active, created_by)
-             values ($1, $2, $3, $4, $5, $6, $7, $8, coalesce($9::date, current_date), $10::date, $11, $12) returning id`,
+            `insert into timetable_slots(tenant_id, course_id, weekday, start_time, end_time, room_id, mode, rotation_s, valid_from, valid_until, active, scan_rounds, created_by)
+             values ($1, $2, $3, $4, $5, $6, $7, $8, coalesce($9::date, current_date), $10::date, $11, $12, $13) returning id`,
             [...params, auth.userId],
           );
       if (!rows[0]) throw new ApiError(404, 'NOT_FOUND', 'Timetable entry not found.');

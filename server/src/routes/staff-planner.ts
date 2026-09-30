@@ -110,6 +110,7 @@ export async function staffPlannerRoutes(app: FastifyInstance, deps: Deps) {
         teacherId: o.teacherId!,
         noteToTeacher: o.noteToTeacher,
         noteToStudents: o.noteToStudents || opts.note || undefined,
+        mode: 'ask',
         acceptWarnings: true,
       });
       if (c.status === 'refused') throw new ApiError(409, 'CONFLICT', c.errors[0]?.message ?? c.conflicts[0]?.message ?? 'A teacher could not be asked to take a class.');
@@ -274,7 +275,9 @@ export async function staffPlannerRoutes(app: FastifyInstance, deps: Deps) {
                 s.room_id, coalesce(r.name, s.room) as room, s.status,
                 to_char(s.scheduled_start at time zone $2, 'YYYY-MM-DD') as date,
                 to_char(s.scheduled_start at time zone $2, 'HH24:MI') as start_hm,
-                to_char(s.scheduled_end at time zone $2, 'HH24:MI') as end_hm
+                -- A class that ended early frees its teacher and room from then on, not at its scheduled end.
+                to_char((case when s.status = 'closed' and s.ended_at is not null and s.ended_at > s.scheduled_start
+                                   and s.ended_at < s.scheduled_end then s.ended_at else s.scheduled_end end) at time zone $2, 'HH24:MI') as end_hm
            from class_sessions s join courses c on c.id = s.course_id left join rooms r on r.id = s.room_id
           where s.tenant_id = $1 and s.status <> 'cancelled' and s.scheduled_start >= $3 and s.scheduled_start < $4
           order by s.scheduled_start`,

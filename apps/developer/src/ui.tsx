@@ -3,6 +3,7 @@ import { useState, type ReactNode } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import * as LocalAuthentication from 'expo-local-authentication';
+import { authenticate } from '@kit/lib/biometrics';
 import { ArrowLeft, Fingerprint, X } from 'lucide-react-native';
 import { Button, IconButton, Input, Notice, Text } from '@kit/components/ui';
 import { colors, fonts } from '@kit/theme';
@@ -55,7 +56,7 @@ export async function confirmIdentity(prompt: string): Promise<boolean> {
   try {
     const level = await LocalAuthentication.getEnrolledLevelAsync();
     if (level === LocalAuthentication.SecurityLevel.NONE) return true;
-    const r = await LocalAuthentication.authenticateAsync({ promptMessage: prompt, cancelLabel: 'Cancel', disableDeviceFallback: false });
+    const r = await authenticate({ promptMessage: prompt, cancelLabel: 'Cancel', disableDeviceFallback: false });
     return r.success;
   } catch {
     return false;

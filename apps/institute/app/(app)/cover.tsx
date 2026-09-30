@@ -9,7 +9,7 @@ import { Avatar, Badge, Card, ErrorState, Loading, Notice, SectionLabel, Text } 
 import { clock, dayLabel, initials, to12h, zoned } from '@kit/lib/format';
 import { useApi } from '@kit/state/session';
 import { colors, fonts } from '@kit/theme';
-import { Empty, Header, addDays } from '@/components/forms';
+import { DayPicker, Empty, Header, addDays } from '@/components/forms';
 import { CoverSheet } from '@/components/Requests';
 import { useDrag } from '@/planner/Board';
 import { useAvailability, useChangeRequests, useCan, useMe, useOverview, useSessionsOn } from '@/queries';
@@ -232,28 +232,18 @@ export default function Cover() {
   return (
     <Screen scroll={false}>
       <View ref={rootRef} style={{ flex: 1 }} collapsable={false}>
-        <Header info="cover" title="Cover a class" subtitle="Admin · any class, any teacher" />
-        <ScrollView horizontal showsHorizontalScrollIndicator persistentScrollbar indicatorStyle="white" style={{ flexGrow: 0 }} contentContainerStyle={{ gap: 8, paddingRight: 16 }}>
-          {[0, 1, 2, 3, 4, 5, 6].map((i) => {
-            const on = offset === i;
-            return (
-              <Pressable
-                key={i}
-                onPress={() => {
-                  setOffset(i);
-                  setPicked(null);
-                }}
-                accessibilityRole="radio"
-                accessibilityState={{ selected: on }}
-                style={[styles.day, on && styles.dayOn]}
-              >
-                <Text variant="small" color={on ? colors.text : colors.textMuted}>
-                  {i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : dayLabel(`${addDays(today, i)}T12:00:00Z`, 'UTC')}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
+        <Header info="cover" title="Cover a class" subtitle="Hand a class to a free teacher" />
+        <View style={{ marginTop: 8 }}>
+          <DayPicker
+            today={today}
+            value={date}
+            onChange={(d) => {
+              setOffset(Math.max(0, [0, 1, 2, 3, 4, 5, 6].find((i) => addDays(today, i) === d) ?? 0));
+              setPicked(null);
+              setSelected(null);
+            }}
+          />
+        </View>
 
         <SectionLabel right={<Text variant="monoSmall">{offset === 0 ? `now ${nowHm}` : dayLabel(`${date}T12:00:00Z`, 'UTC')}</Text>}>Teachers</SectionLabel>
         {/* A plain wrapped grid (no scrolling parent), so a scroll view can never steal the finger mid-drag. */}
@@ -523,8 +513,6 @@ function TeacherChip({
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  day: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bgRaised },
-  dayOn: { borderColor: colors.cyan, backgroundColor: colors.cyanSoft },
   tray: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   strip: { height: 5, width: 120, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.08)', marginTop: 5, overflow: 'hidden' },
   stripBusy: { position: 'absolute', top: 0, bottom: 0, backgroundColor: colors.amber, borderRadius: 2 },

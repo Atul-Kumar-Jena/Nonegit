@@ -85,8 +85,10 @@ export const DraftOp = z.discriminatedUnion('op', [
     teacherId: uuid.nullable(),
     /** Shown to the teacher who is asked to take the class. */
     noteToTeacher: z.string().trim().max(300).optional(),
-    /** Shown to the students once the teacher accepts. */
+    /** Shown to the students (when the change takes effect). */
     noteToStudents: z.string().trim().max(300).optional(),
+    /** true: the class is theirs on publish, no acceptance step; otherwise the teacher is asked first. */
+    assign: z.boolean().optional(),
   }),
   /** A one-off class (make-up / extra), optionally by another teacher. */
   z.object({ op: z.literal('extra'), tempId, courseId: uuid, ...when, roomId: uuid.nullable().optional(), teacherId: uuid.nullable().optional(), mode: SessionMode.optional() }),

@@ -9,7 +9,7 @@ import { Button, Card, Loading, Notice, Text } from '@kit/components/ui';
 import { useApi } from '@kit/state/session';
 import { colors } from '@kit/theme';
 import { staffApi } from '@/api';
-import { Chips, DateField, Field, Header, Select, TimeField, ToggleRow, WEEKDAYS, WEEKDAY_NAME, confirmAction, firstIssue, fromMinutes, toMinutes } from '@/components/forms';
+import { Chips, DateField, Field, Header, ScansField, Select, TimeField, ToggleRow, WEEKDAYS, WEEKDAY_NAME, confirmAction, firstIssue, fromMinutes, toMinutes } from '@/components/forms';
 import { useCourses, useOverview, useRooms, useTimetable } from '@/queries';
 import { BatchCoursePicker } from '@/components/BatchCoursePicker';
 import { ymdIn } from '@/time';
@@ -43,6 +43,7 @@ export default function SlotForm() {
   const [roomId, setRoomId] = useState<string | null>(null);
   const [mode, setMode] = useState<SessionMode>('qr');
   const [rotationS, setRotation] = useState(5);
+  const [scanRounds, setScanRounds] = useState(1);
   const [validFrom, setValidFrom] = useState(() => ymdIn(api.serverNow(), tz));
   const [hasEnd, setHasEnd] = useState(false);
   const [validUntil, setValidUntil] = useState(() => ymdIn(api.serverNow() + 120 * 86_400_000, tz));
@@ -60,6 +61,7 @@ export default function SlotForm() {
     setRoomId(existing.room?.id ?? null);
     setMode(existing.mode);
     setRotation(existing.rotationS);
+    setScanRounds(existing.scanRounds ?? 1);
     setValidFrom(existing.validFrom);
     setHasEnd(!!existing.validUntil);
     if (existing.validUntil) setValidUntil(existing.validUntil);
@@ -79,7 +81,7 @@ export default function SlotForm() {
   async function save() {
     setError(null);
     if (!courseId) return setError('Choose the batch and subject.');
-    const parsed = SlotBody.safeParse({ courseId, weekday, start, end, roomId, mode, rotationS, validFrom, validUntil: hasEnd ? validUntil : null, active });
+    const parsed = SlotBody.safeParse({ courseId, weekday, start, end, roomId, mode, rotationS, scanRounds: mode === 'qr' ? scanRounds : 1, validFrom, validUntil: hasEnd ? validUntil : null, active });
     if (!parsed.success) return setError(firstIssue(parsed.error));
     if (hasEnd && validUntil < validFrom) return setError('The last date must be after the first date.');
     setBusy('save');
@@ -129,9 +131,12 @@ export default function SlotForm() {
         <Chips value={mode} options={[{ value: 'qr', label: 'QR scan' }, { value: 'manual', label: 'Paper-style register' }]} onChange={setMode} />
       </Field>
       {mode === 'qr' ? (
-        <Field label="QR changes every">
-          <Chips value={rotationS} options={ROTATIONS} onChange={setRotation} />
-        </Field>
+        <>
+          <Field label="QR changes every">
+            <Chips value={rotationS} options={ROTATIONS} onChange={setRotation} />
+          </Field>
+          <ScansField value={scanRounds} onChange={setScanRounds} />
+        </>
       ) : null}
       <Field label="First week">
         <DateField value={validFrom} onChange={setValidFrom} />

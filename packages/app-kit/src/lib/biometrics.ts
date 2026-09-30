@@ -26,9 +26,29 @@ export async function biometricSupport(): Promise<BiometricSupport> {
   }
 }
 
+/**
+ * Every fingerprint / PIN prompt in the app goes through here, so the app lock can tell that the app
+ * left the foreground because of our own prompt (Android's PIN screen is a separate window) and
+ * not relock on the way back.
+ */
+let inFlight = 0;
+let lastEndedAt = 0;
+export function authPromptBusy(): boolean {
+  return inFlight > 0 || Date.now() - lastEndedAt < 1500;
+}
+export async function authenticate(opts: LocalAuthentication.LocalAuthenticationOptions): Promise<LocalAuthentication.LocalAuthenticationResult> {
+  inFlight++;
+  try {
+    return await LocalAuthentication.authenticateAsync(opts);
+  } finally {
+    inFlight--;
+    lastEndedAt = Date.now();
+  }
+}
+
 export async function confirmWithBiometrics(reason: string): Promise<boolean> {
   try {
-    const r = await LocalAuthentication.authenticateAsync({ promptMessage: reason, cancelLabel: 'Cancel', disableDeviceFallback: false });
+    const r = await authenticate({ promptMessage: reason, cancelLabel: 'Cancel', disableDeviceFallback: false });
     return r.success;
   } catch {
     return false;

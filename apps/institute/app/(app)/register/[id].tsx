@@ -42,7 +42,8 @@ export default function Register() {
 
   const [ticks, setTicks] = useState<Set<string> | null>(null);
   /** Roll-call style: everyone starts present and you tap the absentees (or the other way round). */
-  const [mode, setMode] = useState<'absent' | 'present'>('absent');
+  // Nobody is ticked until the professor says so: tap who's present (only scans already count).
+  const [mode, setMode] = useState<'absent' | 'present'>('present');
   const [q, setQ] = useState('');
   const [note, setNote] = useState('');
   const [checked, setChecked] = useState(false);
@@ -74,9 +75,8 @@ export default function Register() {
   useEffect(() => {
     if (ticks || !rows) return;
     const already = rows.filter((r) => r.wasPresent).map((r) => r.userId);
-    // A fresh paper register starts as roll call: everyone present, tap the absentees.
-    setTicks(new Set(pendingDraft ? pendingDraft.present : already.length ? already : rows.map((r) => r.userId)));
-    if (!pendingDraft && already.length) setMode('present');
+    // Only those already present (scanned or marked before) start ticked — never everyone.
+    setTicks(new Set(pendingDraft ? pendingDraft.present : already));
   }, [rows, ticks, pendingDraft]);
 
   const offlineMode = !feed.data && !!packRoster;

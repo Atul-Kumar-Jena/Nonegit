@@ -38,6 +38,8 @@ export interface StaffSessionRow {
   round_no: number;
   round_counts: number[] | null;
   end_reason: string | null;
+  round_ready: number | null;
+  round_expected: number | null;
 }
 
 export const STAFF_SESSION_SELECT = `
@@ -52,7 +54,15 @@ export const STAFF_SESSION_SELECT = `
          coalesce(s.status = 'live' and s.qr_shown_at > now() - interval '90 seconds', false) as showing,
          s.due_at, s.missed_at, s.scan_rounds, s.round_no, s.end_reason,
          case when s.scan_rounds > 1 then array(select (select count(*)::int from scan_round_marks m where m.session_id = s.id and m.round = g)
-                                                  from generate_series(1, s.scan_rounds) g) end as round_counts
+                                                  from generate_series(1, s.scan_rounds) g) end as round_counts,
+         -- Layered class: how many students have the open round (or were marked by hand), out of how many.
+         case when s.scan_rounds > 1 and s.status = 'live' then
+           (select count(*)::int from enrollments e join users u on u.id = e.user_id and u.status = 'active' and u.role = 'student'
+             where e.course_id = s.course_id
+               and (exists (select 1 from scan_round_marks m where m.session_id = s.id and m.user_id = e.user_id and m.round = s.round_no)
+                    or exists (select 1 from attendance_records a where a.session_id = s.id and a.user_id = e.user_id and a.revoked_at is null))) end as round_ready,
+         case when s.scan_rounds > 1 and s.status = 'live' then
+           (select count(*)::int from enrollments e join users u on u.id = e.user_id and u.status = 'active' and u.role = 'student' where e.course_id = s.course_id) end as round_expected
     from class_sessions s
     join courses c on c.id = s.course_id
     left join rooms r on r.id = s.room_id
@@ -103,6 +113,7 @@ export function toStaffSession(r: StaffSessionRow): StaffSession {
     scanRounds: r.scan_rounds ?? 1,
     roundNo: r.round_no ?? 1,
     roundCounts: r.round_counts ?? [],
+    roundDone: (r.round_expected ?? 0) > 0 && (r.round_ready ?? 0) >= (r.round_expected ?? 0),
     autoEnded: r.end_reason === 'all_marked',
   };
 }

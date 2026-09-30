@@ -15,8 +15,8 @@ export default function Batches() {
   const q = useBatches();
   const [open, setOpen] = useState(false);
   return (
-    <Screen onRefresh={() => void q.refetch()} refreshing={q.isRefetching}>
-      <Header info="batches" title="Batches" right={<Button title="New" compact onPress={() => setOpen(true)} icon={<Plus color={colors.bg} size={15} />} />} />
+    <Screen onRefresh={() => void q.refetch()} refreshing={q.isRefetching} fab={{ label: 'New batch', icon: <Plus color={colors.ink} size={18} />, onPress: () => setOpen(true) }}>
+      <Header info="batches" title="Batches" />
       <Text variant="small">Semester → batch → its students → its subjects. Students added to a batch get its semester and every subject it takes.</Text>
       <BatchList onCreate={() => setOpen(true)} />
       {open ? <NewBatch onClose={() => setOpen(false)} /> : null}

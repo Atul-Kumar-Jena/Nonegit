@@ -335,6 +335,61 @@ export function prettyDate(ymdStr: string): string {
   return dt.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+/**
+ * Layered scans, chosen when scheduling: students scan this many times in the class (each round
+ * its own code, in order, same phone) — for fests, seminars and long sessions where people leave early.
+ */
+export function ScansField({ value, onChange }: { value: number; onChange: (n: number) => void }) {
+  return (
+    <Field
+      label="Scans per student"
+      hint={value > 1 ? `Students scan ${value} times — a new code each round, shown when you tap “next round”. Present only after every round.` : 'One scan marks a student present.'}
+    >
+      <Chips
+        value={value}
+        options={[
+          { value: 1, label: 'Once' },
+          { value: 2, label: '2×' },
+          { value: 3, label: '3×' },
+          { value: 4, label: '4×' },
+        ]}
+        onChange={onChange}
+      />
+    </Field>
+  );
+}
+
+const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** A row of day cards (weekday over the date) starting today — the selected one is solid white. */
+export function DayPicker({ today, value, onChange, days = 7 }: { today: string; value: string; onChange: (ymd: string) => void; days?: number }) {
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, marginHorizontal: -20 }} contentContainerStyle={{ gap: 8, paddingHorizontal: 20, paddingVertical: 2 }}>
+      {Array.from({ length: days }, (_, i) => {
+        const d = addDays(today, i);
+        const [y, m, dd] = d.split('-').map(Number);
+        const dt = new Date(y ?? 1970, (m ?? 1) - 1, dd ?? 1);
+        const on = d === value;
+        return (
+          <Pressable
+            key={d}
+            onPress={() => onChange(d)}
+            accessibilityRole="radio"
+            accessibilityState={{ selected: on }}
+            accessibilityLabel={i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : `${WEEKDAY[dt.getDay()]} ${dd} ${MONTH[dt.getMonth()]}`}
+            style={[styles.dayCard, on && styles.dayCardOn]}
+          >
+            <Text style={[styles.dayTop, on && { color: colors.ink }]}>{i === 0 ? 'Today' : WEEKDAY[dt.getDay()]}</Text>
+            <Text style={[styles.dayNum, on && { color: colors.ink }]}>{dd}</Text>
+            <Text style={[styles.dayTop, on && { color: colors.ink }]}>{MONTH[dt.getMonth()]}</Text>
+          </Pressable>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
 /** Date: tap it to type (e.g. 27/09/2026), or step a day / a week. Always a valid calendar date. */
 export function DateField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [editing, setEditing] = useState(false);
@@ -522,5 +577,9 @@ const styles = StyleSheet.create({
   ampmOn: { backgroundColor: colors.text },
   ampmText: { fontFamily: fonts.semibold, fontSize: 13, color: colors.textMuted },
   dateRow: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 6, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bgRaised },
+  dayCard: { width: 58, paddingVertical: 8, borderRadius: 16, alignItems: 'center', gap: 1, borderWidth: 1, borderColor: colors.borderHi, backgroundColor: colors.cardHi },
+  dayCardOn: { backgroundColor: colors.text, borderColor: colors.text },
+  dayTop: { fontFamily: fonts.medium, fontSize: 11, color: colors.textMuted },
+  dayNum: { fontFamily: fonts.display, fontSize: 20, color: colors.text, lineHeight: 26 },
   dateBtn: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.cardHi, borderWidth: 1, borderColor: colors.borderHi },
 });

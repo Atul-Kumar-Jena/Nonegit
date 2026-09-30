@@ -155,6 +155,12 @@ export async function phoneNotificationStatus(): Promise<'granted' | 'denied' | 
   }
 }
 
+/** Is this phone registered for instant (Firebase) delivery, and is the server set up to send to it? */
+export async function instantDeliveryOn(): Promise<boolean> {
+  if (isWeb) return false;
+  return !!(await vault.get<boolean>(PUSH_KEY, (v) => v === true).catch(() => false));
+}
+
 /** Raises a phone notification for each item newer than the last one announced. */
 export async function announceNew(items: AppNotification[], unread: number): Promise<void> {
   if (isWeb) return;
@@ -215,6 +221,8 @@ async function backgroundCheck(): Promise<void> {
 async function registerPush(api: ApiClient): Promise<void> {
   if (isWeb) return;
   try {
+    // The loud, heads-up channel must exist before Firebase delivers into it while the app is closed.
+    await ensureChannel().catch(() => undefined);
     if ((await Notifications.getPermissionsAsync()).status !== 'granted') return;
     const t = await Notifications.getDevicePushTokenAsync();
     if (typeof t.data !== 'string') return;
@@ -264,6 +272,20 @@ export function NotificationRunner() {
     }
     return () => sub?.remove();
   }, [audience]);
+  // A push arrived while the app is open: show it in the list and refresh every screen right away.
+  useEffect(() => {
+    if (isWeb || phase !== 'signed-in') return;
+    let sub: { remove(): void } | null = null;
+    try {
+      sub = Notifications.addNotificationReceivedListener(() => {
+        void q.refetch();
+        void qc.invalidateQueries({ predicate: (query) => query.queryKey[0] !== notificationsKey[0] });
+      });
+    } catch {
+      // no native module
+    }
+    return () => sub?.remove();
+  }, [phase, q.refetch, qc]);
   useEffect(() => {
     if (phase !== 'signed-in' || !api) return;
     void registerPush(api);

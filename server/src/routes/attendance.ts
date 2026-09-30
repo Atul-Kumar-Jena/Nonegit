@@ -18,7 +18,7 @@ import {
   parseQrToken,
   seqLabel,
   toB64url,
-  verifyQrMac,
+  qrRoundOf,
   isQrFreshAt,
   type MarkPresent,
   type MarkResponse,
@@ -34,12 +34,13 @@ import { ApiError, ScanRejection } from '../lib/errors';
 import { signReceipt } from '../lib/receipts';
 import { assignLectureNo } from '../lib/sessions';
 import { courseStats, loadTenantTerm } from '../lib/stats';
+import { linkRound, verifyChain, type RoundLink } from '../lib/round-chain';
 
 /** Too many refused scans from one device in a short window looks like probing. */
 const MAX_SUSPICIOUS_PER_10_MIN = 10;
 const MAX_REJECTIONS_PER_10_MIN = 40;
 /** Refusals caused by the institution, not the student — never count towards the throttle. */
-const NOT_STUDENTS_FAULT = ['E-PAUSED', 'E-SESSION-CLOSED', 'E-NOT-STARTED'];
+const NOT_STUDENTS_FAULT = ['E-PAUSED', 'E-SESSION-CLOSED', 'E-NOT-STARTED', 'E-ROUND'];
 
 /** Grace around a class's scheduled window for early/late scans. */
 const WINDOW_GRACE_MS = 15 * 60_000;
@@ -84,13 +85,6 @@ interface SessionRow {
 /** A scan must be made within this long of the class ending (only clock differences, no more). */
 const AFTER_END_GRACE_MS = 2_000;
 
-/** Which round a scan made at `at` belongs to: round 1 from the start, round k once it was opened. */
-function roundAt(s: SessionRow, at: number): number {
-  let r = 1;
-  for (const t of s.round_opened_at ?? []) if (t.getTime() <= at) r++;
-  return Math.min(r, s.round_no);
-}
-
 /** Every enrolled (active) student is present: the class has done its job, close it. */
 export async function closeIfEveryoneMarked(tx: Queryable, sessionId: string, courseId: string, at: Date): Promise<boolean> {
   // One final check at a time per class: two last scans arriving together can't both miss each other.
@@ -105,7 +99,7 @@ export async function closeIfEveryoneMarked(tx: Queryable, sessionId: string, co
   );
   const c = rows[0]!;
   if (c.enrolled === 0 || c.present < c.enrolled) return false;
-  const r = await tx.query(`update class_sessions set status = 'closed', ended_at = $2, end_reason = 'all_marked' where id = $1 and status = 'live'`, [sessionId, at]);
+  const r = await tx.query(`update class_sessions set status = 'closed', ended_at = greatest($2, started_at), end_reason = 'all_marked' where id = $1 and status = 'live'`, [sessionId, at]);
   return (r.rowCount ?? 0) > 0;
 }
 
@@ -222,7 +216,9 @@ export async function attendanceRoutes(app: FastifyInstance, deps: Deps) {
         [parsed.sessionId],
       );
       const session = rows[0];
-      if (!session || session.tenant_id !== auth.tenantId || !verifyQrMac(session.qr_secret, parsed))
+      // Layered classes: each round has its own key, so the code itself says which round it belongs to.
+      const qrRound = session && session.tenant_id === auth.tenantId ? qrRoundOf(session.qr_secret, parsed, session.scan_rounds > 1 ? session.round_no : 1) : null;
+      if (!session || qrRound === null)
         throw new ScanRejection('E-QR-INVALID', 'The scanned code failed its cryptographic check.', { reason: 'bad_mac' });
       sessionId = session.id;
 
@@ -343,14 +339,35 @@ export async function attendanceRoutes(app: FastifyInstance, deps: Deps) {
           });
       }
 
-      // 6b. Layered scans: each scan counts for the round open at that moment; present only after all.
+      // 6b. Layered scans: the round comes from the code's key. Round k is accepted only on top of
+      //     rounds 1..k-1 from this same phone, as the next link of a hash chain; present only after all.
+      let roundChain: Buffer | null = null;
       if (session.scan_rounds > 1) {
-        const round = roundAt(session, scannedAt);
-        await deps.db.query(
-          `insert into scan_round_marks(session_id, user_id, round, device_id, marked_at) values ($1, $2, $3, $4, $5) on conflict do nothing`,
-          [session.id, auth.userId, round, auth.deviceId, new Date(scannedAt)],
-        );
-        const done = (await deps.db.query<{ n: number }>('select count(*)::int as n from scan_round_marks where session_id = $1 and user_id = $2', [session.id, auth.userId])).rows[0]!.n;
+        const round = qrRound;
+        const openedAt = round > 1 ? session.round_opened_at[round - 2] : session.started_at;
+        if (openedAt && scannedAt < openedAt.getTime() - 2_000) throw new ScanRejection('E-ROUND', `Round ${round} hadn’t started when this was scanned.`, { round, signal: 'round_early' });
+        const done = await withTx(deps.db, async (tx) => {
+          await tx.query(`select pg_advisory_xact_lock(hashtext('rounds:' || $1 || ':' || $2))`, [session.id, auth.userId]);
+          const prev = (
+            await tx.query<RoundLink>('select round, qr_seq, marked_at, device_id, device_fingerprint, chain from scan_round_marks where session_id = $1 and user_id = $2 order by round', [
+              session.id,
+              auth.userId,
+            ])
+          ).rows;
+          if (prev.some((p) => p.round === round)) return prev.length; // a retry of a round already counted
+          const missing = [...Array(round - 1).keys()].map((i) => i + 1).find((k) => !prev.some((p) => p.round === k));
+          if (missing) throw new ScanRejection('E-ROUND', `You didn’t scan round ${missing}, so round ${round} can’t count. Ask your professor to mark you in the register.`, { round, missing });
+          if (prev.some((p) => p.device_id !== auth.deviceId)) throw new ScanRejection('E-ROUND', 'Every round must be scanned from the same phone.', { round, signal: 'round_device' });
+          const head = verifyChain(prev, session.id, auth.userId);
+          if (round > 1 && !head) throw new ScanRejection('E-ROUND', 'Your earlier scans in this class couldn’t be verified. Ask your professor to mark you.', { round, signal: 'round_chain' });
+          const markedAt = new Date(scannedAt);
+          const chain = linkRound(head, session.id, auth.userId, round, parsed.seq, markedAt, auth.deviceFingerprint);
+          await tx.query(
+            `insert into scan_round_marks(session_id, user_id, round, device_id, marked_at, qr_seq, device_fingerprint, chain) values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+            [session.id, auth.userId, round, auth.deviceId, markedAt, parsed.seq, auth.deviceFingerprint, chain],
+          );
+          return prev.length + 1;
+        });
         if (done < session.scan_rounds)
           return {
             status: 'round',
@@ -360,6 +377,12 @@ export async function attendanceRoutes(app: FastifyInstance, deps: Deps) {
             offline,
             round: { done, required: session.scan_rounds, current: round },
           } satisfies MarkResponse;
+        // Every round is in: the whole chain must verify before this student counts as present.
+        const links = (
+          await deps.db.query<RoundLink>('select round, qr_seq, marked_at, device_id, device_fingerprint, chain from scan_round_marks where session_id = $1 and user_id = $2', [session.id, auth.userId])
+        ).rows;
+        roundChain = links.length === session.scan_rounds ? verifyChain(links, session.id, auth.userId) : null;
+        if (!roundChain) throw new ScanRejection('E-ROUND', 'Your scans in this class couldn’t be verified as one chain. Ask your professor to mark you.', { signal: 'round_chain' });
       }
 
       // 7. Record + sign the receipt atomically. A scheduled class goes live on its first valid scan
@@ -390,8 +413,8 @@ export async function attendanceRoutes(app: FastifyInstance, deps: Deps) {
           });
           const ins = await tx.query<RecordRow>(
             `insert into attendance_records(id, session_id, user_id, device_id, marked_at, qr_seq, lat, lng, accuracy_m, distance_m,
-                                            device_signature, request_digest, receipt_signature, server_key_id, device_fingerprint, offline, hw_signed, gps_samples)
-             values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+                                            device_signature, request_digest, receipt_signature, server_key_id, device_fingerprint, offline, hw_signed, gps_samples, round_chain)
+             values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
              returning ${RECORD_COLUMNS}`,
             [
               recordId,
@@ -412,6 +435,7 @@ export async function attendanceRoutes(app: FastifyInstance, deps: Deps) {
               offline,
               auth.hardwareSigned,
               fresh.length,
+              roundChain,
             ],
           );
           await appendAudit(tx, {
@@ -420,7 +444,14 @@ export async function attendanceRoutes(app: FastifyInstance, deps: Deps) {
             actorId: auth.userId,
             action: offline ? 'mark.accept_offline' : 'mark.accept',
             subject: `session:${session.id}`,
-            data: { record: recordId, seq: parsed.seq, device: auth.deviceFingerprint, distanceM: Math.round(geo.distanceM), ...(offline ? { lagMs: now - scannedAt } : {}) },
+            data: {
+              record: recordId,
+              seq: parsed.seq,
+              device: auth.deviceFingerprint,
+              distanceM: Math.round(geo.distanceM),
+              ...(offline ? { lagMs: now - scannedAt } : {}),
+              ...(roundChain ? { rounds: session.scan_rounds, chain: roundChain.toString('hex') } : {}),
+            },
           });
           // A scan saved without internet and confirmed now: tell the student it counted.
           if (offline) {

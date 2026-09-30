@@ -25,11 +25,11 @@ export default function People() {
   const owner = useMe().data?.owner ?? false;
 
   return (
-    <Screen scroll={false} keyboard>
-      <Header info="people"
-        title="People & roles"
-        right={role !== 'admin' || owner ? <Button title="Add" compact onPress={() => router.push({ pathname: '/person-form', params: { role } })} icon={<UserPlus color={colors.bg} size={15} />} /> : undefined}
-      />
+    <Screen
+      scroll={false}
+      fab={role !== 'admin' || owner ? { label: role === 'student' ? 'Add student' : role === 'teacher' ? 'Add professor' : 'Add admin', icon: <UserPlus color={colors.ink} size={18} />, onPress: () => router.push({ pathname: '/person-form', params: { role } }) } : null}
+    >
+      <Header info="people" title="People & roles" />
       <Segmented
         value={role}
         options={[
@@ -56,6 +56,7 @@ export default function People() {
         data={list.data ?? []}
         keyExtractor={(p) => p.id}
         keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ paddingBottom: 96 }}
         renderItem={({ item }) => (
           <Pressable onPress={() => router.push({ pathname: '/people/[id]', params: { id: item.id } })} accessibilityRole="button" style={[styles.row, item.status === 'suspended' && { opacity: 0.55 }]}>
             <View style={{ flex: 1 }}>

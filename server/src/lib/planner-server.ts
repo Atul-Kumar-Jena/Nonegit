@@ -369,7 +369,7 @@ export async function publishOps(
         const who = (await nameOf(next ?? c.instructor_id)) ?? 'the usual teacher';
         const l: ChangeLine = { kind: 'substitute', courseId: s.course_id, courseCode: c.code, sessionId: o.sessionId, text: noted(`${label(c)} on ${fmtWhen(s.scheduled_start, tz)} will be taken by ${who}`, note) };
         lines.push(l);
-        tellStaff(next, { ...l, text: `You’re taking ${c.code} on ${fmtWhen(s.scheduled_start, tz)} (adjustment)` });
+        tellStaff(next, { ...l, text: noted(`You’re taking ${c.code} on ${fmtWhen(s.scheduled_start, tz)} (adjustment)`, o.noteToTeacher) });
         tellStaff(s.substitute_id, l);
         tellStaff(c.instructor_id, l);
         break;

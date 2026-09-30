@@ -92,10 +92,10 @@ export default function SetupScreen() {
           <Text variant="body" style={{ marginTop: 8 }}>
             {audience.appName === 'Attendly Developer'
               ? 'On render.com open your Attendly service → Logs and search “first-time setup”. That line shows your sign-in ID and your setup code (the same code at every restart until you use it). You link Google Authenticator once; after that you sign in with its code.'
-              : `Enter the setup code you were given${institution ? ` by ${institution.name}` : ''}. You link Google Authenticator once; after that you sign in with its code — no email needed.`}
+              : `Type the email your institution registered for you and the setup code your admin gave you${institution ? ` (${institution.name})` : ''}. Then you link Google Authenticator once — after that you sign in with its 6-digit code, no email needed.`}
           </Text>
           <Text variant="label" style={{ marginTop: 22, marginBottom: 8 }}>
-            Your sign-in ID
+            {audience.appName === 'Attendly Developer' ? 'Your sign-in ID' : 'Your institution email'}
           </Text>
           <Input
             value={id}
@@ -103,7 +103,7 @@ export default function SetupScreen() {
               setId(t);
               if (error) setError(null);
             }}
-            placeholder="the email or mobile number you were registered with"
+            placeholder={audience.appName === 'Attendly Developer' ? 'developer@attendly.app' : 'name@yourcollege.edu'}
             autoCapitalize="none"
             autoCorrect={false}
             keyboardType="email-address"

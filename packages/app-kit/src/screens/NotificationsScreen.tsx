@@ -6,7 +6,7 @@ import { NOTIFICATION_CATEGORIES, notificationCategory, type AppNotification, ty
 import { Screen } from '../components/Screen';
 import { Button, Card, ErrorState, IconButton, Loading, Notice, Text } from '../components/ui';
 import { clock } from '../lib/format';
-import { enablePhoneNotifications, phoneNotificationStatus, targetOf, useMarkRead, useNotifications } from '../lib/notifications';
+import { enablePhoneNotifications, instantDeliveryOn, phoneNotificationStatus, targetOf, useMarkRead, useNotifications } from '../lib/notifications';
 import { useSession } from '../state/session';
 import { colors, fonts } from '../theme';
 
@@ -51,6 +51,7 @@ export default function NotificationsScreen() {
   const markRead = useMarkRead();
   const [phone, setPhone] = useState<'granted' | 'denied' | 'unavailable' | null>(null);
   const [open, setOpen] = useState<AppNotification | null>(null);
+  const [instant, setInstant] = useState<boolean | null>(null);
   /** Where "Open" goes for a notification — nothing when it isn't about something that has a screen. */
   const routeOf = (n: AppNotification): string | null => {
     const t = targetOf(n);
@@ -59,6 +60,7 @@ export default function NotificationsScreen() {
   };
   useEffect(() => {
     void phoneNotificationStatus().then(setPhone);
+    void instantDeliveryOn().then(setInstant);
     // Opening the list always shows the latest, not the last background poll.
     void q.refetch();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -110,6 +112,15 @@ export default function NotificationsScreen() {
           </View>
           <Button title="Turn on notifications" compact onPress={() => void enablePhoneNotifications().then(setPhone)} />
         </Card>
+      ) : null}
+
+      {phone === 'granted' && instant !== null ? (
+        <View style={[styles.row, { marginTop: 8, marginBottom: 4 }]}>
+          <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: instant ? colors.green : colors.amber }} />
+          <Text variant="small" style={{ flex: 1 }}>
+            {instant ? 'Instant delivery is on for this phone.' : 'Instant delivery isn’t set up for this phone yet — news arrives when the app checks (up to 15 min when closed).'}
+          </Text>
+        </View>
       ) : null}
 
       {q.isPending ? (

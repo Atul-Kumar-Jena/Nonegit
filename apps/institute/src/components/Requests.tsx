@@ -1,13 +1,13 @@
 import { useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowRight, CalendarClock, Inbox, MessageSquareText, Send, UserRound } from 'lucide-react-native';
 import { STUDENT_TOPIC_LABELS, type ChangeRequest, type CoverResponse, type PlannerConflict, type OpError, type StaffSession } from '@attendly/protocol';
-import { Badge, Button, Card, Input, Notice, Text } from '@kit/components/ui';
-import { timeAgo, zoned, dayLabel, clock } from '@kit/lib/format';
+import { Avatar, Badge, Button, Card, Input, Notice, Segmented, Text } from '@kit/components/ui';
+import { timeAgo, zoned, dayLabel, clock, initials } from '@kit/lib/format';
 import { useApi } from '@kit/state/session';
-import { colors, type Tone } from '@kit/theme';
+import { colors, fonts, radius, type Tone } from '@kit/theme';
 import { staffApi } from '@/api';
 import { ymdIn } from '@/time';
 import { ConflictList, TeacherPicker } from './Adjust';
@@ -25,24 +25,33 @@ export function whenLabel(r: ChangeRequest, tz?: string): string {
   return `${dayLabel(r.session.start, tz)} ${clock(r.session.start, tz)}–${clock(r.session.end, tz)}`;
 }
 
+const QUICK_COVER = ['Sure, I’ll take it', 'Yes — share the notes please', 'Sorry, I’m busy then'];
+const QUICK_STUDENT = ['Yes, done', 'I’ll check and tell you', 'Not possible this week'];
+
 /**
- * One request. Incoming + pending: reply and Accept / Decline right here.
- * Outgoing + pending: Withdraw. Everything else: the outcome and any reply.
+ * One request. Incoming + pending: quick replies, then Accept / Decline right here.
+ * Outgoing + pending: assign it outright, or withdraw. Everything else: the outcome and any reply.
  */
 export function RequestCard({ r, incoming, tz }: { r: ChangeRequest; incoming: boolean; tz?: string }) {
   const api = useApi();
   const qc = useQueryClient();
   const [reply, setReply] = useState('');
-  const [busy, setBusy] = useState<'accept' | 'decline' | 'cancel' | null>(null);
+  const [busy, setBusy] = useState<'accept' | 'decline' | 'cancel' | 'assign' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [check, setCheck] = useState<{ conflicts: PlannerConflict[]; errors: OpError[] } | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const status = STATUS[r.status];
   const cover = r.kind === 'cover';
-  const title = cover ? (incoming ? `${r.from.name} asks you to take ${r.session.courseCode}` : `You asked ${r.to.name} to take ${r.session.courseCode}`) : `${r.from.name}${r.from.rollNo ? ` (${r.from.rollNo})` : ''}: ${STUDENT_TOPIC_LABELS[r.topic as keyof typeof STUDENT_TOPIC_LABELS] ?? 'Question'}`;
+  const other = incoming ? r.from : r.to;
+  const title = cover
+    ? incoming
+      ? `Can you take ${r.session.courseCode}?`
+      : `Asked to take ${r.session.courseCode}`
+    : (STUDENT_TOPIC_LABELS[r.topic as keyof typeof STUDENT_TOPIC_LABELS] ?? 'A question');
   const onlyWarnings = !!check && check.errors.length === 0 && check.conflicts.length > 0 && check.conflicts.every((c) => c.severity === 'warning');
+  const pending = r.status === 'pending' && !done;
 
-  async function run(kind: 'accept' | 'decline' | 'cancel', acceptWarnings = false) {
+  async function run(kind: 'accept' | 'decline' | 'cancel' | 'assign', acceptWarnings = false) {
     setBusy(kind);
     setError(null);
     try {
@@ -52,10 +61,17 @@ export function RequestCard({ r, incoming, tz }: { r: ChangeRequest; incoming: b
           setCheck({ conflicts: res.conflicts, errors: res.errors });
           return;
         }
-        setDone(cover ? `Done — ${r.session.courseCode} is yours. ${Math.max(0, res.notified - 1)} students notified.` : 'Reply sent.');
+        setDone(cover ? `Done — ${r.session.courseCode} is yours. Its students were notified.` : 'Reply sent.');
       } else if (kind === 'decline') {
         await staffApi.declineRequest(api, r.id, reply.trim() || undefined);
         setDone('Reply sent.');
+      } else if (kind === 'assign') {
+        const res = await staffApi.coverRequest(api, { sessionId: r.session.id, teacherId: r.to.id, noteToStudents: r.noteToStudents ?? undefined, acceptWarnings: true, mode: 'assign' });
+        if (res.status === 'refused') {
+          setCheck({ conflicts: res.conflicts, errors: res.errors });
+          return;
+        }
+        setDone(`Assigned — ${r.to.name} takes it; ${res.notified} ${res.notified === 1 ? 'person' : 'people'} notified.`);
       } else {
         await staffApi.cancelRequest(api, r.id);
         setDone('Withdrawn.');
@@ -71,64 +87,79 @@ export function RequestCard({ r, incoming, tz }: { r: ChangeRequest; incoming: b
   }
 
   return (
-    <Card tone={incoming && r.status === 'pending' ? (cover ? 'violet' : 'cyan') : undefined} style={{ gap: 8 }}>
+    <Card tone={incoming && pending ? 'violet' : undefined} style={{ gap: 12 }}>
       <View style={styles.row}>
-        {cover ? <UserRound color={colors.violet} size={16} /> : <MessageSquareText color={colors.cyan} size={16} />}
-        <Text variant="bodyStrong" style={{ flex: 1 }}>
-          {title}
-        </Text>
-        <Badge label={status.label} tone={status.tone} dot={false} />
+        <Avatar text={initials(other.name) || '?'} size={40} />
+        <View style={{ flex: 1 }}>
+          <Text variant="bodyStrong" numberOfLines={2}>
+            {title}
+          </Text>
+          <Text variant="small" numberOfLines={1}>
+            {incoming ? `From ${r.from.name}${r.from.rollNo ? ` · ${r.from.rollNo}` : ''}` : `To ${r.to.name}`} · {timeAgo(r.createdAt)}
+          </Text>
+        </View>
+        <Badge label={done && r.status === 'pending' ? 'Done' : status.label} tone={done && r.status === 'pending' ? 'green' : status.tone} dot={false} />
       </View>
-      <View style={styles.row}>
-        <CalendarClock color={colors.textDim} size={13} />
-        <Text variant="small" style={{ flex: 1 }}>
-          {r.session.courseCode} · {r.session.courseTitle} · {whenLabel(r, tz)}
-          {r.session.room ? ` · ${r.session.room}` : ''}
-        </Text>
-      </View>
-      {r.noteToTeacher ? (
-        <Text variant="body" style={styles.quote}>
-          “{r.noteToTeacher}”
-        </Text>
-      ) : null}
-      {cover && r.noteToStudents ? <Text variant="small">Students will see: “{r.noteToStudents}”</Text> : null}
+
+      <Pressable onPress={() => router.push(`/session/${r.session.id}`)} accessibilityRole="button" accessibilityLabel={`Open ${r.session.courseCode}`} style={styles.classBox}>
+        {cover ? <UserRound color={colors.textMuted} size={15} /> : <MessageSquareText color={colors.textMuted} size={15} />}
+        <View style={{ flex: 1 }}>
+          <Text variant="bodyStrong" numberOfLines={1} style={{ fontSize: 14 }}>
+            {r.session.courseCode} · {r.session.courseTitle}
+          </Text>
+          <Text variant="small" numberOfLines={1}>
+            {whenLabel(r, tz)}
+            {r.session.room ? ` · ${r.session.room}` : ''}
+          </Text>
+        </View>
+        <CalendarClock color={colors.textDim} size={15} />
+      </Pressable>
+
+      {r.noteToTeacher ? <Text style={styles.quote}>“{r.noteToTeacher}”</Text> : null}
+      {cover && r.noteToStudents ? <Text variant="small">{`For the students: “${r.noteToStudents}”`}</Text> : null}
       {r.reply ? (
         <Text variant="small" color={colors.text}>
-          Reply from {incoming ? 'you' : r.to.name}: “{r.reply}”
+          {`${incoming ? 'You replied' : `${r.to.name} replied`}: “${r.reply}”`}
+          {r.decidedAt ? ` · ${timeAgo(r.decidedAt)}` : ''}
         </Text>
       ) : null}
-      <Text variant="monoSmall">
-        {incoming ? `Asked ${timeAgo(r.createdAt)}` : `Sent ${timeAgo(r.createdAt)} to ${r.to.name}`}
-        {r.decidedAt ? ` · answered ${timeAgo(r.decidedAt)}` : ''}
-      </Text>
 
       {done ? <Notice tone="green" message={done} /> : null}
       {error ? <Notice tone="red" message={error} /> : null}
       {check ? (
         <Card tone={onlyWarnings ? 'amber' : 'red'} style={{ gap: 8 }}>
-          <Text variant="bodyStrong">{onlyWarnings ? 'Check before accepting' : 'You can’t take it right now'}</Text>
+          <Text variant="bodyStrong">{onlyWarnings ? 'Check before going ahead' : 'Can’t do that right now'}</Text>
           <ConflictList conflicts={check.conflicts} errors={check.errors} />
         </Card>
       ) : null}
 
-      {r.status === 'pending' && !done ? (
+      {pending ? (
         incoming ? (
           <>
-            <Input value={reply} onChangeText={setReply} placeholder={cover ? 'Reply (optional), e.g. “Sure, I’ll cover unit 3”' : 'Reply to the student (optional)'} maxLength={300} />
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+              {(cover ? QUICK_COVER : QUICK_STUDENT).map((q) => (
+                <Pressable key={q} onPress={() => setReply(q)} accessibilityRole="button" style={[styles.quick, reply === q && styles.quickOn]}>
+                  <Text style={[styles.quickText, reply === q && { color: colors.ink }]}>{q}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+            <Input value={reply} onChangeText={setReply} placeholder={cover ? 'Or write a reply (optional)' : 'Reply to the student (optional)'} maxLength={300} />
             <View style={styles.row}>
+              <Button title={cover ? 'Decline' : 'No'} kind="secondary" onPress={() => void run('decline')} loading={busy === 'decline'} disabled={!!busy} style={{ flex: 1 }} />
               {onlyWarnings ? (
                 <Button title="Accept anyway" onPress={() => void run('accept', true)} loading={busy === 'accept'} style={{ flex: 1 }} />
               ) : (
                 <Button title={cover ? 'Accept' : 'Yes'} onPress={() => void run('accept')} loading={busy === 'accept'} disabled={!!busy} style={{ flex: 1 }} />
               )}
-              <Button title={cover ? 'Decline' : 'No'} kind="secondary" onPress={() => void run('decline')} loading={busy === 'decline'} disabled={!!busy} style={{ flex: 1 }} />
             </View>
-            {!cover ? (
-              <Button title="Open the class to adjust it" kind="ghost" compact onPress={() => router.push(`/session/${r.session.id}`)} icon={<ArrowRight color={colors.text} size={14} />} />
-            ) : null}
           </>
+        ) : cover ? (
+          <View style={styles.row}>
+            <Button title="Withdraw" kind="secondary" compact onPress={() => void run('cancel')} loading={busy === 'cancel'} disabled={!!busy} style={{ flex: 1 }} />
+            <Button title="Assign now" compact onPress={() => void run('assign')} loading={busy === 'assign'} disabled={!!busy} style={{ flex: 1 }} />
+          </View>
         ) : (
-          <Button title="Withdraw" kind="ghost" compact onPress={() => void run('cancel')} loading={busy === 'cancel'} />
+          <Button title="Withdraw" kind="secondary" compact onPress={() => void run('cancel')} loading={busy === 'cancel'} />
         )
       ) : null}
     </Card>
@@ -178,6 +209,7 @@ export function CoverSheet({
   const [picking, setPicking] = useState(!initialTeacher);
   const [toTeacher, setToTeacher] = useState('');
   const [toStudents, setToStudents] = useState('');
+  const [mode, setMode] = useState<'assign' | 'ask'>('assign');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<CoverResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -198,6 +230,7 @@ export function CoverSheet({
         noteToTeacher: toTeacher.trim() || undefined,
         noteToStudents: toStudents.trim() || undefined,
         acceptWarnings,
+        mode,
       });
       setResult(r);
       if (r.status !== 'refused') {
@@ -243,12 +276,25 @@ export function CoverSheet({
         </Field>
 
         {teacherId && !self ? (
+          <View style={{ marginTop: 16 }}>
+            <Segmented
+              value={mode}
+              options={[
+                { value: 'assign', label: 'Assign now' },
+                { value: 'ask', label: 'Ask first' },
+              ]}
+              onChange={setMode}
+            />
+          </View>
+        ) : null}
+
+        {teacherId && !self ? (
           <Field label="Note to the teacher (optional)" hint="Shown with the request — e.g. why, and what to cover.">
             <Input value={toTeacher} onChangeText={setToTeacher} placeholder="e.g. I’m at a conference — please cover unit 3" maxLength={300} multiline />
           </Field>
         ) : null}
         {teacherId ? (
-          <Field label="Note to the students (optional)" hint={self ? 'Sent with the change.' : 'Sent to the students only once the teacher accepts.'}>
+          <Field label="Note to the students (optional)" hint={self || mode === 'assign' ? 'Sent to every student of this class right away.' : 'Sent to the students when the teacher accepts.'}>
             <Input value={toStudents} onChangeText={setToStudents} placeholder="e.g. Bring your lab records" maxLength={300} multiline />
           </Field>
         ) : null}
@@ -258,7 +304,9 @@ export function CoverSheet({
             <Text variant="small">
               {self
                 ? 'You take this class now. Its students are notified straight away.'
-                : 'Nothing changes yet: the teacher gets a notification (with sound) and accepts or declines. When they accept, the class becomes theirs and the students are notified with your note.'}
+                : mode === 'assign'
+                  ? 'The class becomes theirs now. The teacher and every student are notified at once, with your notes.'
+                  : 'Nothing changes yet: the teacher gets a notification and accepts or declines. When they accept, the class becomes theirs and the students are notified with your note.'}
             </Text>
           </Card>
         ) : null}
@@ -271,7 +319,7 @@ export function CoverSheet({
         ) : null}
         {result && result.status !== 'refused' ? (
           <View style={{ marginTop: 14 }}>
-            <Notice tone="green" message={result.status === 'applied' ? `Done · ${result.notified} people notified.` : 'Request sent. You’ll be notified when they answer.'} />
+            <Notice tone="green" message={result.status === 'applied' ? `Done · ${result.notified} ${result.notified === 1 ? 'person' : 'people'} notified.` : 'Request sent. You’ll be notified when they answer.'} />
           </View>
         ) : null}
         {error ? (
@@ -284,7 +332,7 @@ export function CoverSheet({
             <Button title="Send anyway" onPress={() => void send(true)} loading={busy} style={{ marginTop: 14 }} />
           ) : (
             <Button
-              title={self ? 'Take this class' : 'Send request'}
+              title={self ? 'Take this class' : mode === 'assign' ? 'Assign & notify' : 'Send request'}
               onPress={() => void send(false)}
               loading={busy}
               disabled={!teacherId}
@@ -300,5 +348,9 @@ export function CoverSheet({
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  quote: { borderLeftWidth: 3, borderLeftColor: colors.violet, paddingLeft: 10, color: colors.text },
+  quote: { borderLeftWidth: 3, borderLeftColor: colors.textMuted, paddingLeft: 12, color: colors.text, fontFamily: fonts.medium, fontSize: 14.5, lineHeight: 21 },
+  classBox: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: radius.md, backgroundColor: colors.bgRaised, borderWidth: 1, borderColor: colors.border },
+  quick: { paddingHorizontal: 13, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: colors.borderHi, backgroundColor: colors.cardHi },
+  quickOn: { backgroundColor: colors.text, borderColor: colors.text },
+  quickText: { fontFamily: fonts.medium, fontSize: 13, color: colors.textMuted },
 });

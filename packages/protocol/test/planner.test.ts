@@ -46,7 +46,7 @@ const base = (): Pick<PlannerWeek, 'weekStart' | 'today' | 'now' | 'items' | 'co
   now: '08:00',
   courses: [C1, C2],
   slots: [
-    { id: U(500), courseId: C1.id, courseCode: 'C-1', courseTitle: 'Course 1', instructor: null, weekday: 2, start: '10:00', end: '11:00', room: { id: R1, name: 'LH-1' }, mode: 'qr', rotationS: 7, validFrom: '2026-09-01', validUntil: null, active: true },
+    { id: U(500), courseId: C1.id, courseCode: 'C-1', courseTitle: 'Course 1', instructor: null, weekday: 2, start: '10:00', end: '11:00', room: { id: R1, name: 'LH-1' }, mode: 'qr', rotationS: 7, scanRounds: 1, validFrom: '2026-09-01', validUntil: null, active: true },
   ],
   items: [
     item(11, C1.id, '2026-09-29', '10:00', '11:00', { slotId: U(500) }),

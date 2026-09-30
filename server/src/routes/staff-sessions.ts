@@ -43,6 +43,7 @@ import { deliverChanges, fmtWhen } from '../lib/notify';
 import { publishOps } from '../lib/planner-server';
 import { loadRoster } from './staff-academics';
 import { loadInstitution, revokeActiveDevice, staffAudit } from './staff-admin';
+import { closeIfEveryoneMarked } from './attendance';
 
 const IdParam = z.object({ id: z.uuid() });
 /** Teachers may (re)take a register up to this long after the class; admins any time. */
@@ -130,6 +131,7 @@ export async function staffSessionRoutes(app: FastifyInstance, deps: Deps) {
         mode: b.mode,
         roomId: room?.id ?? null,
         changeKind: starts.getTime() > now() ? 'extra' : null,
+        scanRounds: b.mode === 'qr' ? b.scanRounds : 1,
       });
       // A future extra class is news for the students of the course.
       if (starts.getTime() > now()) {
@@ -231,8 +233,9 @@ export async function staffSessionRoutes(app: FastifyInstance, deps: Deps) {
   });
 
   /**
-   * Layered scans (fests, webinars): students must scan this many times to count as present. Set
-   * before the class or while it runs, as long as nobody has completed it yet.
+   * Layered scans (fests, webinars): students must scan this many times to count as present. Part of
+   * the schedule — set on the weekly slot / extra class, or here before the class starts (never while
+   * the code is on screen once anyone has scanned).
    */
   app.post('/v1/staff/sessions/:id/rounds', async (req): Promise<StaffSession> => {
     const auth = await requireDevice(req, deps, STAFF);
@@ -242,17 +245,21 @@ export async function staffSessionRoutes(app: FastifyInstance, deps: Deps) {
       const s = await loadSessionFor(tx, auth, id, true);
       if (s.status !== 'scheduled' && s.status !== 'live') throw new ApiError(409, 'CONFLICT', 'This class has ended.');
       if (s.mode !== 'qr') throw new ApiError(409, 'CONFLICT', 'Layered scans need a QR class.');
-      const cur = (await tx.query<{ round_no: number }>('select round_no from class_sessions where id = $1 for update', [id])).rows[0]!;
-      if (b.rounds < cur.round_no) throw new ApiError(409, 'CONFLICT', `Round ${cur.round_no} is already open.`);
-      const done = await tx.query('select 1 from attendance_records where session_id = $1 and revoked_at is null limit 1', [id]);
-      if (done.rowCount) throw new ApiError(409, 'CONFLICT', 'Some students are already marked present — set the number of scans before the first scan.');
+      if (b.rounds > 4) throw new ApiError(400, 'BAD_REQUEST', 'Up to 4 scans per class.');
+      await tx.query('select 1 from class_sessions where id = $1 for update', [id]);
+      const scanned = await tx.query(
+        `select 1 from attendance_records where session_id = $1 and revoked_at is null
+         union all select 1 from scan_round_marks where session_id = $1 limit 1`,
+        [id],
+      );
+      if (scanned.rowCount) throw new ApiError(409, 'CONFLICT', 'Students have already scanned — the number of scans is fixed once scanning starts.');
       await tx.query('update class_sessions set scan_rounds = $2 where id = $1', [id, b.rounds]);
       await staffAudit(tx, auth, 'session.rounds', `session:${id}`, { rounds: b.rounds });
     });
     return loadStaffSession(deps.db, id);
   });
 
-  /** Open the next scan round: students scan the (same) live code again; they are told on their phones. */
+  /** Open the next scan round: a new code (its own key) goes on screen; students are told on their phones. */
   app.post('/v1/staff/sessions/:id/next-round', async (req): Promise<StaffSession> => {
     const auth = await requireDevice(req, deps, STAFF);
     const { id } = IdParam.parse(req.params);
@@ -279,7 +286,7 @@ export async function staffSessionRoutes(app: FastifyInstance, deps: Deps) {
           userId: x.user_id,
           kind: 'attendance',
           title: `📷 Scan again · ${r.code} (round ${next} of ${r.scan_rounds})`,
-          body: 'Your professor opened the next attendance round. Scan the code on screen now — you’re marked present only after every round.',
+          body: 'Your professor opened the next attendance round. Scan the new code on screen now — you’re marked present only after every round.',
           data: { sessionId: id, courseId: s.course_id },
         })),
       );
@@ -492,6 +499,10 @@ export async function staffSessionRoutes(app: FastifyInstance, deps: Deps) {
           offline: t - b.recordedAt > 90_000,
         });
         const c = counts.rows[0]!;
+        // A running class where the register now has everyone present: it has done its job — close it
+        // (the QR stops working), exactly as when the last student scans.
+        if (s.status === 'live' && (await closeIfEveryoneMarked(tx, id, s.course_id, new Date(Math.min(t, b.recordedAt + 1000)))))
+          await staffAudit(tx, auth, 'session.auto_end', `session:${id}`, { reason: 'all_marked', via: 'register' });
         // Taken without internet and uploaded now: tell the professor it reached the server.
         if (t - b.recordedAt > 90_000) {
           const code = (await tx.query<{ code: string }>('select code from courses where id = $1', [s.course_id])).rows[0]?.code ?? 'Class';
