@@ -101,6 +101,21 @@ export const RootConsole = z.object({
     })
     .nullable()
     .default(null),
+  /** Data lifecycle: database size, the biggest tables, and what the hourly clean-up removed last time. */
+  storage: z
+    .object({
+      dbBytes: z.number(),
+      tables: z.array(z.object({ name: z.string(), rows: z.number(), bytes: z.number() })),
+      retention: z.object({
+        lastRunAt: z.string().nullable(),
+        durationMs: z.number(),
+        removed: z.number(),
+        lastError: z.string().nullable(),
+        rules: z.array(z.object({ key: z.string(), label: z.string(), removed: z.number() })),
+      }),
+    })
+    .nullable()
+    .default(null),
 });
 export type RootConsole = z.infer<typeof RootConsole>;
 

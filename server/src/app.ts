@@ -11,6 +11,7 @@ import type { Deps } from './deps';
 import { createOtpSender, type OtpSender } from './lib/delivery';
 import { ApiError } from './lib/errors';
 import { materializeTimetable } from './lib/timetable';
+import { RETENTION_EVERY_MS, runRetention } from './lib/retention';
 import { createServerSigner } from './lib/keys';
 import { makeHasher } from './lib/secrets';
 import { creditRoutes } from './routes/credits';
@@ -62,6 +63,8 @@ export async function buildApp(opts: BuildOptions): Promise<{ app: FastifyInstan
               remove: true,
             },
           },
+    // One line per request is noise at scale (and costs CPU): slow and failed requests are logged below.
+    disableRequestLogging: config.env === 'production',
     trustProxy: config.trustProxy,
     bodyLimit: 16 * 1024,
     requestTimeout: 30_000,
@@ -119,6 +122,8 @@ export async function buildApp(opts: BuildOptions): Promise<{ app: FastifyInstan
   });
   app.addHook('onResponse', async (req, reply) => {
     recordRequest(reply.elapsedTime, reply.statusCode);
+    if (config.env === 'production' && (reply.elapsedTime > 1500 || reply.statusCode >= 500))
+      req.log.warn({ method: req.method, url: req.url.split('?')[0], status: reply.statusCode, ms: Math.round(reply.elapsedTime) }, reply.statusCode >= 500 ? 'request failed' : 'slow request');
     const code = (reply as typeof reply & { probeCode?: string }).probeCode;
     if (code && PROBE_CODES.has(code)) deps.guard.recordProbe(req.ip, deps.clock());
   });
@@ -181,18 +186,17 @@ export async function buildApp(opts: BuildOptions): Promise<{ app: FastifyInstan
 
 /** Periodic cleanup of expired, security-irrelevant rows. */
 export function startJanitor(deps: Deps): () => void {
+  let lastRetention = 0;
   const run = async () => {
     try {
       const now = new Date(deps.clock());
-      await deps.db.query('delete from request_nonces where expires_at < $1', [now]);
-      await deps.db.query('delete from device_online where minute < $1', [new Date(now.getTime() - 48 * 3_600_000)]);
-      await deps.db.query(`delete from otp_challenges where created_at < $1`, [new Date(now.getTime() - 24 * 3_600_000)]);
-      await deps.db.query(`delete from auth_tickets where expires_at < $1`, [new Date(now.getTime() - 24 * 3_600_000)]);
-      await deps.db.query(`delete from auth_sessions where refresh_expires_at < $1`, [new Date(now.getTime() - 24 * 3_600_000)]);
-      // Scale: the bell keeps 6 months of read notifications (unread ones stay until read).
-      await deps.db.query(`delete from notifications where read_at is not null and created_at < $1`, [new Date(now.getTime() - 180 * 86_400_000)]);
-      // Scan refusals older than a year are no longer reviewed (the audit log keeps the record).
-      await deps.db.query(`delete from scan_rejections where created_at < $1 and review_status <> 'open'`, [new Date(now.getTime() - 365 * 86_400_000)]);
+      // Data lifecycle (lib/retention.ts): trim working data about once an hour, in small batches.
+      if (!lastRetention || now.getTime() - lastRetention >= RETENTION_EVERY_MS) {
+        lastRetention = now.getTime();
+        const removed = await runRetention(deps.db, now);
+        const total = removed ? Object.values(removed).reduce((a, b) => a + b, 0) : 0;
+        if (total) deps.log.info({ removed }, `retention: ${total} old rows removed`);
+      }
       // Auto-close sessions that ran past their scheduled end by more than 30 minutes.
       await deps.db.query(
         `update class_sessions set status = 'closed', ended_at = greatest(scheduled_end, started_at) where status = 'live' and scheduled_end < $1`,

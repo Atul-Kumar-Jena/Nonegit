@@ -62,6 +62,8 @@ export default function ConsoleScreen() {
         </>
       ) : null}
 
+      {c.storage ? <StorageCard s={c.storage} /> : null}
+
       {c.push ? (
         <>
           <SectionLabel right={<Badge label={c.push.configured ? (c.push.lastError && (!c.push.lastSentAt || c.push.lastErrorAt! > c.push.lastSentAt) ? 'Failing' : 'On') : 'Off'} tone={c.push.configured ? (c.push.lastError && (!c.push.lastSentAt || c.push.lastErrorAt! > c.push.lastSentAt) ? 'red' : 'green') : 'amber'} dot={false} />}>
@@ -239,3 +241,51 @@ const styles = StyleSheet.create({
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 },
   divider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
 });
+
+const mb = (b: number) => (b >= 1024 ** 3 ? `${(b / 1024 ** 3).toFixed(2)} GB` : `${(b / 1024 ** 2).toFixed(1)} MB`);
+
+/** Data lifecycle: how big the database is, what's biggest, and what the hourly clean-up removed. */
+function StorageCard({ s }: { s: NonNullable<ReturnType<typeof useConsole>['data']>['storage'] }) {
+  const [open, setOpen] = useState(false);
+  if (!s) return null;
+  const r = s.retention;
+  return (
+    <>
+      <SectionLabel right={<Badge label={r.lastError ? 'Clean-up failing' : mb(s.dbBytes)} tone={r.lastError ? 'red' : 'muted'} dot={false} />}>Data & storage</SectionLabel>
+      <Card style={{ gap: 8 }}>
+        {s.tables.slice(0, 6).map((t) => (
+          <View key={t.name} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <Text variant="small" color={colors.text} style={{ flex: 1 }} numberOfLines={1}>
+              {t.name}
+            </Text>
+            <Text variant="monoSmall">{`${fmtNum(t.rows)} rows · ${mb(t.bytes)}`}</Text>
+          </View>
+        ))}
+        <Text variant="small" style={{ marginTop: 4 }}>
+          {r.lastRunAt
+            ? `Hourly clean-up · last ${timeAgo(r.lastRunAt)} · removed ${fmtNum(r.removed)} old rows in ${Math.max(1, Math.round(r.durationMs / 100) / 10)} s`
+            : 'Hourly clean-up hasn’t run since the server started.'}
+        </Text>
+        {r.lastError ? (
+          <Text variant="small" color={colors.red}>
+            {`Last clean-up error: ${r.lastError}`}
+          </Text>
+        ) : null}
+        <Button title={open ? 'Hide what is kept and for how long' : 'What is kept and for how long'} kind="ghost" compact onPress={() => setOpen((v) => !v)} />
+        {open ? (
+          <View style={{ gap: 6 }}>
+            <Text variant="small" color={colors.text}>
+              Kept for good: people, batches, courses, the timetable, every class, attendance records and credits, phones, and the tamper-evident audit log.
+            </Text>
+            {r.rules.map((x) => (
+              <Text key={x.key} variant="small">
+                {`• ${x.label}${x.removed ? ` — ${fmtNum(x.removed)} removed last run` : ''}`}
+              </Text>
+            ))}
+          </View>
+        ) : null}
+      </Card>
+    </>
+  );
+}
+

@@ -42,6 +42,7 @@ import { SWITCHES, TENANT_FLAGS, flagDefault, type SwitchKey, type TenantFlagKey
 import { requestStats } from '../lib/metrics';
 import { issueSetupCode } from '../lib/setup-codes';
 import { PUSH_APPS, PUSH_ENV, pushConfig, pushStats, type PushApp } from '../lib/push';
+import { RETENTION_RULES, retentionStats, storageReport } from '../lib/retention';
 import { randomBytes } from '@attendly/protocol';
 import { revokeActiveDevice } from './staff-admin';
 
@@ -259,6 +260,20 @@ export async function rootRoutes(app: FastifyInstance, deps: Deps) {
         .filter((s): s is typeof s & { key: SwitchKey } => s.key in SWITCHES)
         .map((s) => ({ key: s.key, label: SWITCHES[s.key].label, detail: SWITCHES[s.key].detail, enabled: s.enabled, reason: s.reason, updatedAt: s.updated_at.toISOString(), updatedBy: s.by })),
       recent: await recentAudit(deps.db, scope, 8),
+      storage: await (async () => {
+        const report = await storageReport(deps.db).catch(() => ({ dbBytes: 0, tables: [] }));
+        const removed = RETENTION_RULES.map((r) => ({ key: r.key, label: r.label, removed: retentionStats.deleted[r.key] ?? 0 }));
+        return {
+          ...report,
+          retention: {
+            lastRunAt: retentionStats.lastRunAt,
+            durationMs: retentionStats.durationMs,
+            removed: removed.reduce((t, r) => t + r.removed, 0),
+            lastError: retentionStats.lastError,
+            rules: removed,
+          },
+        };
+      })(),
       push: await (async () => {
         const cfg = pushConfig();
         const counts = await deps.db.query<{ student: boolean; n: number }>(

@@ -291,6 +291,34 @@ Nonegit/
 | Cross-institution leak | Tenant scoping on every query; 404 outside scope | `lib/access.ts` |
 | Secrets in the repo | All secrets only in Render env or GitHub secrets | `render.yaml`, `config.ts` |
 
+## 7b. Data lifecycle (what is kept, what is trimmed)
+
+**Kept for good** (the institution's records): users, batches, courses, timetable slots, every class
+(held, missed, cancelled), attendance records and credits, devices, and the tamper-evident audit log.
+
+**Trimmed** by `server/src/lib/retention.ts`, run by the janitor about once an hour:
+
+| Data | Kept |
+|---|---|
+| Replay nonces, phone-chip challenges | until they expire |
+| Sign-in codes, binding tickets, expired logins | 1 day |
+| Replaced login tokens (every 15-min refresh leaves one) | 7 days |
+| Signed-out logins | 30 days |
+| Online-evidence minutes (offline-scan checks) | 2 days |
+| Big-screen pairings | 7 days after they end |
+| Offline-upload receipts (idempotency) | 30 days |
+| Push addresses | until the phone signs out, or 120 days without refresh |
+| Notifications | read: 6 months · unread: 1 year |
+| Reviewed scan refusals | 1 year (open ones until reviewed) |
+| Per-round scans of multi-scan classes | 120 days (the chain head stays on the attendance record) |
+| Answered class requests · decided phone requests | 6 months · 1 year |
+| Deleted notices · finished planner drafts | 30 days · 90 days |
+
+How it runs: one server at a time (Postgres advisory lock), 5,000 rows per batch with a pause between
+batches, every rule served by an index (`027_lifecycle_indexes.sql`). The Developer console → **Data &
+storage** shows the database size, the biggest tables and what the last run removed. In production only
+slow (> 1.5 s) or failed requests are logged.
+
 ## 8. Configuration (Render → Environment)
 
 | Variable | Purpose |
