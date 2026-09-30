@@ -279,6 +279,8 @@ export default function Planner() {
             tray={tray}
             compact={compact}
             today={week.today}
+            now={week.now}
+            nowAt={weekQ.dataUpdatedAt}
             onTap={setSelected}
             onTrayTap={setAdding}
             onDrop={onDrop}

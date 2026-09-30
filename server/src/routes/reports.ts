@@ -9,11 +9,14 @@ import type { Deps } from '../deps';
 import { STAFF, can } from '../lib/access';
 import { requireDevice } from '../lib/auth';
 import { z } from 'zod';
+import { ttlCache } from '../lib/cache';
 import { buildAnalytics, buildMatrixReport, buildPunctualityReport, buildStudentReport, buildStudentTrend } from '../lib/reports';
 
 const IdParam = z.object({ id: z.uuid() });
 
 export async function reportRoutes(app: FastifyInstance, deps: Deps) {
+  const analyticsCache = ttlCache<AttendanceAnalytics>(30_000);
+  const punctualityCache = ttlCache<PunctualityReport>(30_000);
   app.get('/v1/me/report', async (req): Promise<StudentReport> => {
     const auth = await requireDevice(req, deps, ['student']);
     const q = StudentReportQuery.parse(req.query);
@@ -37,7 +40,9 @@ export async function reportRoutes(app: FastifyInstance, deps: Deps) {
     const auth = await requireDevice(req, deps, STAFF);
     const q = AnalyticsQuery.parse(req.query);
     const everyone = can(auth, 'courses') || can(auth, 'planner');
-    return buildAnalytics(deps.db, auth.tenantId, deps.clock(), q, everyone ? (q.teacherId ?? null) : auth.userId, !everyone);
+    const teacherId = everyone ? (q.teacherId ?? null) : auth.userId;
+    const key = JSON.stringify([auth.tenantId, q, teacherId, !everyone]);
+    return analyticsCache(key, Date.now(), () => buildAnalytics(deps.db, auth.tenantId, deps.clock(), q, teacherId, !everyone));
   });
 
   /** A student's week-by-week trend (Home chart). */
@@ -51,6 +56,7 @@ export async function reportRoutes(app: FastifyInstance, deps: Deps) {
     const auth = await requireDevice(req, deps, STAFF);
     const q = PunctualityQuery.parse(req.query);
     const everyone = can(auth, 'courses') || can(auth, 'planner');
-    return buildPunctualityReport(deps.db, auth.tenantId, deps.clock(), { days: q.days, teacherId: everyone ? q.teacherId : auth.userId });
+    const teacherId = everyone ? q.teacherId : auth.userId;
+    return punctualityCache(JSON.stringify([auth.tenantId, q.days, teacherId]), Date.now(), () => buildPunctualityReport(deps.db, auth.tenantId, deps.clock(), { days: q.days, teacherId }));
   });
 }

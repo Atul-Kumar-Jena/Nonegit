@@ -10,7 +10,7 @@
 import type { Db, Queryable } from '../db';
 import { withTx } from '../db';
 import { appendAudit } from './audit';
-import { insertNotifications } from './notify';
+import { insertNotifications, studentsOf } from './notify';
 
 /** Classes started by the clock (older builds) close this long after their scheduled end. */
 export const AUTO_CLOSE_AFTER_MS = 15 * 60_000;
@@ -38,18 +38,16 @@ export async function tickClasses(db: Db, now: Date): Promise<{ due: number; mis
         where c.id = s.course_id and s.status = 'scheduled' and s.reminded_at is null
           and s.scheduled_start > $1 and s.scheduled_start <= $2
         returning s.id, s.tenant_id, s.course_id, coalesce(s.substitute_id, c.instructor_id) as teacher_id, c.code, c.title,
-                  (select coalesce(r.name, s.room) from rooms r where r.id = s.room_id) as room, s.scheduled_start`,
+                  coalesce((select r.name from rooms r where r.id = s.room_id), s.room) as room, s.scheduled_start`,
       [now, new Date(now.getTime() + SERVER_REMINDER_MS)],
     );
+    // Every class's students in one query (hundreds of classes can start in the same minute).
+    const studentsByCourse = await studentsOf(tx, [...new Set(soon.rows.map((s) => s.course_id))]);
     for (const s of soon.rows) {
       const mins = Math.max(1, Math.round((s.scheduled_start.getTime() - now.getTime()) / 60_000));
-      const students = await tx.query<{ user_id: string }>(
-        `select e.user_id from enrollments e join users u on u.id = e.user_id and u.status = 'active' and u.role = 'student' where e.course_id = $1`,
-        [s.course_id],
-      );
       await insertNotifications(tx, s.tenant_id, [
-        ...students.rows.map((x) => ({
-          userId: x.user_id,
+        ...(studentsByCourse.get(s.course_id) ?? []).map((userId) => ({
+          userId,
           kind: 'reminder',
           title: `⏰ ${s.code} starts in ${mins} min`,
           body: `${s.title}${s.room ? ` · ${s.room}` : ''}`,

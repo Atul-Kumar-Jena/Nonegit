@@ -40,7 +40,11 @@ async function load(): Promise<void> {
       const o = v as ReminderSettings;
       return {
         enabled: o?.enabled !== false,
-        minutes: Array.isArray(o?.minutes) ? o.minutes.filter((m) => REMINDER_CHOICES.includes(m as never)) : DEFAULTS.minutes,
+        // Older builds offered "5 min before" (now sent by the server): keep a lead so reminders don't go silent.
+        minutes: (() => {
+          const kept = Array.isArray(o?.minutes) ? o.minutes.filter((m) => REMINDER_CHOICES.includes(m as never)) : DEFAULTS.minutes;
+          return kept.length ? kept : Array.isArray(o?.minutes) && o.minutes.includes(5) ? [10] : DEFAULTS.minutes;
+        })(),
         pinned: o?.pinned !== false,
       };
     });

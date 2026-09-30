@@ -162,11 +162,15 @@ export async function announceNew(items: AppNotification[], unread: number): Pro
   try {
     const last = (await vault.get<number>(SEEN_KEY, (v) => (typeof v === 'number' ? v : 0))) ?? null;
     const fresh = items.filter((i) => !i.read && (last === null ? false : i.id > last)).sort((a, b) => a.id - b.id);
-    const maxId = Math.max(last ?? 0, ...items.map((i) => i.id));
+    // Instant push is set up on this phone: a brand-new item is still on its way through Firebase —
+    // wait for the next check rather than showing it twice; show it only if Firebase didn't deliver.
+    const pushActive = !!(await vault.get<boolean>(PUSH_KEY, (v) => v === true));
+    const inFlight = pushActive ? fresh.filter((f) => !f.pushed && Date.now() - Date.parse(f.createdAt) < 45_000) : [];
+    const maxId = inFlight.length ? Math.max(last ?? 0, inFlight[0]!.id - 1) : Math.max(last ?? 0, ...items.map((i) => i.id));
     // First run on this phone: remember where we are instead of replaying history.
     if (maxId > (last ?? 0) || last === null) await vault.set(SEEN_KEY, maxId);
     // Only what Firebase didn't already deliver (if Google refused a send, the app still shows it).
-    const pending = fresh.filter((f) => !f.pushed);
+    const pending = fresh.filter((f) => !f.pushed && !inFlight.includes(f) && f.id <= maxId);
     if (!pending.length) return;
     if ((await Notifications.getPermissionsAsync()).status !== 'granted') return;
     // Several at once become one summary; a newer update about the same thing replaces the older one.

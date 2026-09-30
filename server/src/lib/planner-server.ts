@@ -335,7 +335,8 @@ export async function publishOps(
           `update class_sessions set original_start = coalesce(original_start, scheduled_start), scheduled_start = $2, scheduled_end = $3,
                   room_id = case when $4 then $5 else room_id end, room = case when $4 then $6 else room end,
                   lat = case when $4 then $7 else lat end, lng = case when $4 then $8 else lng end, radius_m = case when $4 then coalesce($9, radius_m) else radius_m end,
-                  change_kind = case when change_kind = 'extra' then 'extra' else 'rescheduled' end, change_note = coalesce($10, change_note), changed_at = $11, changed_by = $12
+                  change_kind = case when change_kind = 'extra' then 'extra' else 'rescheduled' end, change_note = coalesce($10, change_note), changed_at = $11, changed_by = $12,
+                  reminded_at = null, due_at = null, missed_at = null
             where id = $1`,
           [o.sessionId, start, end, o.roomId !== undefined, room?.id ?? null, room?.name ?? null, room?.lat ?? null, room?.lng ?? null, room?.radius_m ?? null, opts.note ?? null, t, auth.userId],
         );

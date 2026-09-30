@@ -7,6 +7,11 @@ import { Text } from '@kit/components/ui';
 import { layoutDay } from './layout';
 import { colors, fonts } from '@kit/theme';
 
+/** The institution's clock (not the phone's, which may be in another time zone): its time when the week loaded, plus what has passed since. */
+function instNowMin(now: string, at: number): number {
+  return hmToMin(now) + Math.floor((Date.now() - at) / 60_000);
+}
+
 export const SNAP_MIN = 5;
 /** 570 → "9:30 AM". */
 export const t12 = (min: number) => {
@@ -223,6 +228,9 @@ export interface BoardProps {
   tray: PlannerCourse[];
   compact: boolean;
   today: string;
+  /** The institution's HH:MM when the week loaded, and when that was (ms). */
+  now: string;
+  nowAt: number;
   onTap: (item: PlannerItem) => void;
   onTrayTap: (course: PlannerCourse) => void;
   onDrop: (src: DragSource, target: DropTarget) => void;
@@ -311,8 +319,7 @@ export function Board(p: BoardProps) {
   /** A time that has already gone: nothing can be moved or added there (shown while dragging). */
   const pastAt = useCallback(
     (t: DropTarget): boolean => {
-      const d = new Date();
-      const nowMin = d.getHours() * 60 + d.getMinutes();
+      const nowMin = instNowMin(p.now, p.nowAt);
       if (t.date < p.today) return true;
       if (t.date > p.today) return false;
       if (t.overKey) {
@@ -321,7 +328,7 @@ export function Board(p: BoardProps) {
       }
       return t.startMin <= nowMin;
     },
-    [p.today, p.items],
+    [p.today, p.items, p.now, p.nowAt],
   );
 
   /** Would dropping here clash? Same teacher or same room at an overlapping time (the server re-checks everything). */
@@ -429,10 +436,7 @@ export function Board(p: BoardProps) {
   const clash = drag && target ? clashAt(target, drag.src, targetDur) : null;
   const tone = !target ? colors.textDim : clash ? colors.red : target.overKey ? colors.amber : colors.green;
   const past = !!target && pastAt(target);
-  const nowMin = (() => {
-    const d = new Date();
-    return d.getHours() * 60 + d.getMinutes();
-  })();
+  const nowMin = instNowMin(p.now, p.nowAt);
 
   return (
     <View style={{ flex: 1 }}>

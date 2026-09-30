@@ -173,8 +173,7 @@ export async function buildPunctualityReport(db: Queryable, tenantId: string, no
        left join rooms r on r.id = s.room_id
       where s.tenant_id = $1 and s.scheduled_start >= $2 and s.scheduled_start <= $3
         and ($4::uuid is null or coalesce(s.substitute_id, c.instructor_id) = $4)
-      order by s.scheduled_start desc
-      limit 5000`,
+      order by s.scheduled_start desc`,
     [tenantId, from, to, q.teacherId ?? null],
   );
   const classes: PunctualityReport['classes'] = [];
@@ -252,57 +251,48 @@ export async function buildAnalytics(
   ).rows[0]!;
   const from = range.from;
   const params = [tenantId, from, term.timezone, q.batchId ?? null, q.courseId ?? null, teacherId, range.to];
-  // One row per (class, enrolled student) with whether they were present — the base of every figure.
+  // One row per (class, enrolled student) with whether they were present — the base of every figure,
+  // computed once per query (materialized) with plain joins instead of a lookup per row.
   const base = `
-    with sess as (
-      select s.id, s.course_id, to_char((s.started_at at time zone $3)::date, 'YYYY-MM-DD') as day
+    with sess as materialized (
+      select s.id, s.course_id, c.code, c.title, coalesce(s.substitute_id, c.instructor_id) as teacher_id,
+             to_char((s.started_at at time zone $3)::date, 'YYYY-MM-DD') as day
         from class_sessions s join courses c on c.id = s.course_id
-       where s.tenant_id = $1 and s.started_at >= $2 and s.started_at < $7 and s.mode is not null
+       where s.tenant_id = $1 and s.started_at >= $2 and s.started_at < $7
          and (s.status = 'closed' or (s.status = 'live' and exists(select 1 from attendance_records x where x.session_id = s.id and x.revoked_at is null)))
          and ($5::uuid is null or s.course_id = $5)
          and ($4::uuid is null or s.course_id in (select course_id from course_batches where batch_id = $4))
          and ($6::uuid is null or coalesce(s.substitute_id, c.instructor_id) = $6)
-    ), roster as (
-      select s.id as session_id, s.course_id, s.day, e.user_id,
-             exists(select 1 from attendance_records a where a.session_id = s.id and a.user_id = e.user_id and a.revoked_at is null) as present
+    ), roster as materialized (
+      select s.id as session_id, s.course_id, s.day, e.user_id, a.id is not null as present
         from sess s
         join enrollments e on e.course_id = s.course_id
         join users u on u.id = e.user_id and u.status = 'active' and u.role = 'student'
+        left join attendance_records a on a.session_id = s.id and a.user_id = e.user_id and a.revoked_at is null
        where ($4::uuid is null or e.user_id in (select user_id from batch_members where batch_id = $4))
     )`;
-  const [days, subjects, students, batches, batchDays, scope, teachers] = await Promise.all([
-    db.query<{ day: string; classes: number; expected: number; present: number }>(
-      `${base} select s.day, count(distinct s.id)::int as classes, count(r.user_id)::int as expected, count(r.user_id) filter (where r.present)::int as present
-         from sess s left join roster r on r.session_id = s.id group by s.day order by s.day`,
+  type Agg = { g_day: number; g_course: number; g_user: number; g_teacher: number; day: string | null; course_id: string | null; code: string | null; title: string | null; user_id: string | null; teacher_id: string | null; teacher: string | null; classes: number; expected: number; present: number };
+  type BAgg = { g_day: number; batch_id: string; name: string; day: string | null; expected: number; present: number };
+  const [agg, bagg, scope] = await Promise.all([
+    db.query<Agg>(
+      `${base}
+       select grouping(s.day)::int as g_day, grouping(s.course_id)::int as g_course, grouping(r.user_id)::int as g_user, grouping(s.teacher_id)::int as g_teacher,
+              s.day, s.course_id, s.code, s.title, r.user_id, s.teacher_id, t.full_name as teacher,
+              count(distinct s.id)::int as classes, count(r.user_id)::int as expected, count(r.user_id) filter (where r.present)::int as present
+         from sess s
+         left join roster r on r.session_id = s.id
+         left join users t on t.id = s.teacher_id
+        group by grouping sets ((s.day), (s.course_id, s.code, s.title), (r.user_id), (s.teacher_id, t.full_name))`,
       params,
     ),
-    db.query<{ course_id: string; code: string; title: string; classes: number; expected: number; present: number }>(
-      `${base} select c.id as course_id, c.code, c.title, count(distinct s.id)::int as classes, count(r.user_id)::int as expected, count(r.user_id) filter (where r.present)::int as present
-         from sess s join courses c on c.id = s.course_id left join roster r on r.session_id = s.id group by c.id, c.code, c.title order by c.code`,
-      params,
-    ),
-    db.query<{ user_id: string; expected: number; present: number }>(
-      `${base} select user_id, count(*)::int as expected, count(*) filter (where present)::int as present from roster group by user_id`,
-      params,
-    ),
-    q.batchId
-      ? Promise.resolve({ rows: [] as { batch_id: string; name: string; expected: number; present: number }[] })
-      : db.query<{ batch_id: string; name: string; expected: number; present: number }>(
-          `${base} select b.id as batch_id, b.name, count(r.user_id)::int as expected, count(r.user_id) filter (where r.present)::int as present
-             from batches b
-             join batch_members m on m.batch_id = b.id
-             join roster r on r.user_id = m.user_id and r.course_id in (select course_id from course_batches where batch_id = b.id)
-            where b.tenant_id = $1 and b.active
-            group by b.id, b.name order by b.name`,
-          params,
-        ),
-    db.query<{ day: string; batch_id: string; expected: number; present: number }>(
-      `${base} select r.day, b.id as batch_id, count(*)::int as expected, count(*) filter (where r.present)::int as present
+    db.query<BAgg>(
+      `${base}
+       select grouping(r.day)::int as g_day, b.id as batch_id, b.name, r.day, count(*)::int as expected, count(*) filter (where r.present)::int as present
          from roster r
          join batch_members m on m.user_id = r.user_id
          join batches b on b.id = m.batch_id and b.tenant_id = $1 and b.active and ($4::uuid is null or b.id = $4)
-        where r.course_id in (select course_id from course_batches where batch_id = b.id)
-        group by r.day, b.id order by r.day, b.id`,
+         join course_batches cb on cb.batch_id = b.id and cb.course_id = r.course_id
+        group by grouping sets ((b.id, b.name), (b.id, b.name, r.day))`,
       params,
     ),
     db.query<{ batch: string | null; course: string | null; teacher: string | null }>(
@@ -310,17 +300,14 @@ export async function buildAnalytics(
               (select full_name from users where id = $4 and tenant_id = $3) as teacher`,
       [q.batchId ?? null, q.courseId ?? null, tenantId, teacherId],
     ),
-    db.query<{ teacher_id: string; name: string; classes: number; expected: number; present: number }>(
-      `${base} select t.id as teacher_id, t.full_name as name, count(distinct s.id)::int as classes,
-              count(r.user_id)::int as expected, count(r.user_id) filter (where r.present)::int as present
-         from sess s
-         join class_sessions cs on cs.id = s.id join courses c on c.id = cs.course_id
-         join users t on t.id = coalesce(cs.substitute_id, c.instructor_id)
-         left join roster r on r.session_id = s.id
-        group by t.id, t.full_name order by t.full_name`,
-      params,
-    ),
   ]);
+  const rows = agg.rows;
+  const days = { rows: rows.filter((r) => !r.g_day && r.day).sort((a, b) => a.day!.localeCompare(b.day!)) };
+  const subjects = { rows: rows.filter((r) => !r.g_course && r.course_id).sort((a, b) => a.code!.localeCompare(b.code!)) };
+  const students = { rows: rows.filter((r) => !r.g_user && r.user_id) };
+  const teachers = { rows: rows.filter((r) => !r.g_teacher && r.teacher_id).sort((a, b) => (a.teacher ?? '').localeCompare(b.teacher ?? '')) };
+  const batches = { rows: q.batchId ? [] : bagg.rows.filter((r) => r.g_day).sort((a, b) => a.name.localeCompare(b.name)) };
+  const batchDays = { rows: bagg.rows.filter((r) => !r.g_day && r.day).sort((a, b) => a.day!.localeCompare(b.day!) || a.batch_id.localeCompare(b.batch_id)) };
   const min = term.min_attendance;
   const bands = { safe: 0, near: 0, below: 0, far: 0 };
   for (const s of students.rows) {
@@ -339,13 +326,13 @@ export async function buildAnalytics(
     scope: { label, batchId: q.batchId ?? null, courseId: q.courseId ?? null, teacherId, mine },
     from: from.toISOString(),
     to: new Date(Math.min(range.to.getTime(), now) - 1).toISOString(),
-    teachers: teachers.rows.map((t) => ({ teacherId: t.teacher_id, name: t.name, classes: t.classes, ...share(t.present, t.expected) })),
-    days: days.rows.map((d) => ({ date: d.day, classes: d.classes, ...share(d.present, d.expected) })),
+    teachers: teachers.rows.map((t) => ({ teacherId: t.teacher_id!, name: t.teacher ?? 'Professor', classes: t.classes, ...share(t.present, t.expected) })),
+    days: days.rows.map((d) => ({ date: d.day!, classes: d.classes, ...share(d.present, d.expected) })),
     total: { classes: tot.classes, ...share(tot.present, tot.expected) },
-    subjects: subjects.rows.map((s) => ({ courseId: s.course_id, code: s.code, title: s.title, classes: s.classes, ...share(s.present, s.expected) })),
+    subjects: subjects.rows.map((s) => ({ courseId: s.course_id!, code: s.code!, title: s.title!, classes: s.classes, ...share(s.present, s.expected) })),
     batches: batches.rows.map((b) => ({ batchId: b.batch_id, name: b.name, ...share(b.present, b.expected) })),
     bands,
-    batchDays: batchDays.rows.map((r) => ({ date: r.day, batchId: r.batch_id, present: r.present, expected: r.expected })),
+    batchDays: batchDays.rows.map((r) => ({ date: r.day!, batchId: r.batch_id, present: r.present, expected: r.expected })),
   };
 }
 

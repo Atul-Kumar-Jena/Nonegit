@@ -93,9 +93,14 @@ function roundAt(s: SessionRow, at: number): number {
 
 /** Every enrolled (active) student is present: the class has done its job, close it. */
 export async function closeIfEveryoneMarked(tx: Queryable, sessionId: string, courseId: string, at: Date): Promise<boolean> {
+  // One final check at a time per class: two last scans arriving together can't both miss each other.
+  await tx.query(`select pg_advisory_xact_lock(hashtext('autoend:' || $1))`, [sessionId]);
   const { rows } = await tx.query<{ enrolled: number; present: number }>(
-    `select (select count(*)::int from enrollments e join users u on u.id = e.user_id and u.status = 'active' and u.role = 'student' where e.course_id = $2) as enrolled,
-            (select count(*)::int from attendance_records a join users u on u.id = a.user_id and u.status = 'active' where a.session_id = $1 and a.revoked_at is null) as present`,
+    `select count(*)::int as enrolled, count(a.id)::int as present
+       from enrollments e
+       join users u on u.id = e.user_id and u.status = 'active' and u.role = 'student'
+       left join attendance_records a on a.session_id = $1 and a.user_id = e.user_id and a.revoked_at is null
+      where e.course_id = $2`,
     [sessionId, courseId],
   );
   const c = rows[0]!;
@@ -272,10 +277,13 @@ export async function attendanceRoutes(app: FastifyInstance, deps: Deps) {
       if (enrolled.rowCount !== 1) throw new ScanRejection('E-NOT-ENROLLED', undefined, { course: session.course_code });
 
       // 5. Freshness of the rotating token at the moment it was scanned — strict: the code on screen
-      //    then (a neighbour only within 1.5 s of the switch). A forwarded screenshot is scanned later,
+      //    then (a neighbour only within 2.5 s of the switch). A forwarded screenshot is scanned later,
       //    when that code is long gone. (The GPS fix after scanning may take a few seconds; that
       //    delay is measured on the phone's since-boot clock and doesn't count against the student.)
-      const judgedAt = scannedAt;
+      //    The phone's signed send time (clock-corrected) is used instead of arrival, so a slow upload
+      //    on campus data doesn't count against the student; it must be within the last 15 s.
+      const sentAt = auth.requestTs <= now + 2_000 && auth.requestTs >= now - OFFLINE_THRESHOLD_MS ? auth.requestTs : now;
+      const judgedAt = offline ? scannedAt : sentAt - waited;
       const cur = currentQrSeq(judgedAt, session.rotation_s);
       if (!isQrFreshAt(parsed.seq, judgedAt, session.rotation_s))
         throw new ScanRejection('E-EXPIRED', `Token ${seqLabel(parsed.seq)} expired — the live code was ${seqLabel(cur)}.`, { seq: parsed.seq, current: cur, offline });
