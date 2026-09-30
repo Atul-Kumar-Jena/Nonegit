@@ -110,7 +110,7 @@ Nonegit/
 | File | Role |
 |---|---|
 | `index.ts` | Entry: load config → migrate → bootstrap accounts → build the app → start the push dispatcher, class clock and timetable materializer |
-| `app.ts` | Builds Fastify: CORS, rate limits, error handler (ApiError/zod → `{error:{code,message}}`), registers every route file |
+| `app.ts` | Builds Fastify: CORS, rate limits, security headers, gzip for JSON answers over 1 KB, 75 s keep-alive, error handler (ApiError/zod → `{error:{code,message}}`), registers every route file |
 | `config.ts` | Reads every environment variable (see §8) |
 | `deps.ts` | The dependency bag handed to every route: db, config, clock, hash, signer, sender, log |
 | `db.ts` | pg pool, `withTx` (transaction helper), `isUniqueViolation` |
@@ -148,6 +148,7 @@ Nonegit/
 | `planner-server.ts` | `publishOps`: validate → apply → notify → audit, in one transaction |
 | `notify.ts`, `push.ts`, `delivery.ts` | Notification rows; the FCM dispatcher (every 2 s, 500 per batch); email and SMS sign-in codes |
 | `sessions.ts`, `staff-sessions.ts`, `stats.ts`, `reports.ts` | Class helpers, lecture numbers, percentages, exports |
+| `cache.ts` | `ttlCache`: 30-second shared cache for heavy reports (analytics, punctuality); callers asking at once share one query |
 | `receipts.ts`, `keys.ts`, `secrets.ts`, `totp.ts`, `setup-codes.ts` | Signed receipts, server key, encryption box, TOTP, setup codes |
 | `guard.ts`, `metrics.ts` | Abuse guard; request stats for the console |
 | `platform-access.ts` | Main-admin backfill; the developer account and its first-time setup code |
