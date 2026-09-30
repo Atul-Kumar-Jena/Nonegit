@@ -1,7 +1,7 @@
 import { useCallback, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
-import { ChevronRight, CloudDownload, Inbox, Plus, Radio, ShieldAlert, Smartphone, UserCheck, UserPlus, Wand2 } from 'lucide-react-native';
+import { ChevronRight, CloudDownload, Inbox, Plus, Radio, ShieldAlert, Smartphone, UserPlus, Wand2 } from 'lucide-react-native';
 import { NotificationBell } from '@kit/components/NotificationBell';
 import { Screen } from '@kit/components/Screen';
 import { BatteryCard } from '@kit/components/BatteryCard';
@@ -11,7 +11,7 @@ import { usePermissionsOnboarding } from '@kit/lib/notifications';
 import { SyncBanner } from '@kit/components/SyncBanner';
 import { Avatar, Badge, Button, Card, ErrorState, Loading, SectionLabel, Text } from '@kit/components/ui';
 import { dayLabel, greeting, initials, timeAgo, clock } from '@kit/lib/format';
-import { colors, fonts, toneColor, type Tone } from '@kit/theme';
+import { colors } from '@kit/theme';
 import { SessionCard } from '@/components/SessionCard';
 import { Empty } from '@/components/forms';
 import { useLocalSessions, withLocal } from '@/local-sessions';
@@ -82,13 +82,9 @@ export default function Today() {
         <NotificationBell />
       </View>
 
+      {/* Only what needs you sits above today's classes; everything else is below them. */}
       {admin ? <SetupNudge /> : null}
-
       <RequestsBanner requests={reqs.data?.incoming ?? []} tz={tz} />
-      <NoticeHomeCard canPost />
-      <AttendanceGlance />
-      <BatteryCard />
-
       <SyncBanner />
 
       {d && (d.liveNow || (devices && d.flaggedOpen) || (phoneRequests && d.pendingRequests)) ? (
@@ -114,7 +110,6 @@ export default function Today() {
           ))}
         </View>
       )}
-      <ComingUp from={addDays(today, 1)} tz={tz} />
       <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
         <Button title="Extra class" kind="secondary" onPress={() => router.push('/extra-class')} icon={<Plus color={colors.text} size={16} />} style={{ flex: 1 }} />
         {planner ? (
@@ -123,6 +118,10 @@ export default function Today() {
           <Button title="Requests" kind="secondary" onPress={() => router.push('/inbox')} icon={<Inbox color={colors.text} size={16} />} style={{ flex: 1 }} />
         )}
       </View>
+      <ComingUp from={addDays(today, 1)} tz={tz} />
+      <NoticeHomeCard canPost />
+      <AttendanceGlance />
+      <BatteryCard />
       <Pressable onPress={() => void pack.refetch()} accessibilityRole="button" style={[styles.row, { marginTop: 22 }]}>
         <CloudDownload color={pack.data ? colors.green : colors.textDim} size={15} />
         <Text variant="small" style={{ flex: 1 }}>
@@ -202,25 +201,6 @@ function Pill({ icon, label, onPress }: { icon: ReactNode; label: string; onPres
   );
 }
 
-function Tile({ icon, label, value, tone, onPress }: { icon: ReactNode; label: string; value: string; tone: Tone; onPress?: () => void }) {
-  const body = (
-    <Card style={styles.tile}>
-      <View style={styles.row}>
-        {icon}
-        <Text variant="label">{label}</Text>
-      </View>
-      <Text style={{ fontFamily: fonts.bold, fontSize: 24, color: tone === 'muted' ? colors.text : toneColor[tone].fg, marginTop: 6 }}>{value}</Text>
-    </Card>
-  );
-  return onPress ? (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`${label}: ${value}`} style={styles.tileWrap}>
-      {body}
-    </Pressable>
-  ) : (
-    <View style={styles.tileWrap}>{body}</View>
-  );
-}
-
 const styles = StyleSheet.create({
   upRow: { flexDirection: 'row', gap: 12, padding: 14, alignItems: 'center' },
   upDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
@@ -228,7 +208,4 @@ const styles = StyleSheet.create({
   pill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 7, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 14 },
-  tileWrap: { flexBasis: '47%', flexGrow: 1 },
-  tile: { padding: 14 },
 });

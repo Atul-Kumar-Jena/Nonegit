@@ -1,8 +1,8 @@
-import { useCallback, type ReactNode } from 'react';
+import { useCallback } from 'react';
 import { Pressable, Share, StyleSheet, Switch, View } from 'react-native';
-import { router, useFocusEffect, type Href } from 'expo-router';
-import { Share2, Megaphone, AlarmClock, Bell, Building2, CalendarDays, CalendarRange, ChevronRight, Clock4, Inbox, KeyRound, Library, Lock, LogOut, MapPin, Play, Plus, ShieldAlert, Smartphone, Trash2, UserPlus, Users, UsersRound, Wand2, FileBarChart, Timer } from 'lucide-react-native';
-import { STAFF_PERMISSIONS, formatInstitutionCode, type StaffPermission } from '@attendly/protocol';
+import { useFocusEffect, type Href } from 'expo-router';
+import { Share2, Megaphone, AlarmClock, Bell, Building2, CalendarRange, Clock4, Inbox, KeyRound, Library, Lock, LogOut, MapPin, Play, Plus, ShieldAlert, Smartphone, Trash2, UserPlus, Users, UsersRound, Wand2, FileBarChart, Timer } from 'lucide-react-native';
+import { formatInstitutionCode, type StaffPermission } from '@attendly/protocol';
 import { Screen } from '@kit/components/Screen';
 import { SyncBanner } from '@kit/components/SyncBanner';
 import { Avatar, Badge, Button, Card, Divider, InfoRow, SectionLabel, Text } from '@kit/components/ui';
@@ -15,7 +15,7 @@ import { useSession } from '@kit/state/session';
 import { colors } from '@kit/theme';
 import { confirmAction } from '@/components/forms';
 import { useNoticeInbox } from '@kit/components/Notices';
-import { FeatureGrid, InfoButton } from '@kit/components/Features';
+import { FeatureList, InfoButton } from '@kit/components/Features';
 import { HELP } from '@/help';
 import { localSessions } from '@/local-sessions';
 import { useMe, useOverview } from '@/queries';
@@ -75,31 +75,16 @@ export default function More() {
             </Pressable>
           ) : null}
         </View>
-        {u ? <Badge label={admin ? 'Admin' : 'Professor'} tone={admin ? 'violet' : 'cyan'} dot={false} /> : null}
+        {u ? <Badge label={admin ? (me.data?.owner ? 'Main admin' : 'Admin') : perms.size ? `Professor · +${perms.size}` : 'Professor'} tone={admin ? 'violet' : 'cyan'} dot={false} /> : null}
       </Card>
-      {u ? (
-        <Text variant="small" style={{ marginTop: 8 }}>
-          {admin
-            ? 'Admin (principal / HOD): everything, including institution settings and who may do what.'
-            : perms.size
-              ? `Professor · also allowed: ${STAFF_PERMISSIONS.filter((p) => perms.has(p.key)).map((p) => p.label).join(', ')}`
-              : 'Professor: your classes, batches and reports. An admin can give you more (People → you → Role & permissions).'}
-        </Text>
-      ) : null}
-
       <SyncBanner />
 
-      <SectionLabel>All features</SectionLabel>
-      <FeatureGrid
+      {/* Grouped, one line each — every feature is still one tap away. */}
+      <FeatureList
+        title="Classes"
         items={[
           { icon: <Play color={colors.text} size={18} />, label: 'Take attendance', href: '/attend' },
-          { icon: <CalendarDays color={colors.text} size={18} />, label: 'Timetable', href: '/timetable' },
-          { icon: <Library color={colors.text} size={18} />, label: 'Classes & reports', href: '/classes' },
-          { icon: <Megaphone color={colors.text} size={18} />, label: 'Notice centre', href: '/notices', badge: notices.data?.unread ? String(notices.data.unread) : null },
-          { icon: <FileBarChart color={colors.text} size={18} />, label: 'Attendance reports', href: '/reports' },
-          { icon: <Timer color={colors.text} size={18} />, label: may('courses') || may('planner') ? 'Professors’ punctuality' : 'My punctuality', href: '/professors' as Href },
           { icon: <Plus color={colors.text} size={18} />, label: 'Extra class', href: '/extra-class' },
-          { icon: <Inbox color={colors.text} size={18} />, label: 'Requests', href: '/inbox' },
           { icon: <Clock4 color={colors.text} size={18} />, label: 'Who’s free', href: '/busy' },
           ...(may('planner')
             ? [
@@ -107,27 +92,43 @@ export default function More() {
                 { icon: <CalendarRange color={colors.text} size={18} />, label: 'Planner', href: '/planner' as Href },
               ]
             : []),
+          { icon: <Inbox color={colors.text} size={18} />, label: 'Requests', href: '/inbox' },
+        ]}
+      />
+      <FeatureList
+        title="Reports"
+        items={[
+          { icon: <FileBarChart color={colors.text} size={18} />, label: 'Attendance reports', href: '/reports' },
+          { icon: <Library color={colors.text} size={18} />, label: 'Classes & registers', href: '/classes' },
+          { icon: <Timer color={colors.text} size={18} />, label: may('courses') || may('planner') ? 'Professors’ punctuality' : 'My punctuality', href: '/professors' as Href },
+        ]}
+      />
+      <FeatureList
+        title="Institution"
+        items={[
+          { icon: <Megaphone color={colors.text} size={18} />, label: 'Notice centre', href: '/notices', badge: notices.data?.unread ? String(notices.data.unread) : undefined },
           ...(may('people') ? [{ icon: <Users color={colors.text} size={18} />, label: 'People & roles', href: '/people' as Href }] : []),
           { icon: <UsersRound color={colors.text} size={18} />, label: 'Batches', href: '/batches' },
           { icon: <MapPin color={colors.text} size={18} />, label: 'Rooms', href: '/rooms' },
           ...(may('devices') || mentorOf.length
-            ? [{ icon: <Smartphone color={colors.text} size={18} />, label: 'Phone requests', href: '/requests' as Href, badge: overview.data?.pendingRequests ? String(overview.data.pendingRequests) : null }]
+            ? [{ icon: <Smartphone color={colors.text} size={18} />, label: 'Phone requests', href: '/requests' as Href, badge: overview.data?.pendingRequests ? String(overview.data.pendingRequests) : undefined }]
             : []),
-          ...(may('devices')
-            ? [
-                { icon: <ShieldAlert color={colors.text} size={18} />, label: 'Suspicious scans', href: '/flags' as Href, badge: overview.data?.flaggedOpen ? String(overview.data.flaggedOpen) : null },
-              ]
-            : []),
+          ...(may('devices') ? [{ icon: <ShieldAlert color={colors.text} size={18} />, label: 'Suspicious scans', href: '/flags' as Href, badge: overview.data?.flaggedOpen ? String(overview.data.flaggedOpen) : undefined }] : []),
           ...(admin
             ? [
-                { icon: <Building2 color={colors.text} size={18} />, label: 'Institution', href: '/institution' as Href },
+                { icon: <Building2 color={colors.text} size={18} />, label: 'Institution settings', href: '/institution' as Href },
                 { icon: <Wand2 color={colors.text} size={18} />, label: 'Setup checklist', href: '/setup' as Href },
               ]
             : []),
+        ]}
+      />
+      <FeatureList
+        title="You"
+        items={[
           { icon: <Bell color={colors.text} size={18} />, label: 'Notifications', href: '/notifications' },
           { icon: <AlarmClock color={colors.text} size={18} />, label: 'Class reminders', href: '/reminders' },
           { icon: <KeyRound color={colors.text} size={18} />, label: 'Sign-in security', href: '/security' },
-          { icon: <Lock color={colors.text} size={18} />, label: 'Permissions', href: '/permissions' },
+          { icon: <Lock color={colors.text} size={18} />, label: 'Phone permissions', href: '/permissions' },
         ]}
       />
 
@@ -190,23 +191,7 @@ export default function More() {
   );
 }
 
-function Item({ icon, label, sub, href, badge, last }: { icon: ReactNode; label: string; sub?: string; href: Href; badge?: string; last?: boolean }) {
-  return (
-    <Pressable onPress={() => router.push(href)} accessibilityRole="button" accessibilityLabel={label} style={[styles.item, !last && styles.itemLine]}>
-      {icon}
-      <View style={{ flex: 1 }}>
-        <Text variant="bodyStrong">{label}</Text>
-        {sub ? <Text variant="small">{sub}</Text> : null}
-      </View>
-      {badge ? <Badge label={badge} tone="amber" dot={false} /> : null}
-      <ChevronRight color={colors.textDim} size={16} />
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  item: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 14 },
-  itemLine: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   erase: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10 },
 });

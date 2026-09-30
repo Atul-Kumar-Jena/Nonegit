@@ -2,10 +2,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useEffect, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Switch, View } from 'react-native';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { router } from 'expo-router';
-import { AlarmClock, Bell, BookOpen, Download, Fingerprint, Lock, Megaphone, CalendarDays, KeyRound, LogOut, MessageSquareText, RefreshCw, ScanLine, Server, ShieldCheck, Smartphone, Trash2 } from 'lucide-react-native';
+import { AlarmClock, Bell, Download, Fingerprint, Lock, Megaphone, KeyRound, LogOut, MessageSquareText, RefreshCw, Server, ShieldCheck, Smartphone, Trash2 } from 'lucide-react-native';
 import { Screen } from '@kit/components/Screen';
-import { FeatureGrid, InfoButton } from '@kit/components/Features';
+import { FeatureList, InfoButton } from '@kit/components/Features';
 import { useNoticeInbox } from '@kit/components/Notices';
 import { SyncBanner } from '@kit/components/SyncBanner';
 import { useOutbox } from '@kit/lib/outbox';
@@ -129,19 +128,21 @@ export default function Profile() {
         </View>
       </Card>
 
-      <SectionLabel>All features</SectionLabel>
-      <FeatureGrid
+      <FeatureList
+        title="Attendance"
         items={[
-          { icon: <ScanLine color={colors.text} size={18} />, label: 'Scan QR', href: '/scan' },
-          { icon: <CalendarDays color={colors.text} size={18} />, label: 'Timetable', href: '/timetable' },
-          { icon: <BookOpen color={colors.text} size={18} />, label: 'Subjects', href: '/subjects' },
-          { icon: <Download color={colors.text} size={18} />, label: 'Download attendance', href: '/report' },
-          { icon: <Megaphone color={colors.text} size={18} />, label: 'Notice centre', href: '/notices', badge: notices.data?.unread ? String(notices.data.unread) : null },
+          { icon: <Download color={colors.text} size={18} />, label: 'Download my attendance', href: '/report' },
           { icon: <MessageSquareText color={colors.text} size={18} />, label: 'My requests', href: '/requests' },
+          { icon: <Megaphone color={colors.text} size={18} />, label: 'Notice centre', href: '/notices', badge: notices.data?.unread ? String(notices.data.unread) : null },
+        ]}
+      />
+      <FeatureList
+        title="Settings"
+        items={[
           { icon: <Bell color={colors.text} size={18} />, label: 'Notifications', href: '/notifications' },
           { icon: <AlarmClock color={colors.text} size={18} />, label: 'Class reminders', href: '/reminders' },
           { icon: <KeyRound color={colors.text} size={18} />, label: 'Sign-in security', href: '/security' },
-          { icon: <ShieldCheck color={colors.text} size={18} />, label: 'Permissions', href: '/permissions' },
+          { icon: <ShieldCheck color={colors.text} size={18} />, label: 'Phone permissions', href: '/permissions' },
         ]}
       />
 

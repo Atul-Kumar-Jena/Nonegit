@@ -1,9 +1,9 @@
 import { useState, type ReactNode } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { router, type Href } from 'expo-router';
-import { Info, X } from 'lucide-react-native';
+import { ChevronRight, Info, X } from 'lucide-react-native';
 import { colors, fonts, radius } from '../theme';
-import { Button, Text } from './ui';
+import { Button, SectionLabel, Text } from './ui';
 
 export interface Feature {
   icon: ReactNode;
@@ -36,6 +36,38 @@ export function FeatureGrid({ items }: { items: Feature[] }) {
         </Pressable>
       ))}
     </View>
+  );
+}
+
+/** A titled group of one-line rows — calmer than a grid when there are many options. */
+export function FeatureList({ title, items }: { title: string; items: Feature[] }) {
+  if (!items.length) return null;
+  return (
+    <>
+      <SectionLabel>{title}</SectionLabel>
+      <View style={styles.list}>
+        {items.map((f, n) => (
+          <Pressable
+            key={f.label}
+            onPress={() => router.push(f.href)}
+            accessibilityRole="button"
+            accessibilityLabel={f.badge ? `${f.label}, ${f.badge}` : f.label}
+            style={({ pressed }) => [styles.item, n < items.length - 1 && styles.itemLine, pressed && { backgroundColor: colors.cardHi }]}
+          >
+            {f.icon}
+            <Text variant="bodyStrong" style={{ flex: 1 }} numberOfLines={1}>
+              {f.label}
+            </Text>
+            {f.badge ? (
+              <View style={[styles.badge, { position: 'relative', top: 0, right: 0 }]}>
+                <Text style={styles.badgeText}>{f.badge}</Text>
+              </View>
+            ) : null}
+            <ChevronRight color={colors.textDim} size={16} />
+          </Pressable>
+        ))}
+      </View>
+    </>
   );
 }
 
@@ -78,6 +110,9 @@ export function InfoButton({ title, text }: { title: string; text: string | stri
 const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, overflow: 'hidden', backgroundColor: colors.card },
   tile: { width: '33.333%', minHeight: 96, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 10, borderColor: colors.border, borderRightWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth },
+  list: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, overflow: 'hidden', backgroundColor: colors.card },
+  item: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 16, paddingVertical: 15 },
+  itemLine: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   icon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.06)' },
   label: { textAlign: 'center', fontFamily: fonts.medium, fontSize: 12.5 },
   badge: { position: 'absolute', top: 10, right: 12, minWidth: 18, height: 18, paddingHorizontal: 5, borderRadius: 9, backgroundColor: colors.amber, alignItems: 'center', justifyContent: 'center' },

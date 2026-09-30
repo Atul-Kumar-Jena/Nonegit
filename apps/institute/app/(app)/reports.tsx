@@ -22,7 +22,7 @@ const PAGE = 150;
  * open any student, and download the view as PDF or Excel.
  */
 export default function Reports() {
-  const params = useLocalSearchParams<{ batchId?: string; courseId?: string }>();
+  const params = useLocalSearchParams<{ batchId?: string; courseId?: string; view?: string }>();
   const api = useApi();
   const batches = useBatches();
   const [batch, setBatch] = useState(String(params.batchId ?? ''));
@@ -30,6 +30,7 @@ export default function Reports() {
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<'roll' | 'low'>('roll');
   const [limit, setLimit] = useState(PAGE);
+  const [view, setView] = useState<'students' | 'trends'>(params.view === 'trends' ? 'trends' : 'students');
 
   const base = useMatrix(batch || undefined);
   const scoped = useMatrix(batch || undefined, course || undefined);
@@ -83,13 +84,33 @@ export default function Reports() {
         />
       )}
 
-      {q.isError && !r ? (
+      {/* One thing at a time: the student list, or the charts (which only load when opened). */}
+      <View style={styles.seg}>
+        {(
+          [
+            ['students', 'Students'],
+            ['trends', 'Trends & print'],
+          ] as const
+        ).map(([k, label]) => (
+          <Pressable key={k} onPress={() => setView(k)} accessibilityRole="tab" accessibilityState={{ selected: view === k }} style={[styles.segItem, view === k && styles.segOn]}>
+            <Text variant="bodyStrong" color={view === k ? colors.bg : colors.textMuted}>
+              {label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
+      {view === 'trends' ? (
+        <AnalyticsPanel batchId={batch || undefined} courseId={course || undefined} onBatch={(id) => { setBatch(id); setCourse(''); }} />
+      ) : null}
+
+      {view === 'students' && q.isError && !r ? (
         <View style={{ marginTop: 16 }}>
           <ErrorState message={q.error.message} onRetry={() => void q.refetch()} />
         </View>
       ) : null}
 
-      {r ? (
+      {view !== 'students' ? null : r ? (
         <>
           <Card style={[styles.summary, stale && { opacity: 0.6 }]}>
             <View style={{ flex: 1 }}>
@@ -102,8 +123,6 @@ export default function Reports() {
               <Text variant="small">{`below ${pct(r.minPercent)}%`}</Text>
             </View>
           </Card>
-
-          <AnalyticsPanel batchId={batch || undefined} courseId={course || undefined} onBatch={(id) => { setBatch(id); setCourse(''); }} />
 
           <View style={{ marginTop: 12 }}>
             <DownloadCard
@@ -157,7 +176,10 @@ export default function Reports() {
 }
 
 const styles = StyleSheet.create({
-  summary: { flexDirection: 'row', alignItems: 'flex-end', gap: 12, marginTop: 18 },
+  summary: { flexDirection: 'row', alignItems: 'flex-end', gap: 12, marginTop: 14 },
+  seg: { flexDirection: 'row', marginTop: 18, padding: 4, gap: 4, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
+  segItem: { flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: radius.md - 4 },
+  segOn: { backgroundColor: colors.text },
   big: { fontFamily: fonts.bold, fontSize: 28, letterSpacing: -0.8, color: colors.text, marginTop: 4 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 12, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
   pct: { fontFamily: fonts.semibold, fontSize: 17 },

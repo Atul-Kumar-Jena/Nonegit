@@ -91,7 +91,7 @@ export function AnalyticsPanel({ batchId, courseId, onBatch }: { batchId?: strin
   const names = new Map((batches.data ?? []).map((b) => [b.id, b.name]));
   return (
     <>
-      <SectionLabel>Trends & printable reports</SectionLabel>
+      <SectionLabel>Period</SectionLabel>
       <Chips value={period} options={PERIODS} onChange={setPeriod} />
       {period === 'custom' ? (
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
@@ -172,7 +172,7 @@ export function AttendanceGlance() {
   if (!r || r.total.classes === 0) return null;
   const today = r.days.at(-1);
   return (
-    <Pressable onPress={() => router.push('/reports')} accessibilityRole="button" accessibilityLabel="Attendance this week. Open reports" style={{ marginTop: 14 }}>
+    <Pressable onPress={() => router.push({ pathname: '/reports', params: { view: 'trends' } })} accessibilityRole="button" accessibilityLabel="Attendance this week. Open reports" style={{ marginTop: 14 }}>
       <Card style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
         <View style={{ flex: 1, gap: 2 }}>
           <Text variant="label">{`${r.scope.mine ? 'Your classes' : 'Attendance'} · last 7 days`}</Text>

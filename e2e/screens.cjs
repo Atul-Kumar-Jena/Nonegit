@@ -65,7 +65,7 @@ async function capture(page, app, name) {
   const live = await dev('/dev/api/sessions', { courseId: course.id, room: 'LH-2', lat: HERE.latitude, lng: HERE.longitude, radiusM: 50, rotationS: 7, durationMin: 60 });
 
   const t = await demoSignIn(browser, 'http://localhost:8082', 'Dr. N. Iyer');
-  const inst = ['/home', '/timetable', '/classes', '/more', '/batches', '/busy', '/course-form', `/course/${course.id}`, '/cover', '/extra-class', '/flags', '/import', '/inbox', '/institution', '/notice-compose', '/notices', '/notifications', '/people', '/permissions', '/person-form?role=teacher', '/planner', '/reminders', '/reports', '/requests', '/rooms', '/roster', '/security', '/setup', '/slot-form', `/session/${live.id}`, `/register/${live.id}`, '/attend'];
+  const inst = ['/home', '/timetable', '/classes', '/more', '/batches', '/busy', '/course-form', `/course/${course.id}`, '/cover', '/extra-class', '/flags', '/import', '/inbox', '/institution', '/notice-compose', '/notices', '/notifications', '/people', '/permissions', '/person-form?role=teacher', '/planner', '/reminders', '/reports', '/requests', '/rooms', '/professors', '/reports?view=trends', '/roster', '/security', '/setup', '/slot-form', `/session/${live.id}`, `/register/${live.id}`, '/attend'];
   for (const p of inst) {
     try {
       await go(t, p);

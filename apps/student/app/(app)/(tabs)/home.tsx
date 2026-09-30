@@ -49,9 +49,6 @@ export default function Home() {
   return (
     <Screen onRefresh={() => void q.refetch()} refreshing={q.isRefetching}>
       <Header d={d} />
-      <TermCard d={d} offline={offline} updatedAt={q.dataUpdatedAt} />
-      <NoticeHomeCard />
-      <HeadsUp />
       <SyncBanner />
       {gps && gps !== 'ready' ? (
         <Pressable
@@ -97,7 +94,10 @@ export default function Home() {
           ))}
         </View>
       )}
-      <BatteryCard />
+      {/* Scanning comes first; standing, advice and news follow, then what's next. */}
+      <TermCard d={d} offline={offline} updatedAt={q.dataUpdatedAt} />
+      <HeadsUp />
+      <NoticeHomeCard />
       <ComingUp tz={d.timezone} today={dayLabel(d.serverTime, d.timezone)} />
       <Pressable onPress={() => router.push('/timetable')} accessibilityRole="button" style={{ marginTop: 10 }}>
         <Card style={styles.link}>
@@ -108,6 +108,7 @@ export default function Home() {
           <ChevronRight color={colors.textDim} size={18} />
         </Card>
       </Pressable>
+      <BatteryCard />
     </Screen>
   );
 }
@@ -223,7 +224,7 @@ function TermCard({ d, offline, updatedAt }: { d: DashboardResponse; offline: bo
   }, []);
   const ago = Math.round((Date.now() - updatedAt) / 60_000);
   return (
-    <Card style={{ marginTop: 18 }}>
+    <Card style={{ marginTop: 16 }}>
       <View style={styles.between}>
         <Text variant="label">Term attendance</Text>
         {offline ? <Badge label={`Offline · ${ago}m old`} tone="amber" /> : <Badge label="Synced" tone="cyan" />}
@@ -337,11 +338,6 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4 },
   between: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   delta: { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4, marginBottom: 10 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 },
-  tile: { flexBasis: '47%', flexGrow: 1, padding: 14 },
-  tileWrap: { flexBasis: '47%', flexGrow: 1 },
-  tileInner: { padding: 14, flex: 1 },
-  tileHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   session: { flexDirection: 'row', alignItems: 'center', overflow: 'hidden' },
   accent: { width: 3, alignSelf: 'stretch' },
   link: { flexDirection: 'row', alignItems: 'center', gap: 12 },

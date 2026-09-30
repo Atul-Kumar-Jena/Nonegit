@@ -1,4 +1,6 @@
-import Fastify, { type FastifyInstance } from 'fastify';
+import { promisify } from 'node:util';
+import { gzip as gzipCb, constants as zlibConstants } from 'node:zlib';
+import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 import { PROBE_CODES, createGuard } from './lib/guard';
 import cors from '@fastify/cors';
@@ -63,6 +65,9 @@ export async function buildApp(opts: BuildOptions): Promise<{ app: FastifyInstan
     trustProxy: config.trustProxy,
     bodyLimit: 16 * 1024,
     requestTimeout: 30_000,
+    // Longer than the host's load balancer keeps idle connections, so phones reuse warm connections
+    // instead of hitting a socket the server just closed (random 502s under load).
+    keepAliveTimeout: 75_000,
   });
 
   const deps: Deps = {
@@ -118,7 +123,7 @@ export async function buildApp(opts: BuildOptions): Promise<{ app: FastifyInstan
     if (code && PROBE_CODES.has(code)) deps.guard.recordProbe(req.ip, deps.clock());
   });
 
-  app.addHook('onSend', async (_req, reply, payload) => {
+  app.addHook('onSend', async (req, reply, payload) => {
     reply.header('x-server-time', String(deps.clock()));
     reply.header('x-content-type-options', 'nosniff');
     reply.header('referrer-policy', 'no-referrer');
@@ -126,7 +131,7 @@ export async function buildApp(opts: BuildOptions): Promise<{ app: FastifyInstan
     reply.header('cross-origin-resource-policy', 'same-site');
     if (config.env === 'production') reply.header('strict-transport-security', 'max-age=31536000; includeSubDomains');
     if (!reply.getHeader('cache-control')) reply.header('cache-control', 'no-store');
-    return payload;
+    return compress(req.headers['accept-encoding'], reply, payload);
   });
 
   app.setErrorHandler((err, req, reply) => {
@@ -203,4 +208,25 @@ export function startJanitor(deps: Deps): () => void {
   t.unref();
   void run();
   return () => clearInterval(t);
+}
+
+const gzip = promisify(gzipCb);
+
+/**
+ * Gzip JSON / text answers over 1 KB when the phone accepts it (Android's HTTP stack always does and
+ * unpacks it transparently): timetables, reports and lists shrink 5–10×, which is most of the wait on
+ * mobile data. Streams and tiny answers go out as they are.
+ */
+export async function compress(accept: string | string[] | undefined, reply: FastifyReply, payload: unknown): Promise<unknown> {
+  if (typeof payload !== 'string' && !Buffer.isBuffer(payload)) return payload;
+  if (reply.getHeader('content-encoding') || reply.statusCode === 204 || reply.statusCode === 304) return payload;
+  const type = String(reply.getHeader('content-type') ?? '');
+  if (!/json|text|javascript|svg/.test(type)) return payload;
+  const size = typeof payload === 'string' ? Buffer.byteLength(payload) : payload.length;
+  if (size < 1024 || !/\bgzip\b/.test(String(accept ?? ''))) return payload;
+  const vary = reply.getHeader('vary');
+  reply.header('vary', vary ? `${String(vary)}, accept-encoding` : 'accept-encoding');
+  reply.header('content-encoding', 'gzip');
+  reply.removeHeader('content-length');
+  return gzip(payload, { level: 5, memLevel: 9, strategy: zlibConstants.Z_DEFAULT_STRATEGY });
 }
