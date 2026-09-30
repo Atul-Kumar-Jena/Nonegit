@@ -4,7 +4,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { ChevronRight, Search } from 'lucide-react-native';
 import { Screen } from '@kit/components/Screen';
 import { DownloadCard } from '@kit/components/Download';
-import { Button, Card, ErrorState, Input, Loading, SectionLabel, Text } from '@kit/components/ui';
+import { Button, Card, ErrorState, Input, Loading, SectionLabel, Segmented, Text } from '@kit/components/ui';
 import { matrixReportDoc } from '@kit/lib/export';
 import { pct } from '@kit/lib/format';
 import { useApi } from '@kit/state/session';
@@ -57,7 +57,7 @@ export default function Reports() {
 
   return (
     <Screen onRefresh={() => void q.refetch()} refreshing={q.isRefetching} keyboard>
-      <Header title="Attendance reports" info="reports" right={<Button title="Professors" kind="secondary" compact onPress={() => router.push('/professors')} />} />
+      <Header title="Reports" subtitle="Attendance" info="reports" right={<Button title="Professors" kind="secondary" compact onPress={() => router.push('/professors')} />} />
 
       <SectionLabel>1 · Batch</SectionLabel>
       <Chips
@@ -85,19 +85,15 @@ export default function Reports() {
       )}
 
       {/* One thing at a time: the student list, or the charts (which only load when opened). */}
-      <View style={styles.seg}>
-        {(
-          [
-            ['students', 'Students'],
-            ['trends', 'Trends & print'],
-          ] as const
-        ).map(([k, label]) => (
-          <Pressable key={k} onPress={() => setView(k)} accessibilityRole="tab" accessibilityState={{ selected: view === k }} style={[styles.segItem, view === k && styles.segOn]}>
-            <Text variant="bodyStrong" color={view === k ? colors.bg : colors.textMuted}>
-              {label}
-            </Text>
-          </Pressable>
-        ))}
+      <View style={{ marginTop: 18 }}>
+        <Segmented
+          value={view}
+          options={[
+            { value: 'students', label: 'Students' },
+            { value: 'trends', label: 'Trends & print' },
+          ]}
+          onChange={setView}
+        />
       </View>
 
       {view === 'trends' ? (
@@ -177,10 +173,7 @@ export default function Reports() {
 
 const styles = StyleSheet.create({
   summary: { flexDirection: 'row', alignItems: 'flex-end', gap: 12, marginTop: 14 },
-  seg: { flexDirection: 'row', marginTop: 18, padding: 4, gap: 4, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
-  segItem: { flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: radius.md - 4 },
-  segOn: { backgroundColor: colors.text },
-  big: { fontFamily: fonts.bold, fontSize: 28, letterSpacing: -0.8, color: colors.text, marginTop: 4 },
+  big: { fontFamily: fonts.display, fontSize: 28, letterSpacing: -0.3, color: colors.text, marginTop: 4 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 12, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
   pct: { fontFamily: fonts.semibold, fontSize: 17 },
 });

@@ -61,7 +61,7 @@ export function Chips<T extends string | number>({ value, options, onChange }: {
         const on = o.value === value;
         return (
           <Pressable key={String(o.value)} onPress={() => onChange(o.value)} accessibilityRole="radio" accessibilityState={{ selected: on }} style={[styles.chip, on && styles.chipOn]}>
-            <Text style={[styles.chipText, on && { color: colors.text }]}>{o.label}</Text>
+            <Text style={[styles.chipText, on && styles.chipTextOn]}>{o.label}</Text>
           </Pressable>
         );
       })}
@@ -494,32 +494,33 @@ export function firstIssue(err: unknown): string {
 const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4, marginBottom: 8 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
-  chipOn: { borderColor: 'rgba(255, 255, 255, 0.55)', backgroundColor: 'rgba(255, 255, 255, 0.10)' },
+  chip: { paddingHorizontal: 15, paddingVertical: 9, borderRadius: 999, borderWidth: 1, borderColor: colors.borderHi, backgroundColor: colors.cardHi },
+  chipOn: { borderColor: colors.text, backgroundColor: colors.text },
   chipText: { fontFamily: fonts.medium, fontSize: 13.5, color: colors.textMuted },
+  chipTextOn: { color: colors.ink, fontFamily: fonts.semibold },
   toggle: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 6 },
   box: { borderRadius: 7, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
-  empty: { alignItems: 'center', paddingVertical: 28, paddingHorizontal: 16, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.border, borderRadius: radius.lg },
+  empty: { alignItems: 'center', paddingVertical: 30, paddingHorizontal: 18, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.borderHi, borderRadius: radius.lg, backgroundColor: colors.bgRaised },
   scrim: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' },
-  sheet: { backgroundColor: colors.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: 1, borderColor: colors.border, padding: 20, paddingBottom: 36, maxHeight: '88%' },
+  sheet: { backgroundColor: colors.card, borderTopLeftRadius: 28, borderTopRightRadius: 28, borderWidth: 1, borderColor: colors.borderHi, borderBottomWidth: 0, padding: 20, paddingBottom: 36, maxHeight: '88%' },
   grabber: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: colors.borderHi, marginBottom: 14 },
   select: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 52, paddingHorizontal: 16, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bgRaised },
   option: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 13, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   stepper: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  stepBtn: { width: 40, height: 40, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bgRaised },
+  stepBtn: { width: 40, height: 40, borderRadius: 12, borderWidth: 1, borderColor: colors.borderHi, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.cardHi },
   stepVal: { fontFamily: fonts.monoMedium, fontSize: 20, color: colors.text, minWidth: 34, textAlign: 'center' },
   colon: { fontFamily: fonts.monoMedium, fontSize: 20, color: colors.textMuted },
   timeRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   timeBox: { borderWidth: 1, borderColor: colors.borderHi, borderRadius: radius.md, backgroundColor: colors.bgRaised, width: 112 },
   timeInput: { fontFamily: fonts.monoMedium, fontSize: 22, color: colors.text, paddingVertical: 10, paddingHorizontal: 14, textAlign: 'center' },
-  nudge: { width: 40, height: 44, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
+  nudge: { width: 40, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.cardHi, borderWidth: 1, borderColor: colors.borderHi },
   radiusRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
-  radiusChip: { paddingVertical: 10, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: colors.borderHi },
+  radiusChip: { paddingVertical: 10, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: colors.borderHi, backgroundColor: colors.cardHi },
   dateInput: { flex: 1, fontFamily: fonts.monoMedium, fontSize: 17, color: colors.text, textAlign: 'center', paddingVertical: 8, borderWidth: 1, borderColor: colors.text, borderRadius: radius.sm },
   ampm: { flexDirection: 'row', borderRadius: 999, borderWidth: 1, borderColor: colors.border, padding: 3, gap: 2, marginLeft: 4 },
   ampmBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999 },
   ampmOn: { backgroundColor: colors.text },
   ampmText: { fontFamily: fonts.semibold, fontSize: 13, color: colors.textMuted },
   dateRow: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 6, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bgRaised },
-  dateBtn: { width: 38, height: 38, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
+  dateBtn: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.cardHi, borderWidth: 1, borderColor: colors.borderHi },
 });

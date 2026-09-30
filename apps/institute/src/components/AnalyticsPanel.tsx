@@ -176,7 +176,7 @@ export function AttendanceGlance() {
       <Card style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
         <View style={{ flex: 1, gap: 2 }}>
           <Text variant="label">{`${r.scope.mine ? 'Your classes' : 'Attendance'} · last 7 days`}</Text>
-          <Text style={{ fontFamily: fonts.bold, fontSize: 28, letterSpacing: -0.8, color: r.total.percent !== null && r.total.percent < r.minPercent ? colors.amber : colors.text }}>
+          <Text style={{ fontFamily: fonts.display, fontSize: 28, letterSpacing: -0.3, color: r.total.percent !== null && r.total.percent < r.minPercent ? colors.amber : colors.text }}>
             {r.total.percent === null ? '—' : `${r.total.percent}%`}
           </Text>
           <Text variant="small">{`${r.total.classes} classes · last day ${today?.percent ?? '—'}% · min ${r.minPercent}%`}</Text>

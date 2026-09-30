@@ -160,15 +160,24 @@ More / Profile → **Class reminders**: pick any of 5 / 10 / 15 / 30 min, 1 hour
 ## 5 · Notifications
 
 - In the app: a change appears within **15 seconds**; tapping it opens that class.
-- App closed: phones check about every 15 minutes (Android's limit), **unless Firebase is set up**. Then notifications arrive **instantly**, with the default sound, even when the app is closed. To switch that on (about 10 minutes, free):
-  1. <https://console.firebase.google.com> → **Add project** (e.g. "attendly").
-  2. **Add app → Android** twice: package `app.attendly.student`, then `app.attendly.institute`.
-  3. **Project settings → General → your apps → download `google-services.json`** (one file covers both apps).
-  4. GitHub → repo **Settings → Secrets and variables → Actions → New repository secret**: name `GOOGLE_SERVICES_JSON`, value = the whole file's text.
-  5. Firebase **Project settings → Service accounts → Generate new private key** (a JSON file).
-  6. Render → your service → **Environment → Add** `FCM_SERVICE_ACCOUNT` = the whole JSON text → Save (Render redeploys).
-  7. Push any commit (or re-run the latest GitHub Action) and install the new APKs. The server log then says "instant push on".
-  Never paste these files into a chat.
+- App closed: phones check about every 15 minutes (Android's limit), **unless Firebase is set up**. Then notifications arrive **instantly**, with the default sound, even when the app is closed. Each app can have **its own Firebase project** (or share one). Per app, two files are needed:
+
+  | File | What it is | Where it goes | Name |
+  |---|---|---|---|
+  | `google-services.json` | The app's Firebase address (goes *inside* the APK) | GitHub → Settings → Secrets and variables → Actions | `GOOGLE_SERVICES_JSON_STUDENT` / `GOOGLE_SERVICES_JSON_INSTITUTE` |
+  | Service-account key (`<project>-firebase-adminsdk-….json`) | The server's permission to send (a **password** — never in chat or code) | Render → your service → Environment | `FCM_SERVICE_ACCOUNT_STUDENT` / `FCM_SERVICE_ACCOUNT_INSTITUTE` |
+
+  Steps for **each** app (Student: package `app.attendly.student`; Institute: package `app.attendly.institute`):
+  1. <https://console.firebase.google.com> → open (or **Add project**) the app's Firebase project.
+  2. **Project settings (⚙) → General → Your apps → Add app → Android** → package name exactly as above → Register → **Download google-services.json**.
+  3. GitHub secret: paste the **whole file**, from the first `{` to the last `}`. It starts with `"project_info"` and contains `"package_name": "app.attendly.student"` (or `.institute`).
+  4. **Project settings → Service accounts → Generate new private key** → a JSON file downloads.
+  5. Render variable: paste the **whole file**, `{` to `}`. It has `"type": "service_account"`, `"project_id"`, `"private_key": "-----BEGIN PRIVATE KEY-----\n…"` and `"client_email": "firebase-adminsdk-…@<project>.iam.gserviceaccount.com"`. Don't cut out the private key alone — the server needs the whole file.
+  6. The `google-services.json` and the service-account key must come from the **same** Firebase project, or phones get nothing (the Developer app then says "built with a different Firebase project").
+
+  Then: push any commit (or re-run the latest GitHub Action), install the new APKs, open each app once and allow notifications. Developer app → Console → **Instant notifications** shows each app as connected with its project and phone count.
+  One project for both apps also works: `GOOGLE_SERVICES_JSON` and `FCM_SERVICE_ACCOUNT` (without the suffix) are used for any app that has no file of its own.
+  If a key was ever shared: Firebase → Service accounts → **Manage service account permissions → Keys** → delete it, generate a new one, update Render.
 
 ## 6 · Supabase — what you need to do
 

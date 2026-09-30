@@ -314,5 +314,5 @@ const styles = StyleSheet.create({
   toolbar: { flexDirection: 'row', flexWrap: 'wrap', gap: 2, padding: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   tool: { width: 38, height: 38, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center' },
   area: { minHeight: 220, maxHeight: 420, padding: 14, color: colors.text, fontFamily: fonts.regular, fontSize: 16, lineHeight: 24 },
-  previewTitle: { fontFamily: fonts.bold, fontSize: 22, lineHeight: 28, letterSpacing: -0.4, color: colors.text },
+  previewTitle: { fontFamily: fonts.display, fontSize: 22, lineHeight: 28, letterSpacing: -0.4, color: colors.text },
 });

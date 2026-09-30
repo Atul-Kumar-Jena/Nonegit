@@ -41,7 +41,7 @@ import { ApiError } from '../lib/errors';
 import { SWITCHES, TENANT_FLAGS, flagDefault, type SwitchKey, type TenantFlagKey } from '../lib/flags';
 import { requestStats } from '../lib/metrics';
 import { issueSetupCode } from '../lib/setup-codes';
-import { parseServiceAccount, pushStats } from '../lib/push';
+import { PUSH_APPS, PUSH_ENV, pushConfig, pushStats, type PushApp } from '../lib/push';
 import { randomBytes } from '@attendly/protocol';
 import { revokeActiveDevice } from './staff-admin';
 
@@ -73,7 +73,12 @@ function productionChecklist(deps: Deps): RootConsole['checklist'] {
     },
     { key: 'demo', label: 'Demo sign-in is off', ok: !c.demoInstantLogin, fix: 'Set DEMO_INSTANT_LOGIN=false (it also turns off by itself once email is set up).' },
     { key: 'devtools', label: 'The /dev testing page is off', ok: !c.devToolsToken, fix: 'Delete DEV_TOOLS_TOKEN.' },
-    { key: 'push', label: 'Instant notifications (Firebase)', ok: !!parseServiceAccount(process.env.FCM_SERVICE_ACCOUNT), fix: 'Add FCM_SERVICE_ACCOUNT (Firebase service-account JSON) — see the guide.' },
+    {
+      key: 'push',
+      label: 'Instant notifications (Firebase) for both apps',
+      ok: PUSH_APPS.every((a) => pushConfig()[a] !== null),
+      fix: 'Add FCM_SERVICE_ACCOUNT_STUDENT and FCM_SERVICE_ACCOUNT_INSTITUTE (each app’s Firebase service-account file), or one FCM_SERVICE_ACCOUNT if both apps are in one Firebase project — see the guide.',
+    },
     { key: 'phones', label: 'Only real phones can sign in', ok: !c.allowWebClients && !c.allowEmulators, fix: 'Delete ALLOW_WEB_CLIENTS and ALLOW_EMULATORS (or set them to false).' },
     { key: 'https', label: 'Production mode', ok: c.env === 'production', fix: 'Set NODE_ENV=production.' },
   ];
@@ -255,9 +260,22 @@ export async function rootRoutes(app: FastifyInstance, deps: Deps) {
         .map((s) => ({ key: s.key, label: SWITCHES[s.key].label, detail: SWITCHES[s.key].detail, enabled: s.enabled, reason: s.reason, updatedAt: s.updated_at.toISOString(), updatedBy: s.by })),
       recent: await recentAudit(deps.db, scope, 8),
       push: await (async () => {
-        const sa = parseServiceAccount(process.env.FCM_SERVICE_ACCOUNT);
-        const phones = (await deps.db.query<{ n: number }>(`select count(*)::int as n from push_tokens p join devices d on d.id = p.device_id and d.status = 'active'`)).rows[0]!.n;
-        return { configured: !!sa, project: sa?.project_id ?? null, phones, ...pushStats };
+        const cfg = pushConfig();
+        const counts = await deps.db.query<{ student: boolean; n: number }>(
+          `select u.role = 'student' as student, count(*)::int as n from push_tokens p
+             join devices d on d.id = p.device_id and d.status = 'active' join users u on u.id = p.user_id
+            where u.role in ('student', 'teacher', 'admin') group by 1`,
+        );
+        const phonesOf = (a: PushApp) => counts.rows.find((r) => r.student === (a === 'student'))?.n ?? 0;
+        const apps = PUSH_APPS.map((a) => ({
+          app: a,
+          configured: cfg[a] !== null,
+          project: cfg[a]?.project_id ?? null,
+          phones: phonesOf(a),
+          variable: process.env[PUSH_ENV[a]] ? PUSH_ENV[a] : cfg[a] ? 'FCM_SERVICE_ACCOUNT' : PUSH_ENV[a],
+        }));
+        const projects = [...new Set(apps.map((a) => a.project).filter((p): p is string => !!p))];
+        return { configured: apps.some((a) => a.configured), project: projects.join(' + ') || null, phones: apps.reduce((t, a) => t + a.phones, 0), ...pushStats, apps };
       })(),
     };
   });

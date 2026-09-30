@@ -215,7 +215,7 @@ const styles = StyleSheet.create({
   titleRow: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 4 },
   alert: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 16 },
   top: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
-  big: { fontFamily: fonts.bold, fontSize: 26, letterSpacing: -0.8 },
+  big: { fontFamily: fonts.display, fontSize: 26, letterSpacing: -0.3 },
   pctSign: {
     fontFamily: fonts.semibold,
     fontSize: 13,

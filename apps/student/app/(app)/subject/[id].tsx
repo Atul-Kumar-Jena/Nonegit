@@ -212,7 +212,7 @@ const styles = StyleSheet.create({
   between: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   pctSign: { fontFamily: fonts.semibold, fontSize: 18, color: colors.textMuted, marginBottom: 8, marginLeft: 2 },
   planOut: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
-  planPct: { fontFamily: fonts.bold, fontSize: 26, letterSpacing: -0.6 },
+  planPct: { fontFamily: fonts.display, fontSize: 26, letterSpacing: -0.3 },
   stepper: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   stepBtn: { width: 36, height: 36, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bgRaised },
   stepVal: { fontFamily: fonts.monoMedium, fontSize: 16, color: colors.text, minWidth: 36, textAlign: 'center' },

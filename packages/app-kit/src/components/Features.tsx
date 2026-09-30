@@ -3,7 +3,7 @@ import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { router, type Href } from 'expo-router';
 import { ChevronRight, Info, X } from 'lucide-react-native';
 import { colors, fonts, radius } from '../theme';
-import { Button, SectionLabel, Text } from './ui';
+import { Button, Edge, SectionLabel, Text } from './ui';
 
 export interface Feature {
   icon: ReactNode;
@@ -46,6 +46,7 @@ export function FeatureList({ title, items }: { title: string; items: Feature[] 
     <>
       <SectionLabel>{title}</SectionLabel>
       <View style={styles.list}>
+        <Edge />
         {items.map((f, n) => (
           <Pressable
             key={f.label}
@@ -54,7 +55,7 @@ export function FeatureList({ title, items }: { title: string; items: Feature[] 
             accessibilityLabel={f.badge ? `${f.label}, ${f.badge}` : f.label}
             style={({ pressed }) => [styles.item, n < items.length - 1 && styles.itemLine, pressed && { backgroundColor: colors.cardHi }]}
           >
-            {f.icon}
+            <View style={styles.rowIcon}>{f.icon}</View>
             <Text variant="bodyStrong" style={{ flex: 1 }} numberOfLines={1}>
               {f.label}
             </Text>
@@ -111,13 +112,14 @@ const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, overflow: 'hidden', backgroundColor: colors.card },
   tile: { width: '33.333%', minHeight: 96, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 10, borderColor: colors.border, borderRightWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth },
   list: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, overflow: 'hidden', backgroundColor: colors.card },
-  item: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 16, paddingVertical: 15 },
+  item: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 14, paddingVertical: 12 },
+  rowIcon: { width: 36, height: 36, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
   itemLine: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   icon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.06)' },
   label: { textAlign: 'center', fontFamily: fonts.medium, fontSize: 12.5 },
   badge: { position: 'absolute', top: 10, right: 12, minWidth: 18, height: 18, paddingHorizontal: 5, borderRadius: 9, backgroundColor: colors.amber, alignItems: 'center', justifyContent: 'center' },
   badgeText: { fontFamily: fonts.bold, fontSize: 11, color: colors.bg },
-  info: { width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+  info: { width: 34, height: 34, borderRadius: 12, borderWidth: 1, borderColor: colors.borderHi, backgroundColor: colors.cardHi, alignItems: 'center', justifyContent: 'center' },
   scrim: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)' },
   sheetWrap: { flex: 1, justifyContent: 'center', padding: 20 },
   sheet: { backgroundColor: colors.card, borderRadius: radius.xl, borderWidth: 1, borderColor: colors.border, padding: 20 },

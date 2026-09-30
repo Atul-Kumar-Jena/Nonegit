@@ -68,9 +68,22 @@ export default function ConsoleScreen() {
             Instant notifications
           </SectionLabel>
           <Card style={{ gap: 6 }}>
-            <Text variant="small" color={colors.text}>
-              {c.push.configured ? `Firebase project ${c.push.project} · ${c.push.phones} ${c.push.phones === 1 ? 'phone' : 'phones'} registered` : 'Not connected: add FCM_SERVICE_ACCOUNT (the whole Firebase service-account file) in Render → Environment.'}
-            </Text>
+            {c.push.apps.length ? (
+              c.push.apps.map((a) => (
+                <View key={a.app} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: a.configured ? colors.green : colors.amber }} />
+                  <Text variant="small" color={colors.text} style={{ flex: 1 }}>
+                    {a.configured
+                      ? `${a.app === 'student' ? 'Student app' : 'Institute app'} · ${a.project} · ${a.phones} ${a.phones === 1 ? 'phone' : 'phones'}`
+                      : `${a.app === 'student' ? 'Student app' : 'Institute app'} · not connected: add ${a.variable} in Render → Environment`}
+                  </Text>
+                </View>
+              ))
+            ) : (
+              <Text variant="small" color={colors.text}>
+                {c.push.configured ? `Firebase project ${c.push.project} · ${c.push.phones} ${c.push.phones === 1 ? 'phone' : 'phones'} registered` : 'Not connected: add the Firebase service account in Render → Environment.'}
+              </Text>
+            )}
             {c.push.configured ? <Text variant="small">{`Since the server started: ${c.push.sent} delivered to Google · ${c.push.failed} failed · ${c.push.deadTokens} old phones forgotten${c.push.lastSentAt ? ` · last ${new Date(c.push.lastSentAt).toLocaleTimeString()}` : ''}`}</Text> : null}
             {c.push.lastError ? (
               <Text variant="small" color={colors.red}>

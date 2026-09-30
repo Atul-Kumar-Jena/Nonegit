@@ -10,7 +10,9 @@
 #   BOOTSTRAP_DEMO_TEACHER_EMAIL optional demo teacher account (leave empty for none)
 #   BOOTSTRAP_DEMO_STUDENT_EMAIL optional demo student account (leave empty for none)
 #   BOOTSTRAP_DEVELOPER_EMAIL    optional: YOUR developer account for the Attendly Developer app
-#   FCM_SERVICE_ACCOUNT          optional: Firebase service-account JSON → instant push notifications
+#   FCM_SERVICE_ACCOUNT_STUDENT   optional: the Student app's Firebase service-account JSON → instant push
+#   FCM_SERVICE_ACCOUNT_INSTITUTE optional: the Institute app's Firebase service-account JSON → instant push
+#   FCM_SERVICE_ACCOUNT           optional: one service account for both (when both apps are in one Firebase project)
 #
 # Demo mode: while OTP_DELIVERY=console (no email provider yet) the server also seeds the
 # "Demo Institute of Technology" and its @demo.attendly.app accounts sign in with one tap, no
@@ -63,6 +65,10 @@ services:
       - key: BOOTSTRAP_DEMO_STUDENT_EMAIL
         sync: false
       - key: BOOTSTRAP_DEVELOPER_EMAIL
+        sync: false
+      - key: FCM_SERVICE_ACCOUNT_STUDENT
+        sync: false
+      - key: FCM_SERVICE_ACCOUNT_INSTITUTE
         sync: false
       - key: FCM_SERVICE_ACCOUNT
         sync: false

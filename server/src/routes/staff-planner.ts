@@ -33,7 +33,7 @@ import { loadPlannerWeek, localNow, publishOps } from '../lib/planner-server';
 import { createCoverRequest, needsApproval } from '../lib/requests';
 import { localDayBounds } from '../lib/staff-sessions';
 import { materializeTimetable } from '../lib/timetable';
-import { parseServiceAccount } from '../lib/push';
+import { pushAppOf, pushConfig } from '../lib/push';
 import { loadInstitution, staffAudit } from './staff-admin';
 
 const IdParam = z.object({ id: z.uuid() });
@@ -338,7 +338,11 @@ export async function staffPlannerRoutes(app: FastifyInstance, deps: Deps) {
   });
 
   /** The phone's Firebase token, so notifications arrive instantly even when the app is closed. */
-  const pushOn = parseServiceAccount(process.env.FCM_SERVICE_ACCOUNT) !== null;
+  const push = pushConfig();
+  const pushOn = (role: string) => {
+    const a = pushAppOf(role);
+    return !!a && push[a] !== null;
+  };
   app.post('/v1/me/push-token', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req) => {
     const auth = await requireDevice(req, deps);
     const b = z.object({ token: z.string().min(10).max(4096), platform: z.enum(['android', 'ios']) }).parse(req.body);
@@ -347,7 +351,7 @@ export async function staffPlannerRoutes(app: FastifyInstance, deps: Deps) {
        on conflict (device_id) do update set token = excluded.token, platform = excluded.platform, user_id = excluded.user_id, updated_at = now()`,
       [auth.deviceId, auth.userId, b.token, b.platform],
     );
-    return { ok: true as const, push: pushOn };
+    return { ok: true as const, push: pushOn(auth.role) };
   });
 
   /**
@@ -366,7 +370,7 @@ export async function staffPlannerRoutes(app: FastifyInstance, deps: Deps) {
         data: {},
       },
     ]);
-    return { ok: true as const, serverPush: pushOn, phoneRegistered: (tok.rowCount ?? 0) > 0 };
+    return { ok: true as const, serverPush: pushOn(auth.role), phoneRegistered: (tok.rowCount ?? 0) > 0 };
   });
 
   app.post('/v1/notifications/read', async (req) => {

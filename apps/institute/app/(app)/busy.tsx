@@ -177,7 +177,7 @@ const styles = StyleSheet.create({
   stats: { flexDirection: 'row', gap: 10, marginTop: 12 },
   stat: { flex: 1, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, gap: 2 },
   statOn: { borderColor: colors.text },
-  statN: { fontFamily: fonts.bold, fontSize: 26, color: colors.text },
+  statN: { fontFamily: fonts.display, fontSize: 26, color: colors.text },
   track: { height: 30, borderRadius: 8, backgroundColor: colors.bgRaised, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' },
   block: { position: 'absolute', top: 2, bottom: 2, borderRadius: 6, backgroundColor: 'rgba(255, 255, 255, 0.55)', justifyContent: 'center', paddingHorizontal: 4 },
   blockText: { fontFamily: fonts.semibold, fontSize: 10.5, color: '#0a0a0a' },

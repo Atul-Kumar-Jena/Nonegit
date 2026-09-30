@@ -153,5 +153,5 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 12, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
   pct: { fontFamily: fonts.semibold, fontSize: 17 },
   summary: { flexDirection: 'row', gap: 12, marginTop: 14 },
-  big: { fontFamily: fonts.bold, fontSize: 26, letterSpacing: -0.6 },
+  big: { fontFamily: fonts.display, fontSize: 26, letterSpacing: -0.3 },
 });

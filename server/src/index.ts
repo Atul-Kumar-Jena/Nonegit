@@ -5,7 +5,7 @@ import { migrate } from './migrate';
 import { seedDemo } from './seed';
 import { bootstrapInstitution } from './bootstrap';
 import { materializeTimetable } from './lib/timetable';
-import { createPushSender, parseServiceAccount, startPushDispatcher } from './lib/push';
+import { PUSH_APPS, PUSH_ENV, createPushSender, pushConfig, startPushDispatcher, type PushApp, type PushSender } from './lib/push';
 import { startRevocationRefresh } from './lib/device-trust';
 import { startClassClock } from './lib/class-clock';
 import { ensureDeveloperAccess, ensureOwners } from './lib/platform-access';
@@ -32,9 +32,22 @@ async function main() {
   app.log.info({ kid: deps.signer.kid }, 'server signing key loaded');
 
   const stopJanitor = startJanitor(deps);
-  const fcm = parseServiceAccount(process.env.FCM_SERVICE_ACCOUNT);
-  const stopPush = fcm ? startPushDispatcher(db, createPushSender(fcm, (m, x) => app.log.warn(x, m)), (m, x) => app.log.warn(x, m), config.publicUrl) : () => {};
-  app.log.info(fcm ? `instant push on (Firebase project ${fcm.project_id})` : 'instant push off (FCM_SERVICE_ACCOUNT not set): apps check for news themselves');
+  // One sender per Firebase project (the two apps may share one project or have one each).
+  const fcm = pushConfig();
+  const byProject = new Map<string, PushSender>();
+  const senders: Partial<Record<PushApp, PushSender>> = {};
+  for (const a of PUSH_APPS) {
+    const sa = fcm[a];
+    if (!sa) {
+      app.log.info(`instant push off for the ${a} app (${PUSH_ENV[a]} / FCM_SERVICE_ACCOUNT not set): it checks for news itself`);
+      continue;
+    }
+    const key = `${sa.project_id}|${sa.client_email}`;
+    if (!byProject.has(key)) byProject.set(key, createPushSender(sa, (m, x) => app.log.warn(x, m), process.env[PUSH_ENV[a]] ? PUSH_ENV[a] : 'FCM_SERVICE_ACCOUNT'));
+    senders[a] = byProject.get(key);
+    app.log.info(`instant push on for the ${a} app (Firebase project ${sa.project_id})`);
+  }
+  const stopPush = byProject.size ? startPushDispatcher(db, senders, (m, x) => app.log.warn(x, m), config.publicUrl) : () => {};
   // Google's list of revoked phone attestation keys (leaked or compromised), refreshed in the background.
   const stopRevocations = startRevocationRefresh((m) => app.log.info(m));
   // Classes go live by themselves at their start time.

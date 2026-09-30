@@ -201,7 +201,7 @@ export function weekly<T extends { date: string; present: number; expected: numb
 
 const styles = StyleSheet.create({
   readout: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 34 },
-  readVal: { fontFamily: fonts.bold, fontSize: 22, letterSpacing: -0.5 },
+  readVal: { fontFamily: fonts.display, fontSize: 22, letterSpacing: -0.3 },
   hrow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   hval: { fontFamily: fonts.semibold, fontSize: 14, width: 44, textAlign: 'right' },
   legend: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },

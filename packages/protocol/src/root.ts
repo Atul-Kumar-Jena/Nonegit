@@ -94,6 +94,10 @@ export const RootConsole = z.object({
       lastSentAt: z.string().nullable(),
       lastError: z.string().nullable(),
       lastErrorAt: z.string().nullable(),
+      /** Each app on its own: which Firebase project sends its notifications and how many of its phones can receive. */
+      apps: z
+        .array(z.object({ app: z.enum(['student', 'institute']), configured: z.boolean(), project: z.string().nullable(), phones: z.number().int(), variable: z.string() }))
+        .default([]),
     })
     .nullable()
     .default(null),

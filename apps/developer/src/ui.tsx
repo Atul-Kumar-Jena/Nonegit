@@ -159,5 +159,5 @@ const styles = StyleSheet.create({
   sheet: { backgroundColor: colors.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: 1, borderColor: colors.border, padding: 20, paddingBottom: 36, maxHeight: '88%' },
   grabber: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: colors.borderHi, marginBottom: 14 },
   stat: { flexBasis: '47%', flexGrow: 1, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, gap: 4 },
-  statValue: { fontFamily: fonts.bold, fontSize: 22, color: colors.text },
+  statValue: { fontFamily: fonts.display, fontSize: 22, color: colors.text },
 });

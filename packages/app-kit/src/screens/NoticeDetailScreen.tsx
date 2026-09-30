@@ -191,7 +191,7 @@ function Readers({ id, seenCount }: { id: string; seenCount: number }) {
 
 const styles = StyleSheet.create({
   reader: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8 },
-  title: { fontFamily: fonts.bold, fontSize: 26, lineHeight: 32, letterSpacing: -0.6, color: colors.text, marginTop: 12 },
+  title: { fontFamily: fonts.display, fontSize: 26, lineHeight: 32, letterSpacing: -0.6, color: colors.text, marginTop: 12 },
   byline: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 16 },
   to: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10 },
   bodyCard: { marginTop: 16, paddingVertical: 18 },

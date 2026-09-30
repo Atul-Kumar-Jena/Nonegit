@@ -270,7 +270,7 @@ Nonegit/
 1. Any change inserts rows into `notifications`.
 2. `lib/push.ts` polls every 2 s for rows where `pushed_at is null`, and sends each to the person's `push_tokens` through FCM HTTP v1 (high priority, channel `timetable-alerts`).
 3. Dead tokens are deleted.
-4. Without `FCM_SERVICE_ACCOUNT`, phones rely on the in-app refresh and the 15-minute background check (`GET /v1/notifications/poll`, key-signed).
+4. Each app is sent through its own Firebase project (`FCM_SERVICE_ACCOUNT_STUDENT` for students, `FCM_SERVICE_ACCOUNT_INSTITUTE` for professors and admins; `FCM_SERVICE_ACCOUNT` is the shared fallback). Without one, that app's phones rely on the in-app refresh and the 15-minute background check (`GET /v1/notifications/poll`, key-signed).
 
 ### 6.7 Developer console
 - `routes/root.ts` handles switches (upserted into `system_flags`), tenants, the audit log and "sign everyone out".
@@ -300,13 +300,13 @@ Nonegit/
 | `PUBLIC_URL`, `CORS_ORIGINS`, `TRUST_PROXY`, `HOST`, `PORT` | Networking |
 | `OTP_DELIVERY` (console/smtp/brevo/resend), `EMAIL_API_KEY`, `SMTP_URL`, `SMTP_FROM` | Sign-in email |
 | `SMS_DELIVERY`, `TWILIO_*` | Optional SMS codes |
-| `FCM_SERVICE_ACCOUNT` | Firebase service-account JSON (the whole file) for instant push. **Secret** |
+| `FCM_SERVICE_ACCOUNT_STUDENT`, `FCM_SERVICE_ACCOUNT_INSTITUTE` | Each app's Firebase service-account JSON (the whole file) for instant push; `FCM_SERVICE_ACCOUNT` = one for both. **Secret** |
 | `BOOTSTRAP_*` | First institution, admin, demo accounts, developer email |
 | `DEVELOPER_SIGN_IN_ID`, `DEVELOPER_AUTHENTICATOR_RESET` | Developer account |
 | `DEMO_INSTANT_LOGIN`, `SEED_DEMO`, `DEV_TOOLS_TOKEN` | Demo mode (turn off in production) |
 | `HARDWARE_BINDING_DEFAULT`, `REQUIRE_HARDWARE_KEYS`, `ALLOW_EMULATORS`, `ALLOW_WEB_CLIENTS`, `ANDROID_APP_CERT_SHA256`, `MIN_APP_VERSION` | Phone trust policy |
 
-GitHub secrets (CI): `GOOGLE_SERVICES_JSON` (Firebase app config, puts Firebase into the Student and Institute APKs) and the release-signing keystore secrets.
+GitHub secrets (CI): `GOOGLE_SERVICES_JSON_STUDENT` and `GOOGLE_SERVICES_JSON_INSTITUTE` (each app's Firebase config; `GOOGLE_SERVICES_JSON` = one for both; CI checks the file lists the app's package name) and the release-signing keystore secrets.
 
 ## 9. Build, test and deploy
 

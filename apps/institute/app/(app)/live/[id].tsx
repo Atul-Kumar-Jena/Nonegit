@@ -275,6 +275,6 @@ const styles = StyleSheet.create({
   progressFill: { height: 4, backgroundColor: colors.cyan },
   meta: { flexDirection: 'row', alignItems: 'baseline', gap: 12, marginTop: 10 },
   count: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 18 },
-  countText: { fontFamily: fonts.bold, fontSize: 26, color: colors.text },
+  countText: { fontFamily: fonts.display, fontSize: 26, color: colors.text },
   actions: { flexDirection: 'row', gap: 10, alignSelf: 'stretch', marginTop: 10 },
 });

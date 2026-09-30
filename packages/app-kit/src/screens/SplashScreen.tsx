@@ -61,7 +61,7 @@ export default function Splash() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
-  brand: { fontFamily: fonts.bold, fontSize: 40, lineHeight: 48, letterSpacing: -1.5, color: colors.text, marginTop: 18 },
+  brand: { fontFamily: fonts.display, fontSize: 40, lineHeight: 48, letterSpacing: -1.5, color: colors.text, marginTop: 18 },
   tagline: { letterSpacing: 0.3, textAlign: 'center' },
   track: { width: 76, height: 3, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.12)', overflow: 'hidden', marginTop: 22 },
   bar: { width: 36, height: 3, borderRadius: 2, backgroundColor: colors.cyan },

@@ -104,12 +104,27 @@ jobs:
           java-version: 17
       - uses: gradle/actions/setup-gradle@v4
       - run: npm ci
+      # Each app's own google-services.json: GOOGLE_SERVICES_JSON_STUDENT / GOOGLE_SERVICES_JSON_INSTITUTE,
+      # or the shared GOOGLE_SERVICES_JSON when one Firebase project holds both apps. The file must list
+      # this app's package name, otherwise Firebase can't start on the phone — then the build goes
+      # ahead without it (the app still checks for news itself) and says why.
       - name: Firebase config (instant push), when the secret is set
         if: matrix.app != 'developer'
         working-directory: apps/${{ matrix.app }}
         env:
-          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
-        run: if [ -n "$GOOGLE_SERVICES_JSON" ]; then printf '%s' "$GOOGLE_SERVICES_JSON" > google-services.json && echo "Firebase on"; else echo "Firebase off"; fi
+          OWN: ${{ matrix.app == 'student' && secrets.GOOGLE_SERVICES_JSON_STUDENT || secrets.GOOGLE_SERVICES_JSON_INSTITUTE }}
+          SHARED: ${{ secrets.GOOGLE_SERVICES_JSON }}
+          PACKAGE: app.attendly.${{ matrix.app }}
+        run: |
+          JSON="${OWN:-$SHARED}"
+          if [ -z "$JSON" ]; then echo "Firebase off (no google-services secret for ${{ matrix.app }})"; exit 0; fi
+          printf '%s' "$JSON" > google-services.json
+          if node -e "const j=JSON.parse(require('fs').readFileSync('google-services.json','utf8'));const ok=(j.client||[]).some(c=>c.client_info&&c.client_info.android_client_info&&c.client_info.android_client_info.package_name===process.env.PACKAGE);console.log('Firebase project:',j.project_info&&j.project_info.project_id);process.exit(ok?0:1)"; then
+            echo "Firebase on for $PACKAGE"
+          else
+            rm -f google-services.json
+            echo "::warning::The google-services.json for ${{ matrix.app }} has no Android app with package $PACKAGE (or isn't valid JSON) — building without Firebase. In Firebase add an Android app with exactly that package name and use its file."
+          fi
       - name: Generate native Android project
         working-directory: apps/${{ matrix.app }}
         run: npx expo prebuild --platform android --no-install

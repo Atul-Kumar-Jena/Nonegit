@@ -6,8 +6,8 @@ import { NOTIFICATION_CATEGORIES, notificationCategory, type AppNotification, ty
 import { Screen } from '../components/Screen';
 import { Button, Card, ErrorState, IconButton, Loading, Notice, Text } from '../components/ui';
 import { clock } from '../lib/format';
-import { enablePhoneNotifications, phoneNotificationStatus, sendTestNotification, targetOf, useMarkRead, useNotifications } from '../lib/notifications';
-import { useApi, useSession } from '../state/session';
+import { enablePhoneNotifications, phoneNotificationStatus, targetOf, useMarkRead, useNotifications } from '../lib/notifications';
+import { useSession } from '../state/session';
 import { colors, fonts } from '../theme';
 
 const CATEGORY_ICON: Record<NotificationCategory, typeof CalendarClock> = {
@@ -57,21 +57,6 @@ export default function NotificationsScreen() {
     const r = audience.routeFor?.(t) ?? (n.kind === 'request' || n.kind === 'cover' ? audience.requestsRoute : null);
     return typeof r === 'string' ? r : null;
   };
-  const api = useApi();
-  const [test, setTest] = useState<{ busy: boolean; msg: string | null; tone: 'green' | 'amber' | 'red' }>({ busy: false, msg: null, tone: 'green' });
-  async function runTest() {
-    setTest({ busy: true, msg: null, tone: 'green' });
-    try {
-      const r = await sendTestNotification(api);
-      if (!r.allowed) setTest({ busy: false, tone: 'amber', msg: 'Sent — but phone notifications are off for this app. Turn them on (above) to see it on the lock screen.' });
-      else if (!r.serverPush) setTest({ busy: false, tone: 'amber', msg: 'Sent. The server isn’t connected to Firebase yet, so it arrives only while the app is open or at its next check (~15 min).' });
-      else if (!r.phoneRegistered) setTest({ busy: false, tone: 'amber', msg: 'Sent, but this phone isn’t registered for instant notifications (this build has no Firebase, or Google Play services are missing).' });
-      else setTest({ busy: false, tone: 'green', msg: 'Sent! Close the app now — it should pop up within a few seconds. If it doesn’t: Settings → Apps → this app → Battery → No restrictions, and allow Auto-start.' });
-    } catch (e) {
-      setTest({ busy: false, tone: 'red', msg: e instanceof Error ? e.message : 'Couldn’t send a test.' });
-    }
-  }
-
   useEffect(() => {
     void phoneNotificationStatus().then(setPhone);
     // Opening the list always shows the latest, not the last background poll.
@@ -126,17 +111,6 @@ export default function NotificationsScreen() {
           <Button title="Turn on notifications" compact onPress={() => void enablePhoneNotifications().then(setPhone)} />
         </Card>
       ) : null}
-
-      <Card style={{ gap: 8, marginTop: 8 }}>
-        <View style={styles.row}>
-          <BellRing color={colors.text} size={18} />
-          <Text variant="small" color={colors.text} style={{ flex: 1 }}>
-            Check this phone gets notifications instantly, even when the app is closed.
-          </Text>
-        </View>
-        <Button title="Send me a test notification" kind="secondary" compact loading={test.busy} onPress={() => void runTest()} />
-        {test.msg ? <Notice tone={test.tone} message={test.msg} onDismiss={() => setTest((t) => ({ ...t, msg: null }))} /> : null}
-      </Card>
 
       {q.isPending ? (
         <Loading />

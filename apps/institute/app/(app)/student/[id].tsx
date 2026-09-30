@@ -186,7 +186,7 @@ function SubjectBlock({ userId, s, min, open, onToggle }: { userId: string; s: R
 const styles = StyleSheet.create({
   credit: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
   between: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  big: { fontFamily: fonts.bold, fontSize: 30, letterSpacing: -1, color: colors.text, marginTop: 4, flex: 1 },
+  big: { fontFamily: fonts.display, fontSize: 30, letterSpacing: -0.3, color: colors.text, marginTop: 4, flex: 1 },
   pct: { fontFamily: fonts.semibold, fontSize: 18 },
   cls: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   dot: { width: 8, height: 8, borderRadius: 4 },

@@ -26,12 +26,29 @@ export function parseServiceAccount(raw: string | undefined): ServiceAccount | n
   }
 }
 
+/** The two apps that receive instant notifications: students on Attendly, staff on Attendly Institute. */
+export type PushApp = 'student' | 'institute';
+export const PUSH_APPS: readonly PushApp[] = ['student', 'institute'];
+export const pushAppOf = (role: string): PushApp | null => (role === 'student' ? 'student' : role === 'teacher' || role === 'admin' ? 'institute' : null);
+/** The Render variable that holds each app's Firebase service account. */
+export const PUSH_ENV: Record<PushApp, string> = { student: 'FCM_SERVICE_ACCOUNT_STUDENT', institute: 'FCM_SERVICE_ACCOUNT_INSTITUTE' };
+
+/**
+ * Which Firebase project sends each app's notifications: its own FCM_SERVICE_ACCOUNT_STUDENT /
+ * FCM_SERVICE_ACCOUNT_INSTITUTE (two Firebase projects), or the shared FCM_SERVICE_ACCOUNT (one
+ * project that holds both apps).
+ */
+export function pushConfig(env: NodeJS.ProcessEnv = process.env): Record<PushApp, ServiceAccount | null> {
+  const shared = parseServiceAccount(env.FCM_SERVICE_ACCOUNT);
+  return { student: parseServiceAccount(env[PUSH_ENV.student]) ?? shared, institute: parseServiceAccount(env[PUSH_ENV.institute]) ?? shared };
+}
+
 /** Delivery counters since the server started (shown in the Developer console to find push problems). */
 export const pushStats = { sent: 0, failed: 0, deadTokens: 0, lastError: null as string | null, lastErrorAt: null as string | null, lastSentAt: null as string | null };
 
 const b64url = (b: Buffer | string) => Buffer.from(b).toString('base64').replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
 
-export function createPushSender(sa: ServiceAccount, log: (msg: string, extra?: unknown) => void) {
+export function createPushSender(sa: ServiceAccount, log: (msg: string, extra?: unknown) => void, label = 'FCM_SERVICE_ACCOUNT') {
   let token: { value: string; exp: number } | null = null;
   async function accessToken(): Promise<string> {
     const now = Math.floor(Date.now() / 1000);
@@ -47,7 +64,7 @@ export function createPushSender(sa: ServiceAccount, log: (msg: string, extra?: 
     if (!res.ok) {
       const detail = await res.text().catch(() => '');
       pushStats.failed++;
-      pushStats.lastError = `Google sign-in for FCM failed (${res.status}) — check FCM_SERVICE_ACCOUNT: ${detail.slice(0, 200)}`;
+      pushStats.lastError = `Google sign-in for FCM failed (${res.status}) — check ${label}: ${detail.slice(0, 200)}`;
       pushStats.lastErrorAt = new Date().toISOString();
       throw new Error(`FCM auth failed: ${res.status}`);
     }
@@ -91,7 +108,9 @@ export function createPushSender(sa: ServiceAccount, log: (msg: string, extra?: 
     if (!res.ok) {
       const detail = await res.text().catch(() => '');
       pushStats.failed++;
-      pushStats.lastError = `FCM ${res.status}: ${detail.slice(0, 300)}`;
+      pushStats.lastError = /SENDER_ID_MISMATCH|SenderId mismatch/i.test(detail)
+        ? `This app was built with a different Firebase project than ${label} (${sa.project_id}): use the google-services.json and the service account from the same Firebase project.`
+        : `FCM ${res.status}: ${detail.slice(0, 300)}`;
       pushStats.lastErrorAt = new Date().toISOString();
       log('FCM send failed', { status: res.status, detail: detail.slice(0, 300) });
       return 'failed';
@@ -104,9 +123,11 @@ export function createPushSender(sa: ServiceAccount, log: (msg: string, extra?: 
 }
 
 /** Sends every committed, not-yet-pushed notification of the last 10 minutes. */
+export type PushSender = ReturnType<typeof createPushSender>;
+
 export function startPushDispatcher(
   db: Db,
-  sender: ReturnType<typeof createPushSender>,
+  senders: Partial<Record<PushApp, PushSender>>,
   log: (msg: string, extra?: unknown) => void,
   publicUrl: string | null = null,
 ): () => void {
@@ -123,11 +144,14 @@ export function startPushDispatcher(
         returning id, user_id, kind, title, body, data`,
     );
     if (!rows.length) return 0;
-    const tokens = await db.query<{ user_id: string; token: string; device_id: string }>(
-      `select p.user_id, p.token, p.device_id from push_tokens p join devices d on d.id = p.device_id and d.status = 'active' where p.user_id = any($1::uuid[])`,
+    const tokens = await db.query<{ user_id: string; token: string; device_id: string; role: string }>(
+      `select p.user_id, p.token, p.device_id, u.role from push_tokens p
+         join devices d on d.id = p.device_id and d.status = 'active'
+         join users u on u.id = p.user_id
+        where p.user_id = any($1::uuid[])`,
       [[...new Set(rows.map((r) => r.user_id))]],
     );
-    const byUser = new Map<string, { token: string; device_id: string }[]>();
+    const byUser = new Map<string, { token: string; device_id: string; role: string }[]>();
     for (const t of tokens.rows) byUser.set(t.user_id, [...(byUser.get(t.user_id) ?? []), t]);
     const jobs: (() => Promise<void>)[] = [];
     /** Notifications Google accepted for at least one of the person's phones: the app won't repeat them. */
@@ -146,12 +170,17 @@ export function startPushDispatcher(
       const image = publicUrl ? `${publicUrl}/v1/thumbs/${notificationCategory(n.kind)}.png` : undefined;
       const about = data.noticeId ?? data.requestId ?? data.sessionId;
       const tag = about ? `${n.kind}:${about}` : undefined;
-      for (const t of byUser.get(n.user_id) ?? [])
+      for (const t of byUser.get(n.user_id) ?? []) {
+        // Each app's phones are reached through that app's own Firebase project.
+        const app = pushAppOf(t.role);
+        const sender = app ? senders[app] : undefined;
+        if (!sender) continue;
         jobs.push(async () => {
           const r = await sender.send(t.token, { title: n.title, body: n.body, data, image, tag }).catch((err: Error) => (log('FCM error', { err: err.message }), 'failed' as const));
           if (r === 'dead') await db.query('delete from push_tokens where device_id = $1', [t.device_id]);
           if (r === 'ok') delivered.add(n.id);
         });
+      }
     }
     for (let i = 0; i < jobs.length; i += PARALLEL) await Promise.all(jobs.slice(i, i + PARALLEL).map((j) => j()));
     if (delivered.size) await db.query('update notifications set push_ok = true where id = any($1::bigint[])', [[...delivered]]);

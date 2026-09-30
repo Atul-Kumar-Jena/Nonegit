@@ -19,7 +19,6 @@ import { z } from 'zod';
 import { NotificationsResponse, OkResponse, type AppNotification } from '@attendly/protocol';
 
 const PushTokenResponse = z.object({ ok: z.literal(true), push: z.boolean() });
-const TestNotificationResponse = z.object({ ok: z.literal(true), serverPush: z.boolean(), phoneRegistered: z.boolean() });
 import { ApiClient } from './api-core';
 import { deviceKeys } from './device-key';
 import { StorageKeys, getItem } from './storage';
@@ -227,16 +226,6 @@ async function registerPush(api: ApiClient): Promise<void> {
   }
 }
 
-/**
- * "Send me a test notification": registers this phone for instant notifications, then asks the
- * server for a real one. Close the app right after — it should arrive within seconds.
- */
-export async function sendTestNotification(api: ApiClient): Promise<{ serverPush: boolean; phoneRegistered: boolean; allowed: boolean }> {
-  const allowed = isWeb ? false : (await Notifications.getPermissionsAsync().catch(() => ({ status: 'denied' }))).status === 'granted';
-  await registerPush(api);
-  const r = await api.authed('POST', '/v1/me/test-notification', TestNotificationResponse, {});
-  return { serverPush: r.serverPush, phoneRegistered: r.phoneRegistered, allowed };
-}
 
 export function NotificationRunner() {
   const { phase, api, audience } = useSession();

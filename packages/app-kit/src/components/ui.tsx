@@ -1,4 +1,4 @@
-import { forwardRef, type ReactNode } from 'react';
+import { forwardRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -15,20 +15,20 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import { colors, fonts, gradients, radius, toneColor, type Tone } from '../theme';
+import { colors, fonts, gradients, radius, shadow, toneColor, type Tone } from '../theme';
 
 // ───────────────────────────── text ─────────────────────────────
 
 type Variant = 'display' | 'title' | 'heading' | 'body' | 'bodyStrong' | 'small' | 'label' | 'mono' | 'monoSmall';
 
 const variantStyle: Record<Variant, TextStyle> = {
-  display: { fontFamily: fonts.bold, fontSize: 44, letterSpacing: -1.5, color: colors.text },
-  title: { fontFamily: fonts.bold, fontSize: 30, letterSpacing: -1, color: colors.text },
-  heading: { fontFamily: fonts.semibold, fontSize: 17, letterSpacing: -0.2, color: colors.text },
+  display: { fontFamily: fonts.display, fontSize: 46, letterSpacing: -1, color: colors.text },
+  title: { fontFamily: fonts.display, fontSize: 30, letterSpacing: -0.4, color: colors.text },
+  heading: { fontFamily: fonts.bold, fontSize: 17, letterSpacing: -0.2, color: colors.text },
   body: { fontFamily: fonts.regular, fontSize: 15, lineHeight: 22, color: colors.textMuted },
-  bodyStrong: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
-  small: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 18, color: colors.textMuted },
-  label: { fontFamily: fonts.monoMedium, fontSize: 10.5, letterSpacing: 1.6, textTransform: 'uppercase', color: colors.textDim },
+  bodyStrong: { fontFamily: fonts.semibold, fontSize: 15, letterSpacing: -0.1, color: colors.text },
+  small: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 19, color: colors.textMuted },
+  label: { fontFamily: fonts.bold, fontSize: 11, letterSpacing: 1.1, textTransform: 'uppercase', color: colors.textDim },
   mono: { fontFamily: fonts.mono, fontSize: 13, color: colors.text },
   monoSmall: { fontFamily: fonts.mono, fontSize: 11.5, color: colors.textMuted },
 };
@@ -41,7 +41,17 @@ export function Text({ variant = 'body', color, style, ...rest }: TextProps & { 
 
 export function Card({ children, style, tone, padded = true }: { children: ReactNode; style?: StyleProp<ViewStyle>; tone?: Tone; padded?: boolean }) {
   const t = tone ? toneColor[tone] : null;
-  return <View style={[styles.card, padded && { padding: 16 }, t && { borderColor: t.line, backgroundColor: blend(t.bg) }, style]}>{children}</View>;
+  return (
+    <View style={[styles.card, padded && { padding: 16 }, t && { borderColor: t.line, backgroundColor: blend(t.bg) }, style]}>
+      <Edge />
+      {children}
+    </View>
+  );
+}
+
+/** The lit top edge that makes a dark surface read as raised. */
+export function Edge() {
+  return <LinearGradient pointerEvents="none" colors={gradients.edge} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.edge} />;
 }
 
 function blend(bg: string) {
@@ -56,7 +66,10 @@ export function Divider({ style }: { style?: StyleProp<ViewStyle> }) {
 export function SectionLabel({ children, right }: { children: string; right?: ReactNode }) {
   return (
     <View style={styles.sectionLabel}>
-      <Text variant="label">{children}</Text>
+      <View style={styles.sectionTitle}>
+        <View style={styles.sectionTick} />
+        <Text variant="label">{children}</Text>
+      </View>
       {right}
     </View>
   );
@@ -102,13 +115,13 @@ export function Button({
   accessibilityHint?: string;
 }) {
   const inactive = disabled || loading;
-  const textColor = kind === 'primary' ? colors.bg : kind === 'danger' ? colors.red : colors.text;
+  const textColor = kind === 'primary' ? colors.ink : kind === 'danger' ? colors.red : colors.text;
   const content = (
     <View style={[styles.btnInner, compact && styles.btnCompact]}>
       {loading ? <ActivityIndicator color={textColor} size="small" /> : null}
       {!loading ? (
         <>
-          <RNText style={[styles.btnText, { color: textColor }, compact && { fontSize: 14 }]} maxFontSizeMultiplier={1.3}>
+          <RNText style={[styles.btnText, { color: textColor }, compact && { fontSize: 14 }]} maxFontSizeMultiplier={1.3} numberOfLines={1}>
             {title}
           </RNText>
           {icon}
@@ -129,17 +142,24 @@ export function Button({
       }}
       style={({ pressed }) => [
         styles.btn,
-        kind === 'secondary' && styles.btnSecondary,
+        compact && { borderRadius: 12 },
+        kind === 'primary' && styles.btnPrimary,
+        kind === 'secondary' && [styles.btnSecondary, pressed && { backgroundColor: colors.border }],
         kind === 'danger' && styles.btnDanger,
-        kind === 'ghost' && styles.btnGhost,
-        { opacity: inactive ? 0.55 : pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.985 : 1 }] },
+        kind === 'ghost' && [styles.btnGhost, pressed && { backgroundColor: colors.cyanSoft }],
+        { opacity: inactive ? 0.5 : pressed ? 0.92 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] },
         style,
       ]}
     >
       {kind === 'primary' ? (
-        <LinearGradient colors={gradients.button} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.btnGradient}>
+        <LinearGradient colors={gradients.button} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={styles.btnGradient}>
           {content}
         </LinearGradient>
+      ) : kind === 'secondary' ? (
+        <>
+          <Edge />
+          {content}
+        </>
       ) : (
         content
       )}
@@ -154,8 +174,9 @@ export function IconButton({ onPress, children, label, style }: { onPress: () =>
       accessibilityLabel={label}
       hitSlop={8}
       onPress={onPress}
-      style={({ pressed }) => [styles.iconBtn, { opacity: pressed ? 0.7 : 1 }, style]}
+      style={({ pressed }) => [styles.iconBtn, pressed && { backgroundColor: colors.border, transform: [{ scale: 0.96 }] }, style]}
     >
+      <Edge />
       {children}
     </Pressable>
   );
@@ -171,9 +192,10 @@ export function PressableRow({ children, style, ...rest }: PressableProps & { ch
 
 // ───────────────────────────── inputs ─────────────────────────────
 
-export const Input = forwardRef<TextInput, TextInputProps & { icon?: ReactNode; invalid?: boolean }>(function Input({ icon, invalid, style, ...rest }, ref) {
+export const Input = forwardRef<TextInput, TextInputProps & { icon?: ReactNode; invalid?: boolean }>(function Input({ icon, invalid, style, onFocus, onBlur, ...rest }, ref) {
+  const [focused, setFocused] = useState(false);
   return (
-    <View style={[styles.input, invalid && { borderColor: toneColor.red.line }]}>
+    <View style={[styles.input, focused && styles.inputFocused, invalid && { borderColor: toneColor.red.line }]}>
       {icon}
       <TextInput
         ref={ref}
@@ -181,6 +203,14 @@ export const Input = forwardRef<TextInput, TextInputProps & { icon?: ReactNode; 
         selectionColor={colors.cyan}
         style={[styles.inputText, style]}
         maxFontSizeMultiplier={1.3}
+        onFocus={(e) => {
+          setFocused(true);
+          onFocus?.(e);
+        }}
+        onBlur={(e) => {
+          setFocused(false);
+          onBlur?.(e);
+        }}
         {...rest}
       />
     </View>
@@ -203,7 +233,7 @@ export function Segmented<T extends string>({ value, options, onChange }: { valu
             }}
             style={[styles.segment, active && styles.segmentActive]}
           >
-            <RNText style={[styles.segmentText, active && { color: colors.text }]} maxFontSizeMultiplier={1.3}>
+            <RNText style={[styles.segmentText, active && { color: colors.ink, fontFamily: fonts.semibold }]} maxFontSizeMultiplier={1.3} numberOfLines={1}>
               {o.label}
             </RNText>
           </Pressable>
@@ -235,7 +265,7 @@ export function ProgressBar({ value, marker, tone = 'cyan', height = 6 }: { valu
 export function Avatar({ text, size = 40 }: { text: string; size?: number }) {
   return (
     <LinearGradient colors={gradients.avatar} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: size, height: size, borderRadius: size / 2, alignItems: 'center', justifyContent: 'center' }}>
-      <RNText style={{ fontFamily: fonts.monoMedium, color: colors.bg, fontSize: size * 0.36 }} maxFontSizeMultiplier={1}>
+      <RNText style={{ fontFamily: fonts.bold, color: colors.ink, fontSize: size * 0.36, letterSpacing: 0.3 }} maxFontSizeMultiplier={1}>
         {text}
       </RNText>
     </LinearGradient>
@@ -244,7 +274,7 @@ export function Avatar({ text, size = 40 }: { text: string; size?: number }) {
 
 export function IconTile({ children, tone = 'cyan', size = 40 }: { children: ReactNode; tone?: Tone; size?: number }) {
   const t = toneColor[tone];
-  return <View style={{ width: size, height: size, borderRadius: 12, backgroundColor: t.bg, borderWidth: 1, borderColor: t.line, alignItems: 'center', justifyContent: 'center' }}>{children}</View>;
+  return <View style={{ width: size, height: size, borderRadius: Math.round(size * 0.32), backgroundColor: t.bg, borderWidth: 1, borderColor: t.line, alignItems: 'center', justifyContent: 'center' }}>{children}</View>;
 }
 
 export function InfoRow({ label, value, valueColor, mono = true }: { label: string; value: string; valueColor?: string; mono?: boolean }) {
@@ -291,29 +321,34 @@ export function Notice({ message, tone = 'amber', onDismiss }: { message: string
 }
 
 const styles = StyleSheet.create({
-  card: { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, borderRadius: radius.lg },
-  sectionLabel: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 28, marginBottom: 12 },
-  badge: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: 9, paddingVertical: 3.5, alignSelf: 'flex-start' },
-  badgeText: { fontFamily: fonts.medium, fontSize: 11.5 },
+  card: { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, borderRadius: radius.lg, overflow: 'hidden' },
+  edge: { position: 'absolute', top: 0, left: 0, right: 0, height: 1 },
+  sectionLabel: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 28, marginBottom: 12, minHeight: 20 },
+  sectionTitle: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sectionTick: { width: 3, height: 12, borderRadius: 2, backgroundColor: colors.textDim },
+  badge: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 4, alignSelf: 'flex-start' },
+  badgeText: { fontFamily: fonts.semibold, fontSize: 11.5, letterSpacing: 0.1 },
   dot: { width: 6, height: 6, borderRadius: 3 },
-  btn: { borderRadius: radius.pill, overflow: 'hidden', minHeight: 50 },
-  btnGradient: { flex: 1, borderRadius: radius.pill },
-  btnInner: { flex: 1, minHeight: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 18 },
-  btnCompact: { minHeight: 40, paddingHorizontal: 14 },
-  btnText: { fontFamily: fonts.semibold, fontSize: 15 },
-  btnSecondary: { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.borderHi },
-  btnDanger: { backgroundColor: 'rgba(248,113,113,0.08)', borderWidth: 1, borderColor: 'rgba(248,113,113,0.35)' },
+  btn: { borderRadius: 16, overflow: 'hidden', minHeight: 52 },
+  btnPrimary: { ...shadow, shadowColor: '#ffffff', shadowOpacity: 0.12, shadowRadius: 14, shadowOffset: { width: 0, height: 4 } },
+  btnGradient: { flex: 1 },
+  btnInner: { flex: 1, minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 20 },
+  btnCompact: { minHeight: 42, paddingHorizontal: 14 },
+  btnText: { fontFamily: fonts.bold, fontSize: 15, letterSpacing: -0.1 },
+  btnSecondary: { backgroundColor: colors.cardHi, borderWidth: 1, borderColor: colors.borderHi },
+  btnDanger: { backgroundColor: 'rgba(248,113,113,0.10)', borderWidth: 1, borderColor: 'rgba(248,113,113,0.38)' },
   btnGhost: { backgroundColor: 'transparent' },
-  iconBtn: { width: 42, height: 42, borderRadius: 21, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' },
+  iconBtn: { width: 42, height: 42, borderRadius: 14, borderWidth: 1, borderColor: colors.borderHi, backgroundColor: colors.cardHi, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   input: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 52, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bgRaised, paddingHorizontal: 14 },
-  inputText: { flex: 1, color: colors.text, fontFamily: fonts.regular, fontSize: 16, paddingVertical: 12 },
+  inputFocused: { borderColor: 'rgba(255, 255, 255, 0.55)', backgroundColor: colors.card },
+  inputText: { flex: 1, color: colors.text, fontFamily: fonts.medium, fontSize: 16, paddingVertical: 12 },
   segmented: { flexDirection: 'row', backgroundColor: colors.bgRaised, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, padding: 4, gap: 4 },
-  segment: { flex: 1, minHeight: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  segmentActive: { backgroundColor: 'rgba(255, 255, 255, 0.10)', borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.28)' },
+  segment: { flex: 1, minHeight: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
+  segmentActive: { backgroundColor: colors.text },
   segmentText: { fontFamily: fonts.medium, fontSize: 13, color: colors.textMuted },
   track: { backgroundColor: 'rgba(255,255,255,0.10)', overflow: 'visible', width: '100%' },
   marker: { position: 'absolute', width: 2, marginLeft: -1, backgroundColor: 'rgba(255,255,255,0.55)', borderRadius: 1 },
-  infoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 16, paddingVertical: 7 },
+  infoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 16, paddingVertical: 8 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  notice: { borderWidth: 1, borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 10 },
+  notice: { borderWidth: 1, borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 11 },
 });
